@@ -1,0 +1,14 @@
+[package]
+name = "anvil-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anvil-core.workspace = true
+anvil-graph.workspace = true
+anvil-memory.workspace = true
+
+[lints]
+workspace = true

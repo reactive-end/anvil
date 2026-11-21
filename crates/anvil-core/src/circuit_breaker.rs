@@ -1,0 +1,205 @@
+//! Persistent Circuit Breaker (N=3) with normalized error fingerprinting.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+
+/// State of the circuit breaker persisted in `.harness/.state/circuit.json`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CircuitState {
+    Closed,
+    Open,
+}
+
+/// Structured escalation payload produced once consecutive identical failures reach `limit`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EscalationSummary {
+    pub fingerprint: String,
+    pub tool: String,
+    pub consecutive_failures: u32,
+    pub normalized_error: String,
+    pub last_command: String,
+    pub opened_at: DateTime<Utc>,
+    pub recommended_action: String,
+}
+
+/// Persisted circuit breaker snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CircuitStatus {
+    pub state: CircuitState,
+    pub limit: u32,
+    pub consecutive_failures: u32,
+    pub last_fingerprint: Option<String>,
+    pub last_tool: Option<String>,
+    pub recent_samples: Vec<String>,
+    pub escalation: Option<EscalationSummary>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl CircuitStatus {
+    fn new(limit: u32) -> Self {
+        Self {
+            state: CircuitState::Closed,
+            limit: limit.max(1),
+            consecutive_failures: 0,
+            last_fingerprint: None,
+            last_tool: None,
+            recent_samples: Vec::new(),
+            escalation: None,
+            updated_at: Utc::now(),
+        }
+    }
+
+    /// Returns true when the circuit has tripped and blocks further blind attempts.
+    pub fn is_open(&self) -> bool {
+        self.state == CircuitState::Open
+    }
+}
+
+/// Manages failure fingerprinting and state transitions in `.harness/.state/circuit.json`.
+pub struct CircuitBreaker {
+    state_path: PathBuf,
+    limit: u32,
+}
+
+impl CircuitBreaker {
+    pub fn new(repo_root: &Path, limit: u32) -> Self {
+        Self {
+            state_path: repo_root
+                .join(".harness")
+                .join(".state")
+                .join("circuit.json"),
+            limit: limit.max(1),
+        }
+    }
+
+    pub fn state_path(&self) -> &Path {
+        &self.state_path
+    }
+
+    /// Reads current circuit status, returning a clean CLOSED snapshot if missing.
+    pub fn status(&self) -> Result<CircuitStatus> {
+        if !self.state_path.exists() {
+            return Ok(CircuitStatus::new(self.limit));
+        }
+        let raw = fs::read_to_string(&self.state_path)
+            .with_context(|| format!("failed to read {}", self.state_path.display()))?;
+        let mut parsed: CircuitStatus = serde_json::from_str(&raw)
+            .with_context(|| format!("failed to parse {}", self.state_path.display()))?;
+        parsed.limit = self.limit;
+        Ok(parsed)
+    }
+
+    /// Records a tool failure; trips to `OPEN` on the Nth consecutive identical fingerprint.
+    pub fn record_failure(
+        &self,
+        tool: &str,
+        raw_error: &str,
+        command: &str,
+    ) -> Result<CircuitStatus> {
+        let mut status = self.status()?;
+        let normalized = normalize_error(raw_error);
+        let fp = fingerprint_normalized(&normalized);
+        let now = Utc::now();
+
+        if status.last_fingerprint.as_deref() == Some(fp.as_str()) {
+            status.consecutive_failures = status.consecutive_failures.saturating_add(1);
+        } else {
+            status.last_fingerprint = Some(fp.clone());
+            status.consecutive_failures = 1;
+            status.recent_samples.clear();
+        }
+
+        status.last_tool = Some(tool.to_owned());
+        push_bounded_sample(&mut status.recent_samples, raw_error, 5);
+        status.updated_at = now;
+
+        if status.consecutive_failures >= status.limit {
+            status.state = CircuitState::Open;
+            status.escalation = Some(EscalationSummary {
+                fingerprint: fp,
+                tool: tool.to_owned(),
+                consecutive_failures: status.consecutive_failures,
+                normalized_error: normalized,
+                last_command: command.to_owned(),
+                opened_at: now,
+                recommended_action:
+                    "Stop automated retries, inspect root cause, and run `anvil circuit reset` after fixing."
+                        .to_owned(),
+            });
+        }
+
+        self.save(&status)?;
+        Ok(status)
+    }
+
+    /// Clears consecutive failure streak if circuit is still `CLOSED`.
+    /// An `OPEN` circuit stays blocked until `reset()` is explicitly invoked.
+    pub fn record_success(&self) -> Result<CircuitStatus> {
+        let mut status = self.status()?;
+        if status.is_open() {
+            return Ok(status);
+        }
+        status.consecutive_failures = 0;
+        status.last_fingerprint = None;
+        status.recent_samples.clear();
+        status.updated_at = Utc::now();
+        self.save(&status)?;
+        Ok(status)
+    }
+
+    /// Explicitly resets the circuit breaker back to `CLOSED`.
+    pub fn reset(&self) -> Result<CircuitStatus> {
+        let status = CircuitStatus::new(self.limit);
+        self.save(&status)?;
+        Ok(status)
+    }
+
+    fn save(&self, status: &CircuitStatus) -> Result<()> {
+        if let Some(parent) = self.state_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        let json = serde_json::to_string_pretty(status)?;
+        fs::write(&self.state_path, format!("{json}\n"))
+            .with_context(|| format!("failed to write {}", self.state_path.display()))
+    }
+}
+
+/// Normalizes volatile line/column numbers, timestamps, hex addresses, and paths.
+pub fn normalize_error(raw: &str) -> String {
+    static RE_LINE_COL: OnceLock<Regex> = OnceLock::new();
+    static RE_HEX: OnceLock<Regex> = OnceLock::new();
+    static RE_WS: OnceLock<Regex> = OnceLock::new();
+
+    let re_loc = RE_LINE_COL.get_or_init(|| {
+        Regex::new(r"(?::|\()\d+(?::|,)\d+\)?:?").expect("valid location regex")
+    });
+    let re_hex = RE_HEX.get_or_init(|| Regex::new(r"0x[0-9a-fA-F]+").expect("valid hex regex"));
+    let re_ws = RE_WS.get_or_init(|| Regex::new(r"\s+").expect("valid whitespace regex"));
+
+    let unified_slashes = raw.replace('\\', "/");
+    let no_locs = re_loc.replace_all(&unified_slashes, ":<loc>");
+    let no_hex = re_hex.replace_all(&no_locs, "0x<addr>");
+    re_ws.replace_all(no_hex.trim(), " ").into_owned()
+}
+
+/// Computes a deterministic `blake3` hex fingerprint over normalized error text.
+pub fn fingerprint_normalized(normalized: &str) -> String {
+    blake3::hash(normalized.as_bytes()).to_hex().to_string()
+}
+
+fn push_bounded_sample(samples: &mut Vec<String>, raw: &str, max_samples: usize) {
+    let trimmed = raw.trim();
+    let snippet: String = trimmed.chars().take(240).collect();
+    if samples.len() >= max_samples {
+        samples.remove(0);
+    }
+    samples.push(snippet);
+}

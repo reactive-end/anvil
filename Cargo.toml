@@ -1,0 +1,56 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/anvil-core",
+    "crates/anvil-ast",
+    "crates/anvil-graph",
+    "crates/anvil-memory",
+    "crates/anvil-mcp",
+    "crates/anvil-tasks",
+    "crates/anvil-adapters",
+    "crates/anvil-deps",
+    "crates/anvil-qa",
+    "crates/anvil-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rustc-hash = "2"
+blake3 = "1"
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+ulid = "1"
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+
+anvil-core = { path = "crates/anvil-core" }
+anvil-ast = { path = "crates/anvil-ast" }
+anvil-graph = { path = "crates/anvil-graph" }
+anvil-memory = { path = "crates/anvil-memory" }
+anvil-mcp = { path = "crates/anvil-mcp" }
+anvil-tasks = { path = "crates/anvil-tasks" }
+anvil-adapters = { path = "crates/anvil-adapters" }
+anvil-deps = { path = "crates/anvil-deps" }
+anvil-qa = { path = "crates/anvil-qa" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"

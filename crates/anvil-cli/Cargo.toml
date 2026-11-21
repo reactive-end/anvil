@@ -1,0 +1,26 @@
+[package]
+name = "anvil-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "anvil"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+anvil-core.workspace = true
+anvil-ast.workspace = true
+anvil-graph.workspace = true
+anvil-memory.workspace = true
+anvil-mcp.workspace = true
+anvil-tasks.workspace = true
+anvil-adapters.workspace = true
+anvil-deps.workspace = true
+anvil-qa.workspace = true
+
+[lints]
+workspace = true
