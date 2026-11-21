@@ -7,6 +7,19 @@ rust-version.workspace = true
 
 [dependencies]
 anvil-core.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+rayon = "1.10"
+regex.workspace = true
+rustc-hash.workspace = true
+tree-sitter = "0.26"
+tree-sitter-css = "0.25.0"
+tree-sitter-dart = "0.3.0"
+tree-sitter-html = "0.23.2"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-kotlin-ng = "1.1.0"
+tree-sitter-python = "0.25.0"
+tree-sitter-typescript = "0.23.2"
 
 [lints]
 workspace = true

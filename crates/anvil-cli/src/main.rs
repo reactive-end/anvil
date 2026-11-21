@@ -1,30 +1,29 @@
 //! Thin CLI entry point for the `anvil` engineering harness.
 
+mod cli;
+mod commands;
+
+use std::process::ExitCode;
+
 use clap::Parser;
 
-#[derive(Debug, Parser)]
-#[command(name = "anvil", version, about = "Anvil AI engineering harness")]
-struct Cli {
-    /// Print workspace crate wiring summary.
-    #[arg(long)]
-    info: bool,
-}
+use cli::Cli;
+use commands::ExitCodeError;
 
-fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-    if cli.info {
-        let _ = anvil_core::traits::Tier::Tier0;
-        println!(
-            "anvil workspace ready: {}, {}, {}, {}, {}, {}, {}, {}",
-            anvil_ast::crate_name(),
-            anvil_graph::crate_name(),
-            anvil_memory::crate_name(),
-            anvil_mcp::crate_name(),
-            anvil_tasks::crate_name(),
-            anvil_adapters::crate_name(),
-            anvil_deps::crate_name(),
-            anvil_qa::crate_name(),
-        );
+fn main() -> ExitCode {
+    let parsed = Cli::parse();
+    match commands::dispatch(parsed) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            if let Some(exit_err) = err.downcast_ref::<ExitCodeError>() {
+                if let Some(msg) = &exit_err.message {
+                    eprintln!("{msg}");
+                }
+                let code = u8::try_from(exit_err.code.clamp(1, 255)).unwrap_or(1);
+                return ExitCode::from(code);
+            }
+            eprintln!("error: {err:#}");
+            ExitCode::FAILURE
+        }
     }
-    Ok(())
 }

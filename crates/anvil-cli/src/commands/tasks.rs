@@ -1,0 +1,108 @@
+//! `anvil tasks`: conflict-free team task ledger and `tasks.json` builder.
+
+use std::fs;
+use std::path::Path;
+
+use anyhow::{Result, bail};
+use anvil_tasks::{
+    TaskStatus, append_entry, append_entry_as, build_root_tasks_json, list_tasks, resolve_author,
+    resolve_merge, start_task, start_task_as, write_task_plan,
+};
+
+use crate::cli::subcmds::TasksSubcmd;
+
+/// Executes `anvil tasks <subcommand>`.
+pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
+    match sub {
+        TasksSubcmd::Start { request, author } => cmd_start(root, &request.join(" "), author.as_deref()),
+        TasksSubcmd::Update { task_id, summary, status, files, author } => {
+            cmd_append(root, &task_id, &summary, parse_status(&status)?, &files, author.as_deref())
+        }
+        TasksSubcmd::Done { task_id, summary, files, author } => {
+            cmd_append(root, &task_id, &summary, TaskStatus::Done, &files, author.as_deref())
+        }
+        TasksSubcmd::Plan { task_id, markdown_or_file, author } => {
+            cmd_plan(root, &task_id, &markdown_or_file, author)
+        }
+        TasksSubcmd::Build => {
+            let consolidated = build_root_tasks_json(root)?;
+            println!("built tasks.json: {} task(s)", consolidated.task_count);
+            Ok(())
+        }
+        TasksSubcmd::List => cmd_list(root),
+        TasksSubcmd::MergeDriver { base, current, other } => {
+            let consolidated = resolve_merge(&base, &current, &other, root)?;
+            println!("merged tasks.json cleanly: {} task(s)", consolidated.task_count);
+            Ok(())
+        }
+    }
+}
+
+fn cmd_start(root: &Path, request: &str, author: Option<&str>) -> Result<()> {
+    let meta = match author {
+        Some(a) => start_task_as(root, a, request)?,
+        None => start_task(root, request)?,
+    };
+    let consolidated = build_root_tasks_json(root)?;
+    println!(
+        "started task {} by {} (tasks.json total={})",
+        meta.task_id, meta.created_by, consolidated.task_count
+    );
+    Ok(())
+}
+
+fn cmd_append(
+    root: &Path,
+    task_id: &str,
+    summary: &str,
+    status: TaskStatus,
+    files: &[String],
+    author: Option<&str>,
+) -> Result<()> {
+    let entry = match author {
+        Some(a) => append_entry_as(root, task_id, a, status, summary, files)?,
+        None => append_entry(root, task_id, status, summary, files)?,
+    };
+    let consolidated = build_root_tasks_json(root)?;
+    println!(
+        "updated {} [{}] entry={} (tasks.json total={})",
+        task_id, entry.status, entry.entry_id, consolidated.task_count
+    );
+    Ok(())
+}
+
+fn cmd_plan(root: &Path, task_id: &str, markdown_or_file: &str, author: Option<String>) -> Result<()> {
+    let resolved_author = match author {
+        Some(a) => a,
+        None => resolve_author(root)?,
+    };
+    let md = if Path::new(markdown_or_file).is_file() {
+        fs::read_to_string(markdown_or_file)?
+    } else {
+        markdown_or_file.to_owned()
+    };
+    let path = write_task_plan(root, task_id, &resolved_author, &md)?;
+    println!("wrote plan: {}", path.display());
+    Ok(())
+}
+
+fn cmd_list(root: &Path) -> Result<()> {
+    let metas = list_tasks(root)?;
+    if metas.is_empty() {
+        println!("no tasks recorded in .harness/tasks/");
+        return Ok(());
+    }
+    for meta in metas {
+        println!("{} [{}] {}", meta.task_id, meta.created_by, meta.request);
+    }
+    Ok(())
+}
+
+fn parse_status(raw: &str) -> Result<TaskStatus> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "in_progress" | "in-progress" | "progress" => Ok(TaskStatus::InProgress),
+        "blocked" => Ok(TaskStatus::Blocked),
+        "done" | "completed" => Ok(TaskStatus::Done),
+        other => bail!("invalid task status `{other}` (expected in_progress|blocked|done)"),
+    }
+}

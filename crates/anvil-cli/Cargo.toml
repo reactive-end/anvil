@@ -11,7 +11,11 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 clap.workspace = true
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 anvil-core.workspace = true
 anvil-ast.workspace = true
 anvil-graph.workspace = true
@@ -21,6 +25,9 @@ anvil-tasks.workspace = true
 anvil-adapters.workspace = true
 anvil-deps.workspace = true
 anvil-qa.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

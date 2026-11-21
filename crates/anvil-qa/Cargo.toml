@@ -7,6 +7,13 @@ rust-version.workspace = true
 
 [dependencies]
 anvil-core.workspace = true
+anyhow.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
