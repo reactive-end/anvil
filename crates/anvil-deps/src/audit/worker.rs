@@ -5,12 +5,52 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 
-use crate::model::{DepFinding, DepIssueKind, DependencySpec, PackageHealthInfo, RegistryFetcher};
+use crate::model::{
+    DepFinding, DepIssueKind, DependencySpec, Ecosystem, PackageHealthInfo, RegistryFetcher,
+};
 
 const MAX_CONCURRENT_FETCHES: usize = 8;
 
-/// Fetches uncached specs concurrently using up to 8 scoped worker threads.
+/// Fetches uncached specs, running `Cargo` misses sequentially (crates.io `<= 1 req/s` policy)
+/// while keeping up to 8 concurrent worker threads for npm/PyPI/pub.dev/Maven.
 pub(crate) fn fetch_misses_bounded(
+    misses: &[(usize, &DependencySpec)],
+    fetcher: &dyn RegistryFetcher,
+) -> Vec<(usize, Result<PackageHealthInfo>)> {
+    if misses.is_empty() {
+        return Vec::new();
+    }
+
+    let (cargo_misses, parallel_misses): (Vec<_>, Vec<_>) = misses
+        .iter()
+        .copied()
+        .partition(|(_, spec)| spec.ecosystem == Ecosystem::Cargo);
+
+    let mut out = Vec::with_capacity(misses.len());
+    std::thread::scope(|scope| {
+        let cargo_handle = (!cargo_misses.is_empty()).then(|| {
+            scope.spawn(|| {
+                cargo_misses
+                    .iter()
+                    .map(|&(idx, spec)| (idx, fetcher.fetch(spec.ecosystem, &spec.name)))
+                    .collect::<Vec<_>>()
+            })
+        });
+
+        out.extend(fetch_parallel_misses(&parallel_misses, fetcher));
+
+        if let Some(handle) = cargo_handle
+            && let Ok(part) = handle.join()
+        {
+            out.extend(part);
+        }
+    });
+
+    out.sort_by_key(|(spec_idx, _)| *spec_idx);
+    out
+}
+
+fn fetch_parallel_misses(
     misses: &[(usize, &DependencySpec)],
     fetcher: &dyn RegistryFetcher,
 ) -> Vec<(usize, Result<PackageHealthInfo>)> {
@@ -51,7 +91,6 @@ pub(crate) fn fetch_misses_bounded(
         }
     });
 
-    out.sort_by_key(|(spec_idx, _)| *spec_idx);
     out
 }
 

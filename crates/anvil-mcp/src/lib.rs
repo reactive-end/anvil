@@ -101,11 +101,22 @@ impl McpServer {
         self.ensure_memory_internal(false)
     }
 
-    /// Records current `.harness/memory/chunks/` mtime after a local `mem_save`.
-    pub fn refresh_chunks_mtime(&mut self) {
+    /// Returns `true` when chunks were already synced and `.harness/memory/chunks/` mtime matches cache.
+    pub fn chunks_cache_is_clean(&self) -> bool {
+        if !self.chunks_synced_once {
+            return false;
+        }
         let chunks_dir = self.repo_root.join(".harness/memory/chunks");
-        self.chunks_dir_mtime = fs::metadata(&chunks_dir).and_then(|m| m.modified()).ok();
-        self.chunks_synced_once = self.chunks_dir_mtime.is_some();
+        let disk_mtime = fs::metadata(&chunks_dir).and_then(|m| m.modified()).ok();
+        disk_mtime.is_some() && disk_mtime == self.chunks_dir_mtime
+    }
+
+    /// Updates cached `.harness/memory/chunks/` mtime after a local `mem_save` without masking initial sync.
+    pub fn refresh_chunks_mtime(&mut self) {
+        if self.chunks_synced_once {
+            let chunks_dir = self.repo_root.join(".harness/memory/chunks");
+            self.chunks_dir_mtime = fs::metadata(&chunks_dir).and_then(|m| m.modified()).ok();
+        }
     }
 
     fn ensure_memory_internal(&mut self, sync_if_changed: bool) -> Result<&mut MemoryEngine> {

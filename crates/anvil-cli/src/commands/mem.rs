@@ -6,13 +6,17 @@ use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_graph::CodeGraphEngine;
 use anvil_memory::{MemoryEngine, MemoryKind, ObservationInput};
-use anvil_tasks::resolve_author;
+use anvil_tasks::{resolve_author, resolve_author_fast};
 
 use crate::cli::subcmds::MemSubcmd;
 
 /// Executes `anvil mem <subcommand>`.
 pub fn execute(root: &Path, sub: MemSubcmd) -> Result<()> {
-    let author = resolve_author(root).unwrap_or_else(|_| "cli".to_owned());
+    let author = match &sub {
+        MemSubcmd::Save { .. } => resolve_author(root),
+        _ => resolve_author_fast(root),
+    }
+    .unwrap_or_else(|_| "cli".to_owned());
     let mut mem = MemoryEngine::open_without_sync(root, author)?;
 
     match sub {

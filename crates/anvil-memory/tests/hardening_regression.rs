@@ -239,3 +239,99 @@ fn mark_files_changed_updates_freshness_preserving_fts5_integrity() {
         )
         .expect("fts5 integrity check");
 }
+
+#[test]
+fn reopen_skips_ddl_without_mutating_data_version() {
+    let tmp = TempDir::new().expect("tempdir");
+    let db_path = tmp.path().join(".harness/.state/anvil.db");
+
+    {
+        let mut engine = MemoryEngine::open(tmp.path(), "alice").expect("init");
+        engine
+            .save(make_input(
+                MemoryKind::Decision,
+                "schema/version-2",
+                "Schema Version Guard",
+                "Skip DDL when user_version >= 2",
+            ))
+            .expect("seed");
+    }
+
+    let observer = MemoryStore::open(&db_path).expect("open observer");
+    let user_version: i64 = observer
+        .conn()
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .expect("user_version");
+    assert_eq!(user_version, 2);
+
+    let data_version_before: i64 = observer
+        .conn()
+        .query_row("PRAGMA data_version", [], |r| r.get(0))
+        .expect("data_version before");
+
+    let second_open = MemoryStore::open(&db_path).expect("second open skips DDL");
+    drop(second_open);
+
+    let data_version_after: i64 = observer
+        .conn()
+        .query_row("PRAGMA data_version", [], |r| r.get(0))
+        .expect("data_version after");
+    assert_eq!(
+        data_version_after, data_version_before,
+        "reopening an initialized DB must not run DDL or bump data_version"
+    );
+}
+
+#[test]
+fn concurrent_reader_and_writer_with_busy_timeout_avoid_sqlite_busy() {
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+    use std::time::Duration;
+
+    let tmp = TempDir::new().expect("tempdir");
+    let db_path = tmp.path().join(".harness/.state/anvil.db");
+
+    {
+        let mut engine = MemoryEngine::open(tmp.path(), "alice").expect("init");
+        engine
+            .save(make_input(
+                MemoryKind::Decision,
+                "schema/concurrent-rw",
+                "Concurrent Reader Writer",
+                "WAL + busy_timeout prevents SQLITE_BUSY",
+            ))
+            .expect("seed");
+    }
+
+    let barrier = Arc::new(Barrier::new(2));
+    let writer_path = db_path.clone();
+    let writer_barrier = Arc::clone(&barrier);
+    let writer = thread::spawn(move || {
+        let mut store = MemoryStore::open(&writer_path).expect("writer open");
+        let tx = store
+            .conn_mut()
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .expect("begin immediate");
+        writer_barrier.wait();
+        thread::sleep(Duration::from_millis(80));
+        tx.execute(
+            "UPDATE observations SET freshness_reason = 'concurrent-ok' WHERE topic_key = 'schema/concurrent-rw'",
+            [],
+        )
+        .expect("writer update");
+        tx.commit().expect("writer commit");
+    });
+
+    barrier.wait();
+    for _ in 0..4 {
+        let reader = MemoryStore::open(&db_path).expect("concurrent reader open");
+        let obs = reader
+            .get_by_topic_key("schema/concurrent-rw")
+            .expect("concurrent read without SQLITE_BUSY")
+            .expect("seeded observation");
+        assert_eq!(obs.topic_key, "schema/concurrent-rw");
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    writer.join().expect("writer joined");
+}

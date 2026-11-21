@@ -52,7 +52,7 @@ fn register_member_crate(repo_root: &Path, rel_dir: &str, map: &mut FxHashMap<St
     }
 }
 
-fn parse_package_name(toml: &str) -> Option<String> {
+pub(crate) fn parse_package_name(toml: &str) -> Option<String> {
     let mut in_pkg = false;
     for raw in toml.lines() {
         let line = raw.trim();

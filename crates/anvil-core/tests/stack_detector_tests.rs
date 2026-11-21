@@ -103,3 +103,40 @@ fn detects_multi_repo_workspace_like_fliiper_centinela() -> Result<()> {
     assert!(cfg.tools.contains(&ToolKind::DartAnalyze));
     Ok(())
 }
+
+#[test]
+fn detects_monorepo_subrepos_even_when_root_has_manifest() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"monorepo","private":true,"devDependencies":{"turbo":"2.0.0","eslint":"9.0.0"}}"#,
+    )?;
+    write_file(&root.join("tsconfig.base.json"), "{}")?;
+    write_file(
+        &root.join("apps/web/package.json"),
+        r#"{"dependencies":{"react":"19.0.0"}}"#,
+    )?;
+    write_file(&root.join("apps/web/tsconfig.json"), "{}")?;
+    write_file(
+        &root.join("services/ml/pyproject.toml"),
+        "[tool.pytest.ini_options]\n",
+    )?;
+
+    let det = detect_workspace(root)?;
+    assert!(det.is_multi_repo);
+    assert_eq!(det.repos.len(), 3);
+    let paths: Vec<&str> = det.repos.iter().map(|r| r.rel_path.as_str()).collect();
+    assert!(paths.contains(&"."));
+    assert!(paths.contains(&"apps/web"));
+    assert!(paths.contains(&"services/ml"));
+
+    let mut cfg = AnvilConfig::default();
+    det.apply_to_config(&mut cfg);
+    assert!(cfg.stacks.contains(&StackKind::React));
+    assert!(cfg.stacks.contains(&StackKind::Python));
+    assert!(cfg.subrepos.iter().any(|s| s.path == "apps/web"));
+    assert!(cfg.subrepos.iter().any(|s| s.path == "services/ml"));
+    Ok(())
+}

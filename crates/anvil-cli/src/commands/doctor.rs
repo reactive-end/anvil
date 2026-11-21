@@ -7,7 +7,7 @@ use anyhow::Result;
 use anvil_adapters::{antigravity, claude_code};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::{AnvilConfig, ToolKind};
-use anvil_core::fs_util::{bin_in_path, strip_jsonc};
+use anvil_core::fs_util::{resolve_local_or_path_bin, strip_jsonc};
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author;
@@ -26,7 +26,7 @@ pub fn execute(root: &Path) -> Result<()> {
     let author = check_identity(root);
     check_memory(root, &author);
     check_circuit(root, config.circuit_breaker_limit);
-    check_stack_tools(&config);
+    check_stack_tools(root, &config);
 
     if failures > 0 {
         return Err(ExitCodeError::with_message(
@@ -81,7 +81,7 @@ fn check_tsconfig_strict(root: &Path, config: &AnvilConfig, failures: &mut usize
     }
     for ts_path in candidates.into_iter().filter(|p| p.exists()) {
         let mut visited = FxHashSet::default();
-        match resolve_tsconfig_strict(&ts_path, &mut visited, 0) {
+        match resolve_tsconfig_strict(root, &ts_path, &mut visited, 0) {
             Ok(Some(true)) => {
                 println!("[OK]   tsconfig: strict=true ({})", ts_path.display());
             }
@@ -100,6 +100,7 @@ fn check_tsconfig_strict(root: &Path, config: &AnvilConfig, failures: &mut usize
 }
 
 fn resolve_tsconfig_strict(
+    root: &Path,
     ts_path: &Path,
     visited: &mut FxHashSet<PathBuf>,
     depth: usize,
@@ -123,8 +124,8 @@ fn resolve_tsconfig_strict(
     let mut inherited = None;
     if let Some(parent_dir) = ts_path.parent() {
         for ext in extract_extends_list(&val) {
-            if let Some(ext_path) = resolve_extends_file(parent_dir, ext)
-                && let Some(val) = resolve_tsconfig_strict(&ext_path, visited, depth + 1)?
+            if let Some(ext_path) = resolve_extends_file(root, parent_dir, ext)
+                && let Some(val) = resolve_tsconfig_strict(root, &ext_path, visited, depth + 1)?
             {
                 inherited = Some(val);
             }
@@ -141,16 +142,41 @@ fn extract_extends_list(val: &Value) -> Vec<&str> {
     }
 }
 
-fn resolve_extends_file(dir: &Path, ext: &str) -> Option<PathBuf> {
-    let direct = dir.join(ext);
-    if direct.is_file() {
-        return Some(direct);
+fn resolve_extends_file(root: &Path, dir: &Path, ext: &str) -> Option<PathBuf> {
+    let ext = ext.trim();
+    if ext.is_empty() {
+        return None;
     }
-    let with_json = dir.join(format!("{ext}.json"));
+    if let Some(found) = probe_tsconfig_path(&dir.join(ext)) {
+        return Some(found);
+    }
+    if ext.starts_with('.') || ext.starts_with('/') {
+        return None;
+    }
+    let mut cur = Some(dir);
+    while let Some(c) = cur {
+        if let Some(found) = probe_tsconfig_path(&c.join("node_modules").join(ext)) {
+            return Some(found);
+        }
+        if c == root {
+            break;
+        }
+        cur = c.parent().filter(|p| p.starts_with(root));
+    }
+    None
+}
+
+fn probe_tsconfig_path(base: &Path) -> Option<PathBuf> {
+    if base.is_file() {
+        return Some(base.to_path_buf());
+    }
+    let mut json_os = base.as_os_str().to_os_string();
+    json_os.push(".json");
+    let with_json = PathBuf::from(json_os);
     if with_json.is_file() {
         return Some(with_json);
     }
-    let dir_cfg = direct.join("tsconfig.json");
+    let dir_cfg = base.join("tsconfig.json");
     dir_cfg.is_file().then_some(dir_cfg)
 }
 
@@ -160,8 +186,11 @@ fn check_graph_index(root: &Path) {
         println!("[WARN] graph: .harness/.state/graph.bin missing (run `anvil graph build`)");
         return;
     }
-    match store::load_binary(&bin) {
-        Ok(g) => println!("[OK]   graph: {} nodes, {} edges", g.nodes.len(), g.edges.len()),
+    match store::read_header(&bin) {
+        Ok(header) => println!(
+            "[OK]   graph: {} nodes, {} edges",
+            header.live_nodes, header.live_edges
+        ),
         Err(err) => println!("[WARN] graph: unreadable ({err}); run `anvil graph build`"),
     }
 }
@@ -203,7 +232,7 @@ fn check_circuit(root: &Path, limit: u32) {
     }
 }
 
-fn check_stack_tools(config: &AnvilConfig) {
+fn check_stack_tools(root: &Path, config: &AnvilConfig) {
     let mut bins = vec!["git", "gh"];
     for tool in &config.tools {
         let bin = match tool {
@@ -227,11 +256,11 @@ fn check_stack_tools(config: &AnvilConfig) {
     }
     let missing: Vec<&str> = bins
         .into_iter()
-        .filter(|b| bin_in_path(b).is_none())
+        .filter(|b| resolve_local_or_path_bin(root, b).is_none())
         .collect();
     if missing.is_empty() {
-        println!("[OK]   tools: all detected CLI tools found in PATH");
+        println!("[OK]   tools: all detected CLI tools found in local/PATH");
     } else {
-        println!("[WARN] tools: not on PATH: {}", missing.join(", "));
+        println!("[WARN] tools: not on local/PATH: {}", missing.join(", "));
     }
 }

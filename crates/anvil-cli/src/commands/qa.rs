@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use anvil_core::config::AnvilConfig;
+use anvil_core::config::{AnvilConfig, WebQaDriver};
 use anvil_qa::QaEngine;
 use anvil_qa::onboarding::{parse_mobile_driver, parse_web_driver};
 use anvil_qa::report::ReportBudget;
@@ -33,7 +33,11 @@ pub fn execute(root: &Path, sub: QaSubcmd) -> Result<()> {
             Ok(())
         }
         eval_sub @ QaSubcmd::EvalWeb { .. } => cmd_eval_web(root, &engine, eval_sub),
-        QaSubcmd::Run { url, out_dir } => cmd_run(root, &engine, &url, &out_dir),
+        QaSubcmd::Run {
+            url,
+            phase,
+            out_dir,
+        } => cmd_run(root, &engine, &url, &phase, &out_dir),
         QaSubcmd::ScanMobile {
             xml,
             logcat,
@@ -139,14 +143,18 @@ fn cmd_scan_mobile(
     Ok(())
 }
 
-fn cmd_run(root: &Path, engine: &QaEngine, url: &str, out_dir: &Path) -> Result<()> {
+fn cmd_run(root: &Path, engine: &QaEngine, url: &str, phase: &str, out_dir: &Path) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
+    if config.qa_driver.web == WebQaDriver::Skip {
+        println!("QA web driver is configured as `skip`; skipping `anvil qa run`");
+        return Ok(());
+    }
     let resolved_out = if out_dir.is_absolute() {
         out_dir.to_path_buf()
     } else {
         root.join(out_dir)
     };
-    let captures = run_playwright_capture(url, "after", &resolved_out)?;
+    let captures = run_playwright_capture(url, phase, &resolved_out)?;
     let report = engine.finalize_report(
         engine.detect_platform(&config),
         Vec::new(),

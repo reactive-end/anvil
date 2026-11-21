@@ -1,4 +1,9 @@
-//! File glob and language target matching for ratchet rules and candidates.
+//! File glob, language target, comment-context suppression, and repo file scanning for ratchet.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Result, bail};
 
 pub(super) fn matches_target(rel_path: &str, file_globs: &[String], languages: &[String]) -> bool {
     let glob_ok = file_globs.is_empty() || file_globs.iter().any(|g| glob_matches(g, rel_path));
@@ -85,4 +90,118 @@ fn wildcard_match(pat: &[u8], text: &[u8]) -> bool {
         p += 1;
     }
     p == pat.len()
+}
+
+pub(super) fn is_suppressed(lines: &[&str], idx: usize, rule_id: &str, rule_name: &str) -> bool {
+    let id_marker = format!("anvil-allow({rule_id}):");
+    let name_marker = format!("anvil-allow({rule_name}):");
+    let check_line = |line: &str| -> bool {
+        marker_in_comment(line, &id_marker) || marker_in_comment(line, &name_marker)
+    };
+    check_line(lines[idx]) || (idx > 0 && check_line(lines[idx - 1]))
+}
+
+fn marker_in_comment(line: &str, marker: &str) -> bool {
+    let bytes = line.as_bytes();
+    let needle = marker.as_bytes();
+    let mut i = 0usize;
+    let mut in_quote: Option<u8> = None;
+    let mut escaped = false;
+
+    while i < bytes.len() {
+        if let Some(q) = in_quote {
+            if escaped {
+                escaped = false;
+            } else if bytes[i] == b'\\' {
+                escaped = true;
+            } else if bytes[i] == q {
+                in_quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if bytes[i..].starts_with(b"//") || bytes[i..].starts_with(b"--") || bytes[i] == b'#' {
+            return contains_bytes(&bytes[i..], needle);
+        }
+        if bytes[i..].starts_with(b"/*") {
+            let end = bytes[i + 2..]
+                .windows(2)
+                .position(|w| w == b"*/")
+                .map_or(bytes.len(), |p| i + 4 + p);
+            if contains_bytes(&bytes[i..end], needle) {
+                return true;
+            }
+            i = end;
+            continue;
+        }
+        if bytes[i] == b'"'
+            || bytes[i] == b'`'
+            || (bytes[i] == b'\'' && has_closing_single_quote(&bytes[i + 1..]))
+        {
+            in_quote = Some(bytes[i]);
+        }
+        i += 1;
+    }
+    false
+}
+
+fn has_closing_single_quote(rest: &[u8]) -> bool {
+    let mut escaped = false;
+    for &b in rest {
+        if escaped {
+            escaped = false;
+        } else if b == b'\\' {
+            escaped = true;
+        } else if b == b'\'' {
+            return true;
+        }
+    }
+    false
+}
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+pub(super) fn collect_repo_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        bail!("failed to read directory {}", dir.display());
+    };
+    for entry in entries.flatten() {
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if ft.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if ft.is_dir() {
+            if is_ignored_dir(&name_str) {
+                continue;
+            }
+            collect_repo_files(&path, out)?;
+        } else if ft.is_file() {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn is_ignored_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | ".harness"
+            | "target"
+            | "node_modules"
+            | "dist"
+            | "build"
+            | ".next"
+            | ".gradle"
+            | "__pycache__"
+            | ".venv"
+            | "venv"
+    )
 }

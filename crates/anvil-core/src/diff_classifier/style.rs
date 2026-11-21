@@ -6,10 +6,12 @@ use regex::Regex;
 
 /// Returns true if all diff hunks represent purely CSS or `className`/`class`/`style` changes.
 pub(super) fn hunks_are_style_only(hunks: &str) -> bool {
-    static STYLE_LINE_RE: OnceLock<Regex> = OnceLock::new();
-    let re = STYLE_LINE_RE.get_or_init(|| {
-        Regex::new(r#"^[+-]\s*(?:className=|class=|style=|\.?[a-zA-Z0-9_-]+\s*:\s*['"]?#[0-9a-fA-F]{3,8}|color:|background|border-color)"#)
-            .expect("valid static style regex")
+    static STYLE_PROP_RE: OnceLock<Regex> = OnceLock::new();
+    let re = STYLE_PROP_RE.get_or_init(|| {
+        Regex::new(
+            r#"^[+-]\s*(?:color|background(?:Color|-color)?|border(?:Color|-color)|margin(?:Top|Right|Bottom|Left|-top|-right|-bottom|-left)?|padding(?:Top|Right|Bottom|Left|-top|-right|-bottom|-left)?|font(?:Size|Weight|-size|-weight)|border(?:Radius|-radius)|opacity)\s*:\s*(?:#[0-9a-fA-F]{3,8}|['"][^'"(){}=;]+['"]|[0-9]+(?:\.[0-9]+)?(?:px|rem|em|%|vh|vw)?|[a-zA-Z][a-zA-Z0-9-]{0,30})\s*[;,]?\s*$"#,
+        )
+        .expect("valid static style regex")
     });
 
     let mut saw_change = false;

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::traits::Severity;
 
 /// Input payload when logging a new recurring agent mistake for ratchet review.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CandidateInput {
     pub rule_name: String,
     pub description: String,
@@ -16,6 +16,13 @@ pub struct CandidateInput {
     pub deterministic: bool,
     pub estimated_runtime_ms: u64,
     pub example: Option<String>,
+}
+
+/// Optional glob targeting and severity overrides when logging a ratchet candidate.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CandidateOptions {
+    pub file_globs: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 /// Candidate rule stored in `.harness/candidates/<id>.json` before promotion.

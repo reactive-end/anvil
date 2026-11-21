@@ -7,7 +7,7 @@ pub mod kotlin;
 pub mod nestjs;
 pub mod python;
 pub mod rust;
-mod rust_cargo;
+pub(crate) mod rust_cargo;
 pub mod tsconfig;
 
 use std::path::Path;

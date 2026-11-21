@@ -71,21 +71,28 @@ impl AuditOptions {
     }
 }
 
+fn is_requirements_txt_name(name: &str) -> bool {
+    name == "requirements.txt"
+        || ((name.starts_with("requirements-") || name.starts_with("requirements_"))
+            && name.ends_with(".txt"))
+}
+
 /// Returns true when `path` is a supported dependency manifest filename.
 pub fn is_supported_manifest(path: &Path) -> bool {
-    matches!(
-        path.file_name().and_then(|n| n.to_str()),
-        Some(
-            "package.json"
-                | "pyproject.toml"
-                | "requirements.txt"
-                | "pubspec.yaml"
-                | "build.gradle.kts"
-                | "build.gradle"
-                | "libs.versions.toml"
-                | "Cargo.toml"
-        )
-    )
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|name| {
+            matches!(
+                name,
+                "package.json"
+                    | "pyproject.toml"
+                    | "pubspec.yaml"
+                    | "build.gradle.kts"
+                    | "build.gradle"
+                    | "libs.versions.toml"
+                    | "Cargo.toml"
+            ) || is_requirements_txt_name(name)
+        })
 }
 
 /// Parses a single manifest file into ecosystem dependency specs.
@@ -106,7 +113,7 @@ pub fn parse_manifest(repo_root: &Path, path: &Path) -> Result<Vec<DependencySpe
     match abs.file_name().and_then(|n| n.to_str()) {
         Some("package.json") => parse_package_json(&rel, &content),
         Some("pyproject.toml") => parse_pyproject_toml(&rel, &content),
-        Some("requirements.txt") => parse_requirements_txt(&rel, &content),
+        Some(name) if is_requirements_txt_name(name) => parse_requirements_txt(&rel, &content),
         Some("pubspec.yaml") => parse_pubspec_yaml(&rel, &content),
         Some("build.gradle.kts") => parse_build_gradle_kts(&rel, &content),
         Some("build.gradle") => parse_build_gradle(&rel, &content),

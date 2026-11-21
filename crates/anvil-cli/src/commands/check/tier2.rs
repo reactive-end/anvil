@@ -10,15 +10,17 @@ use anvil_qa::QaEngine;
 use crate::commands::deps::discover_manifests;
 
 /// Runs Tier 2 dependency auditing and visual QA readiness checks.
+/// Returns `true` when deprecated or stale dependencies were found.
 pub fn run_tier2(
     root: &Path,
     config: &AnvilConfig,
     changed: &[String],
     classification: &DiffClassification,
     full: bool,
-) {
+) -> bool {
+    let mut deps_findings = false;
     if classification.needs_deps_audit || full {
-        run_deps_audit(root, changed, full);
+        deps_findings = run_deps_audit(root, changed, full);
     }
     if classification.needs_visual_qa || full {
         let qa = QaEngine::new(root);
@@ -31,9 +33,10 @@ pub fn run_tier2(
             println!("  [Tier 2] visual QA platform={:?}", qa.detect_platform(config));
         }
     }
+    deps_findings
 }
 
-fn run_deps_audit(root: &Path, changed: &[String], full: bool) {
+fn run_deps_audit(root: &Path, changed: &[String], full: bool) -> bool {
     let mut manifests: Vec<PathBuf> = changed
         .iter()
         .map(PathBuf::from)
@@ -43,38 +46,45 @@ fn run_deps_audit(root: &Path, changed: &[String], full: bool) {
         manifests = discover_manifests(root);
     }
     if manifests.is_empty() {
-        return;
+        return false;
     }
 
     let options = match AuditOptions::from_repo(root) {
         Ok(opts) => opts,
         Err(err) => {
             eprintln!("  [Tier 2] deps audit config error: {err:#}");
-            return;
+            return false;
         }
     };
     match audit_manifests(root, &manifests, &LiveRegistryFetcher, &options) {
         Ok(report) => {
-            if !report.findings.is_empty() {
-                println!("  [Tier 2] deps audit: {} finding(s)", report.findings.len());
-                for f in &report.findings {
-                    let detail = f
-                        .deprecation_message
-                        .as_deref()
-                        .map(|m| format!(" detail={m}"))
-                        .unwrap_or_default();
-                    println!(
-                        "    - {}:{} ({}) issues={:?} age={:?}mo{detail}",
-                        f.ecosystem, f.package, f.manifest_path, f.issues, f.age_months
-                    );
-                }
-            }
             for err in &report.errors {
                 eprintln!("  [Tier 2] deps audit error: {err}");
             }
+            if report.findings.is_empty() {
+                println!(
+                    "  [Tier 2] deps audit: PASS (checked={}, 0 findings)",
+                    report.checked_packages
+                );
+                return false;
+            }
+            println!("  [Tier 2] deps audit: FAIL ({} finding(s))", report.findings.len());
+            for f in &report.findings {
+                let detail = f
+                    .deprecation_message
+                    .as_deref()
+                    .map(|m| format!(" detail={m}"))
+                    .unwrap_or_default();
+                println!(
+                    "    - {}:{} ({}) issues={:?} age={:?}mo{detail}",
+                    f.ecosystem, f.package, f.manifest_path, f.issues, f.age_months
+                );
+            }
+            true
         }
         Err(err) => {
             eprintln!("  [Tier 2] deps audit failed: {err:#}");
+            false
         }
     }
 }

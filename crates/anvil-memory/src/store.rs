@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use anvil_core::traits::FreshnessState;
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use crate::model::{MemoryChunkRecord, Observation, normalize_rel_path};
 use crate::schema;
@@ -31,16 +31,17 @@ impl MemoryStore {
                 format!("failed to create SQLite parent dir {}", parent.display())
             })?;
         }
-        let conn = Connection::open(db_path)
+        let mut conn = Connection::open(db_path)
             .with_context(|| format!("failed to open SQLite DB at {}", db_path.display()))?;
-        schema::init_schema(&conn)?;
+        schema::init_schema(&mut conn)?;
         Ok(Self { conn })
     }
 
     /// Opens an isolated in-memory SQLite store (primarily for fast unit tests).
     pub fn open_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory().context("failed to open in-memory SQLite DB")?;
-        schema::init_schema(&conn)?;
+        let mut conn =
+            Connection::open_in_memory().context("failed to open in-memory SQLite DB")?;
+        schema::init_schema(&mut conn)?;
         Ok(Self { conn })
     }
 
@@ -215,22 +216,6 @@ impl MemoryStore {
             names.insert(row?);
         }
         Ok(names)
-    }
-
-    /// Returns the map of ingested chunk filenames to their recorded BLAKE3 hashes.
-    pub fn ingested_chunk_hashes(&self) -> Result<FxHashMap<String, String>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT filename, blake3_hash FROM ingested_chunks")?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
-        let mut map = FxHashMap::default();
-        for row in rows {
-            let (name, hash) = row?;
-            map.insert(name, hash);
-        }
-        Ok(map)
     }
 
     /// Records or updates an ingested chunk filename and BLAKE3 hash inside a transaction.

@@ -4,14 +4,14 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::fs_util::relativize_path;
 use crate::traits::{Diagnostic, Severity};
 
-use super::matcher::matches_target;
+use super::matcher::{collect_repo_files, is_suppressed, matches_target};
 use super::{MAX_RUNTIME_MS, PromotedRule, list_rules, load_candidate};
 
 const MAX_SCAN_FILE_BYTES: u64 = 512 * 1024;
@@ -37,35 +37,85 @@ pub struct CandidateTestReport {
     pub sample_matches: Vec<CandidateTestMatch>,
 }
 
+/// Pre-compiled promoted ratchet rules for O(1) regex reuse across multiple files.
+#[derive(Debug, Clone, Default)]
+pub struct CompiledPromotedRules {
+    rules: Vec<CompiledRule>,
+}
+
+#[derive(Debug, Clone)]
+struct CompiledRule {
+    id: String,
+    rule_name: String,
+    description: String,
+    file_globs: Vec<String>,
+    languages: Vec<String>,
+    severity: Severity,
+    regex: Regex,
+}
+
+impl CompiledPromotedRules {
+    /// Returns the number of valid compiled rules.
+    pub fn len(&self) -> usize {
+        self.rules.len()
+    }
+
+    /// Returns true when no compiled rules are active.
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty()
+    }
+}
+
 /// Loads all promoted rules from `.harness/rules/*.json`.
 pub fn load_promoted_rules(repo_root: &Path) -> Result<Vec<PromotedRule>> {
     list_rules(repo_root)
 }
 
-/// Evaluates `rules` against a single file's `source`, honoring `anvil-allow(<rule_id>):`.
-pub fn evaluate_promoted_rules(
-    rules: &[PromotedRule],
-    rel_path: &str,
-    source: &str,
-) -> Vec<Diagnostic> {
-    let norm_path = rel_path.replace('\\', "/");
-    let lines: Vec<&str> = source.lines().collect();
-    let mut diagnostics = Vec::new();
-
+/// Compiles promoted rule regexes once so callers can evaluate many files without recompiling.
+pub fn compile_promoted_rules(rules: &[PromotedRule]) -> CompiledPromotedRules {
+    let mut compiled = Vec::with_capacity(rules.len());
     for rule in rules {
         let Some(pat) = rule.pattern.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
             continue;
         };
-        if !matches_target(&norm_path, &rule.file_globs, &rule.languages) {
-            continue;
-        }
-        let Ok(re) = Regex::new(pat) else {
+        let Ok(regex) = Regex::new(pat) else {
             continue;
         };
-        let severity = rule.severity.unwrap_or(Severity::Warning);
+        compiled.push(CompiledRule {
+            id: rule.id.clone(),
+            rule_name: rule.rule_name.clone(),
+            description: rule.description.clone(),
+            file_globs: rule.file_globs.clone(),
+            languages: rule.languages.clone(),
+            severity: rule.severity.unwrap_or(Severity::Warning),
+            regex,
+        });
+    }
+    CompiledPromotedRules { rules: compiled }
+}
 
+/// Evaluates pre-compiled promoted rules against a single file's `source`,
+/// honoring `anvil-allow(<id>):` only in comment contexts (`//`, `/*`, `#`, `--`).
+pub fn evaluate_compiled(
+    compiled: &CompiledPromotedRules,
+    rel_path: &str,
+    source: &str,
+) -> Vec<Diagnostic> {
+    let norm_path = rel_path.replace('\\', "/");
+    let matching: Vec<&CompiledRule> = compiled
+        .rules
+        .iter()
+        .filter(|r| matches_target(&norm_path, &r.file_globs, &r.languages))
+        .collect();
+    if matching.is_empty() {
+        return Vec::new();
+    }
+
+    let lines: Vec<&str> = source.lines().collect();
+    let mut diagnostics = Vec::new();
+    for rule in matching {
         for (idx, line) in lines.iter().enumerate() {
-            let Some(m) = re.find(line) else {
+            let Some(m) = rule.regex.find(line) else {
                 continue;
             };
             if is_suppressed(&lines, idx, &rule.id, &rule.rule_name) {
@@ -73,7 +123,7 @@ pub fn evaluate_promoted_rules(
             }
             diagnostics.push(Diagnostic {
                 rule: rule.rule_name.clone(),
-                severity,
+                severity: rule.severity,
                 file: norm_path.clone(),
                 line: (idx + 1) as u32,
                 column: (m.start() + 1) as u32,
@@ -86,6 +136,16 @@ pub fn evaluate_promoted_rules(
         }
     }
     diagnostics
+}
+
+/// Evaluates `rules` against a single file's `source`, honoring `anvil-allow(<rule_id>):`.
+pub fn evaluate_promoted_rules(
+    rules: &[PromotedRule],
+    rel_path: &str,
+    source: &str,
+) -> Vec<Diagnostic> {
+    let compiled = compile_promoted_rules(rules);
+    evaluate_compiled(&compiled, rel_path, source)
 }
 
 /// Runs a candidate's regex across matching repository files and measures match count and runtime.
@@ -159,50 +219,4 @@ fn scan_file_matches(
             });
         }
     }
-}
-
-fn is_suppressed(lines: &[&str], idx: usize, rule_id: &str, rule_name: &str) -> bool {
-    let check_line = |line: &str| -> bool {
-        let id_marker = format!("anvil-allow({rule_id}):");
-        let name_marker = format!("anvil-allow({rule_name}):");
-        line.contains(&id_marker) || line.contains(&name_marker)
-    };
-    check_line(lines[idx]) || (idx > 0 && check_line(lines[idx - 1]))
-}
-
-fn collect_repo_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<()> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        bail!("failed to read directory {}", dir.display());
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        if path.is_dir() {
-            if is_ignored_dir(&name_str) {
-                continue;
-            }
-            collect_repo_files(&path, out)?;
-        } else if path.is_file() {
-            out.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn is_ignored_dir(name: &str) -> bool {
-    matches!(
-        name,
-        ".git"
-            | ".harness"
-            | "target"
-            | "node_modules"
-            | "dist"
-            | "build"
-            | ".next"
-            | ".gradle"
-            | "__pycache__"
-            | ".venv"
-            | "venv"
-    )
 }

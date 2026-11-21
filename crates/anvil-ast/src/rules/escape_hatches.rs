@@ -107,18 +107,7 @@ fn check_kotlin_suppress(node: Node<'_>, state: &mut RuleState<'_>) {
 
 fn check_rust_escape(node: Node<'_>, state: &mut RuleState<'_>) {
     match node.kind() {
-        "attribute_item" | "inner_attribute_item" => {
-            let mut cursor = node.walk();
-            for child in node.named_children(&mut cursor) {
-                if child.kind() == "attribute"
-                    && let Some(attr_name) = child.named_child(0)
-                    && attr_name.utf8_text(state.source.as_bytes()).ok() == Some("allow")
-                {
-                    report_if_disallowed(node, state, "no-rust-allow", "#[allow(...)]");
-                    return;
-                }
-            }
-        }
+        "attribute_item" | "inner_attribute_item" => check_rust_attribute(node, state),
         "unsafe_block" => {
             report_if_disallowed(node, state, "no-unsafe", "unsafe");
         }
@@ -135,6 +124,64 @@ fn check_rust_escape(node: Node<'_>, state: &mut RuleState<'_>) {
         }
         _ => {}
     }
+}
+
+fn check_rust_attribute(node: Node<'_>, state: &mut RuleState<'_>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() != "attribute" {
+            continue;
+        }
+        let Some(attr_name) = child.named_child(0) else {
+            continue;
+        };
+        let Ok(name) = attr_name.utf8_text(state.source.as_bytes()) else {
+            continue;
+        };
+        match name {
+            "allow" => {
+                report_if_disallowed(node, state, "no-rust-allow", "#[allow(...)]");
+                return;
+            }
+            "expect" => {
+                report_if_disallowed(node, state, "no-rust-allow", "#[expect(...)]");
+                return;
+            }
+            "cfg_attr" => {
+                if let Some(args) = child.child_by_field_name("arguments").or_else(|| child.named_child(1))
+                    && cfg_attr_contains_allow_or_expect(args, state.source.as_bytes())
+                {
+                    report_if_disallowed(node, state, "no-rust-allow", "#[cfg_attr(..., allow(...))]");
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn cfg_attr_contains_allow_or_expect(node: Node<'_>, src: &[u8]) -> bool {
+    let mut stack = vec![node];
+    while let Some(cur) = stack.pop() {
+        if matches!(
+            cur.kind(),
+            "string_literal" | "raw_string_literal" | "char_literal"
+        ) {
+            continue;
+        }
+        if cur.kind() == "identifier"
+            && let Ok(txt) = cur.utf8_text(src)
+            && matches!(txt, "allow" | "expect")
+            && cur.next_sibling().is_some_and(|n| n.kind() == "token_tree")
+        {
+            return true;
+        }
+        let mut cursor = cur.walk();
+        for child in cur.named_children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+    false
 }
 
 fn report_if_disallowed(node: Node<'_>, state: &mut RuleState<'_>, rule_id: &str, hatch: &str) {

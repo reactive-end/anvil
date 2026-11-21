@@ -5,7 +5,7 @@ use rustc_hash::FxHashSet;
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 
-use crate::http::{fetch_json_text, parse_rfc3339_utc, percent_encode_component};
+use crate::http::{fetch_crates_io_json, parse_rfc3339_utc, percent_encode_component};
 use crate::model::{DependencySpec, Ecosystem, PackageHealthInfo};
 
 const DEP_TABLES: &[&str] = &["dependencies", "dev-dependencies", "build-dependencies"];
@@ -52,7 +52,7 @@ pub fn parse_cargo_toml(manifest_path: &str, content: &str) -> Result<Vec<Depend
 pub fn fetch_cargo(package: &str) -> Result<PackageHealthInfo> {
     let encoded = percent_encode_component(package);
     let url = format!("https://crates.io/api/v1/crates/{encoded}");
-    let body = fetch_json_text(&url)?;
+    let body = fetch_crates_io_json(&url)?;
     parse_crates_io_json(package, &body)
 }
 

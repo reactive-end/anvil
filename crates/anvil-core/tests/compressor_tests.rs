@@ -35,7 +35,7 @@ fn ansi_stripped_and_tsc_matches_token_boundaries_only() -> Result<()> {
     assert_eq!(select_parser("npx vue-tsc --noEmit").name(), "tsc");
     assert_eq!(select_parser("ngc -p tsconfig.json").name(), "tsc");
     assert_eq!(select_parser("pytest -k test_postcreate").name(), "pytest/ruff");
-    assert_eq!(select_parser("cargo test -p tsc-helper").name(), "generic");
+    assert_eq!(select_parser("cargo test -p tsc-helper").name(), "cargo");
     assert_eq!(select_parser("cat tsc_notes.md").name(), "generic");
     Ok(())
 }
@@ -106,5 +106,44 @@ fn compressor_enforces_hard_line_and_token_caps() -> Result<()> {
     assert!(out.lines.len() <= DEFAULT_MAX_LINES);
     let total_chars: usize = out.lines.iter().map(|l| l.len() + 1).sum();
     assert!(total_chars <= DEFAULT_MAX_TOKENS * 4);
+    Ok(())
+}
+
+#[test]
+fn cargo_parser_handles_check_clippy_test_and_rustc() -> Result<()> {
+    assert_eq!(select_parser("cargo check --workspace").name(), "cargo");
+    assert_eq!(select_parser("cargo clippy --all-targets -- -D warnings").name(), "cargo");
+    assert_eq!(select_parser("rustc src/main.rs").name(), "cargo");
+
+    let pass = compress_output(
+        None,
+        "cargo test -p anvil-core",
+        0,
+        "test result: ok. 12 passed; 0 failed; 0 ignored",
+        50,
+        1200,
+    )?;
+    assert!(pass.passed);
+    assert!(pass.summary.contains("12 passed"));
+
+    let raw_err = concat!(
+        "error[E0308]: mismatched types\n",
+        " --> src/lib.rs:42:9\n",
+        "  |\n",
+        "42|     \"abc\"\n",
+        "  |     ^^^^^ expected `usize`, found `&str`\n",
+        "warning: unused variable: `x`\n",
+        " --> src/lib.rs:10:5\n",
+        "test auth::tests::rejects_bad_token ... FAILED\n",
+        "test result: FAILED. 3 passed; 1 failed; 0 ignored\n",
+        "error: could not compile `demo` (lib) due to 1 previous error\n",
+    );
+    let fail = compress_output(None, "cargo test --workspace", 101, raw_err, 50, 1200)?;
+    assert!(!fail.passed);
+    assert_eq!(fail.tool, "cargo");
+    assert!(fail.lines.iter().any(|l| l == "src/lib.rs:42:9 error[E0308]: mismatched types"));
+    assert!(fail.lines.iter().any(|l| l == "src/lib.rs:10:5 warning: unused variable: `x`"));
+    assert!(fail.lines.iter().any(|l| l == "test auth::tests::rejects_bad_token ... FAILED"));
+    assert!(fail.lines.iter().any(|l| l.starts_with("test result: FAILED.")));
     Ok(())
 }

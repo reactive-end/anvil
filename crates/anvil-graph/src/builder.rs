@@ -79,6 +79,9 @@ pub fn update_file(
     if !abs.is_file() {
         let (removed, unused) = walker::remove_file_incremental(graph, &rel);
         walker::finalize_unused_slots(graph, unused);
+        if removed {
+            maybe_compact(graph);
+        }
         return Ok(removed);
     }
 
@@ -105,12 +108,16 @@ pub fn update_file(
     let new_edges = resolve_file_edges(lang, &raw_edges, graph, &ctx);
     walker::push_resolved_edges(graph, new_edges, true);
 
+    maybe_compact(graph);
+    Ok(true)
+}
+
+fn maybe_compact(graph: &mut CodeGraph) {
     if graph.tombstone_edges > graph.edges.len() / 4
         || graph.tombstone_nodes > graph.nodes.len() / 4
     {
         graph.compact_tombstones();
     }
-    Ok(true)
 }
 
 /// Scans `repo_root` with `(mtime, len)` fast-path and re-parses only added or modified files.

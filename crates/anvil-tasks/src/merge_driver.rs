@@ -7,7 +7,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use anvil_core::fs_util::atomic_write;
 use chrono::Utc;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::builder::{consolidate_tasks, read_all_task_records};
 use crate::model::{ConsolidatedTasksFile, TaskEntry, TaskMeta};
@@ -35,39 +35,99 @@ pub fn install_git_merge_driver_with_cmd(repo: &Path, driver_cmd: &str) -> Resul
 
 /// Resolves a 3-way merge of `tasks.json` deterministically without conflict markers.
 ///
-/// Combines tasks and entries from `.harness/tasks/` on disk with any tasks/entries
-/// present in `current` (`%A`), `other` (`%B`), and `base` (`%O`), then writes the
-/// consolidated result atomically to `current` (`%A`) as required by Git merge drivers.
+/// Combines live `.harness/tasks/` records with `current` (`%A`) and `other` (`%B`) while
+/// never unioning `base` (`%O`), and filters out any task deleted in `current`, `other`, or
+/// from `.harness/tasks/` on disk so deleted tasks are never resurrected.
 pub fn resolve_merge(
     base: &Path,
     current: &Path,
     other: &Path,
     repo: &Path,
 ) -> Result<ConsolidatedTasksFile> {
+    let disk_records = read_all_task_records(repo)?;
+    let base_file = read_optional_tasks_file(base);
+    let current_file = read_optional_tasks_file(current);
+    let other_file = read_optional_tasks_file(other);
+    let deleted_ids = collect_deleted_task_ids(
+        &disk_records,
+        base_file.as_ref(),
+        current_file.as_ref(),
+        other_file.as_ref(),
+    );
+
     let mut by_task: FxHashMap<String, (TaskMeta, Vec<TaskEntry>)> = FxHashMap::default();
-
-    for (meta, entries) in read_all_task_records(repo)? {
-        merge_task_into(&mut by_task, meta, entries);
-    }
-
-    for candidate in [base, current, other] {
-        if let Some(file) = read_optional_tasks_file(candidate) {
-            for task in file.tasks {
-                let meta = TaskMeta {
-                    task_id: task.task_id.clone(),
-                    created_by: task.created_by.clone(),
-                    request: task.request.clone(),
-                    created_at: task.created_at,
-                };
-                merge_task_into(&mut by_task, meta, task.entries);
-            }
+    for (meta, entries) in disk_records {
+        if !deleted_ids.contains(&meta.task_id) {
+            merge_task_into(&mut by_task, meta, entries);
         }
+    }
+    for file in [current_file, other_file].into_iter().flatten() {
+        merge_file_tasks(&mut by_task, file, &deleted_ids);
     }
 
     let records: Vec<(TaskMeta, Vec<TaskEntry>)> = by_task.into_values().collect();
     let consolidated = consolidate_tasks(records);
     atomic_write_json(current, &consolidated)?;
     Ok(consolidated)
+}
+
+fn collect_deleted_task_ids(
+    disk_records: &[(TaskMeta, Vec<TaskEntry>)],
+    base: Option<&ConsolidatedTasksFile>,
+    current: Option<&ConsolidatedTasksFile>,
+    other: Option<&ConsolidatedTasksFile>,
+) -> FxHashSet<String> {
+    let mut deleted = FxHashSet::default();
+    let current_ids = task_id_set(current);
+    let other_ids = task_id_set(other);
+
+    if let Some(base_file) = base {
+        for task in &base_file.tasks {
+            let missing_in_current = current.is_some() && !current_ids.contains(&task.task_id);
+            let missing_in_other = other.is_some() && !other_ids.contains(&task.task_id);
+            if missing_in_current || missing_in_other {
+                deleted.insert(task.task_id.clone());
+            }
+        }
+    }
+
+    if !disk_records.is_empty() {
+        let disk_ids: FxHashSet<&str> = disk_records
+            .iter()
+            .map(|(m, _)| m.task_id.as_str())
+            .collect();
+        for id in current_ids {
+            if !disk_ids.contains(id.as_str()) {
+                deleted.insert(id);
+            }
+        }
+    }
+
+    deleted
+}
+
+fn task_id_set(file: Option<&ConsolidatedTasksFile>) -> FxHashSet<String> {
+    file.map(|f| f.tasks.iter().map(|t| t.task_id.clone()).collect())
+        .unwrap_or_default()
+}
+
+fn merge_file_tasks(
+    by_task: &mut FxHashMap<String, (TaskMeta, Vec<TaskEntry>)>,
+    file: ConsolidatedTasksFile,
+    deleted_ids: &FxHashSet<String>,
+) {
+    for task in file.tasks {
+        if deleted_ids.contains(&task.task_id) {
+            continue;
+        }
+        let meta = TaskMeta {
+            task_id: task.task_id.clone(),
+            created_by: task.created_by.clone(),
+            request: task.request.clone(),
+            created_at: task.created_at,
+        };
+        merge_task_into(by_task, meta, task.entries);
+    }
 }
 
 fn ensure_gitattributes(repo: &Path) -> Result<()> {

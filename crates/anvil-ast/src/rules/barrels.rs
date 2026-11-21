@@ -45,7 +45,8 @@ pub fn check_barrel(root: Node<'_>, state: &mut RuleState<'_>) {
         }
     }
 
-    if reexport_count > 0 && !has_local_logic && !has_anvil_allow(state, 1, "no-barrel-files") {
+    let allowed = (1..=5).any(|ln| has_anvil_allow(state, ln, "no-barrel-files"));
+    if reexport_count > 0 && !has_local_logic && !allowed {
         state.diagnostics.push(Diagnostic {
             rule: "no-barrel-files".to_owned(),
             severity: Severity::Error,

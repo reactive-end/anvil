@@ -1,7 +1,9 @@
 //! SQLite pragmas, relational tables, FTS5 virtual table, and sync triggers.
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
+
+const CURRENT_SCHEMA_VERSION: i64 = 2;
 
 const PRAGMAS_SQL: &str = "
 PRAGMA busy_timeout = 5000;
@@ -96,8 +98,27 @@ pub fn apply_pragmas(conn: &Connection) -> Result<()> {
 }
 
 /// Initializes tables, indexes, FTS5 virtual table, and sync triggers idempotently.
-pub fn init_schema(conn: &Connection) -> Result<()> {
+pub fn init_schema(conn: &mut Connection) -> Result<()> {
     apply_pragmas(conn)?;
-    conn.execute_batch(SCHEMA_SQL)
-        .context("failed to initialize anvil-memory SQLite schema")
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .context("failed to read SQLite user_version")?;
+    if version >= CURRENT_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .context("failed to start IMMEDIATE schema migration transaction")?;
+    let current_version: i64 = tx
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .context("failed to re-read SQLite user_version")?;
+    if current_version < CURRENT_SCHEMA_VERSION {
+        tx.execute_batch(SCHEMA_SQL)
+            .context("failed to initialize anvil-memory SQLite schema")?;
+        tx.execute_batch(&format!("PRAGMA user_version = {CURRENT_SCHEMA_VERSION};"))
+            .context("failed to update SQLite user_version")?;
+    }
+    tx.commit()
+        .context("failed to commit anvil-memory schema transaction")
 }

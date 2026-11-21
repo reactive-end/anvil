@@ -32,6 +32,19 @@ pub fn is_continuation_active(raw_json: &str) -> bool {
         .any(|k| val.get(*k).and_then(Value::as_bool) == Some(true))
 }
 
+/// Returns `true` when `Stop` should immediately allow without running blocking gates
+/// (loop guards, Antigravity `TERMINAL_STEP_TYPE`, or non-idle `fullyIdle == false` turns).
+pub fn should_bypass_stop(raw_json: &str) -> bool {
+    if is_continuation_active(raw_json) {
+        return true;
+    }
+    let Ok(val) = serde_json::from_str::<Value>(raw_json) else {
+        return false;
+    };
+    val.get("terminationReason").and_then(Value::as_str) == Some("TERMINAL_STEP_TYPE")
+        || val.get("fullyIdle").and_then(Value::as_bool) == Some(false)
+}
+
 /// Extracts `(field_key, trimmed_command)` from a `PreToolUse` / `PostToolUse` `tool_input`.
 pub fn extract_command_field(tool_input: Option<&Value>) -> Option<(&'static str, &str)> {
     let obj = tool_input?.as_object()?;
@@ -72,13 +85,17 @@ pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
     .any(|p| cmd == *p || cmd.starts_with(&format!("{p} ")))
 }
 
+fn strip_tool_namespace(tool_name: Option<&str>) -> Option<&str> {
+    let name = tool_name.map(str::trim).filter(|s| !s.is_empty())?;
+    let bare = name.rsplit("__").next().unwrap_or(name);
+    Some(bare.rsplit(':').next().unwrap_or(bare))
+}
+
 /// Returns `true` when `tool_name` is strictly read-only and safe while Circuit Breaker is OPEN.
 pub fn is_read_only_tool(tool_name: Option<&str>) -> bool {
-    let Some(name) = tool_name.map(str::trim).filter(|s| !s.is_empty()) else {
+    let Some(bare) = strip_tool_namespace(tool_name) else {
         return false;
     };
-    let bare = name.rsplit("__").next().unwrap_or(name);
-    let bare = bare.rsplit(':').next().unwrap_or(bare);
     matches!(
         bare,
         "read_file"
@@ -103,11 +120,11 @@ pub fn is_read_only_tool(tool_name: Option<&str>) -> bool {
 
 /// Returns `true` when `tool_name` mutates workspace files and warrants Tier 0 + graph + mem checks.
 pub fn is_mutating_file_tool(tool_name: Option<&str>) -> bool {
-    let Some(name) = tool_name.map(str::trim).filter(|s| !s.is_empty()) else {
+    let Some(bare) = strip_tool_namespace(tool_name) else {
         return false;
     };
     matches!(
-        name,
+        bare,
         "edit_file"
             | "write_file"
             | "replace_file_content"

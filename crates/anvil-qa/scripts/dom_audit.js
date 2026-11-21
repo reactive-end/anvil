@@ -93,18 +93,34 @@
     return Boolean(el.attributes && Object.prototype.hasOwnProperty.call(el.attributes, "hidden"));
   }
 
+  const visibilityCache = typeof WeakMap === "function" ? new WeakMap() : null;
+
   function isEffectivelyVisible(el) {
+    if (!el || typeof el !== "object") return true;
+    if (visibilityCache && visibilityCache.has(el)) {
+      return visibilityCache.get(el);
+    }
+    const chain = [];
     let cur = el;
-    while (cur) {
-      if (hasHiddenAttr(cur)) {
-        return false;
+    let visible = true;
+    while (cur && typeof cur === "object") {
+      if (visibilityCache && visibilityCache.has(cur)) {
+        visible = visibilityCache.get(cur);
+        break;
       }
-      if (isHidden(getStyle(cur) || {})) {
-        return false;
+      chain.push(cur);
+      if (hasHiddenAttr(cur) || isHidden(getStyle(cur) || {})) {
+        visible = false;
+        break;
       }
       cur = cur.parentElement || null;
     }
-    return true;
+    if (visibilityCache) {
+      for (let i = 0; i < chain.length; i++) {
+        visibilityCache.set(chain[i], visible);
+      }
+    }
+    return visible;
   }
 
   function isOverlayRoot(el) {

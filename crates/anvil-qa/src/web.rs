@@ -36,8 +36,6 @@ pub struct WebEvalInput<'a> {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct RawDomAudit {
-    #[allow(dead_code)]
-    passed: bool,
     #[serde(default)]
     violations: Vec<RawDomViolation>,
 }

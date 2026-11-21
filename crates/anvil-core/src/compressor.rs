@@ -1,5 +1,6 @@
 //! Context-bounded output compression (`anvil run`) and raw log archival.
 
+pub mod cargo;
 pub mod dart_flutter;
 pub mod eslint_biome;
 pub mod generic;
@@ -65,7 +66,8 @@ pub fn strip_ansi(input: &str) -> Cow<'_, str> {
 
 /// Selects the most specific parser for `command`, falling back to `generic`.
 pub fn select_parser(command: &str) -> Box<dyn OutputParser> {
-    let parsers: [Box<dyn OutputParser>; 6] = [
+    let parsers: [Box<dyn OutputParser>; 7] = [
+        Box::new(cargo::CargoParser),
         Box::new(tsc::TscParser),
         Box::new(eslint_biome::EslintBiomeParser),
         Box::new(vitest_jest::VitestJestParser),

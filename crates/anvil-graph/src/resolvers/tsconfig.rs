@@ -1,7 +1,7 @@
 //! TypeScript/JavaScript resolution (`tsconfig.json` `baseUrl`, `paths`, relative & `index` probing).
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anvil_core::fs_util::strip_jsonc;
 use anvil_core::traits::{EdgeKind, EdgeRef};
@@ -38,7 +38,7 @@ struct RawCompilerOptions {
 }
 
 impl TsConfigRules {
-    /// Loads `tsconfig.json` / `tsconfig.app.json` / `tsconfig.base.json` from `repo_root`.
+    /// Loads `tsconfig.base.json` -> `tsconfig.json` -> `tsconfig.app.json` (child overrides base).
     pub fn load(repo_root: &Path) -> Self {
         let mut combined = Self::default();
         for name in ["tsconfig.base.json", "tsconfig.json", "tsconfig.app.json"] {
@@ -50,9 +50,7 @@ impl TsConfigRules {
                     combined.base_url = rules.base_url;
                 }
                 for (pat, targets) in rules.paths {
-                    if !combined.paths.iter().any(|(p, _)| p == &pat) {
-                        combined.paths.push((pat, targets));
-                    }
+                    upsert_path(&mut combined.paths, pat, targets);
                 }
             }
         }
@@ -66,7 +64,7 @@ impl TsConfigRules {
         visited: &mut FxHashSet<String>,
         depth: usize,
     ) -> Self {
-        if depth > 3 {
+        if depth > 5 {
             return Self::default();
         }
         let key = path.to_string_lossy().into_owned();
@@ -84,7 +82,7 @@ impl TsConfigRules {
         let mut rules = Self::default();
         if let Some(ext) = parsed.extends.as_deref()
             && let Some(parent_dir) = path.parent()
-            && let Some(ep) = resolve_extends_path(parent_dir, ext)
+            && let Some(ep) = resolve_extends_path(repo_root, parent_dir, ext)
         {
             rules = Self::load_file(repo_root, &ep, visited, depth + 1);
         }
@@ -99,20 +97,56 @@ impl TsConfigRules {
                 rules.base_url = Some(normalize_join_rel(&base_rel, &base));
             }
             if let Some(paths) = opts.paths {
-                rules.paths.extend(paths);
+                for (pat, targets) in paths {
+                    upsert_path(&mut rules.paths, pat, targets);
+                }
             }
         }
         rules
     }
 }
 
-fn resolve_extends_path(dir: &Path, ext: &str) -> Option<std::path::PathBuf> {
-    let direct = dir.join(ext);
-    if direct.is_file() {
-        return Some(direct);
+fn upsert_path(paths: &mut Vec<(String, Vec<String>)>, pat: String, targets: Vec<String>) {
+    if let Some(existing) = paths.iter_mut().find(|(p, _)| p == &pat) {
+        existing.1 = targets;
+    } else {
+        paths.push((pat, targets));
     }
-    let with_json = dir.join(format!("{ext}.json"));
-    with_json.is_file().then_some(with_json)
+}
+
+fn resolve_extends_path(repo_root: &Path, dir: &Path, ext: &str) -> Option<PathBuf> {
+    if ext.starts_with('.') || ext.starts_with('/') {
+        return probe_tsconfig_candidate(&dir.join(ext));
+    }
+    if let Some(local) = probe_tsconfig_candidate(&dir.join(ext)) {
+        return Some(local);
+    }
+    let mut cur = Some(dir);
+    while let Some(c) = cur {
+        let nm_candidate = c.join("node_modules").join(ext);
+        if let Some(found) = probe_tsconfig_candidate(&nm_candidate) {
+            return Some(found);
+        }
+        if c == repo_root {
+            break;
+        }
+        cur = c.parent().filter(|p| p.starts_with(repo_root));
+    }
+    None
+}
+
+fn probe_tsconfig_candidate(base: &Path) -> Option<PathBuf> {
+    if base.is_file() {
+        return Some(base.to_path_buf());
+    }
+    let mut json_os = base.as_os_str().to_os_string();
+    json_os.push(".json");
+    let with_json = PathBuf::from(json_os);
+    if with_json.is_file() {
+        return Some(with_json);
+    }
+    let nested = base.join("tsconfig.json");
+    nested.is_file().then_some(nested)
 }
 
 /// Resolves a TypeScript/JavaScript `EdgeRef` to a target `NodeId` when internal.

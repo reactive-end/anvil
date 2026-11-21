@@ -218,6 +218,9 @@ pub enum QaSubcmd {
     /// Run headless Playwright DOM + screenshot capture on a URL.
     Run {
         url: String,
+        /// Screenshot capture phase (`before` or `after`).
+        #[arg(long, default_value = "after", value_parser = ["before", "after"])]
+        phase: String,
         #[arg(long, default_value = ".harness/.state/qa")]
         out_dir: PathBuf,
     },

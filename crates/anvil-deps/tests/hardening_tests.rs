@@ -10,7 +10,7 @@ use anvil_deps::cargo_toml::{parse_cargo_toml, parse_crates_io_json};
 use anvil_deps::maven::{
     is_google_maven_group, parse_build_gradle, parse_google_maven_metadata_xml,
 };
-use anvil_deps::npm::parse_npm_registry_json;
+use anvil_deps::npm::{parse_npm_registry_json, parse_package_json};
 use anvil_deps::pypi::parse_requirements_txt;
 use anvil_deps::{
     AuditOptions, DepIssueKind, Ecosystem, PackageHealthInfo, RegistryFetcher, audit_manifests,
@@ -236,3 +236,61 @@ fn bounded_parallel_audit_caps_concurrency_at_8_and_speeds_up_20_deps() {
     assert_eq!(report.findings[0].package, "pkg-19");
     assert_eq!(report.findings[0].issues, vec![DepIssueKind::Deprecated]);
 }
+
+#[test]
+fn skips_non_registry_npm_specifiers_in_monorepos() {
+    let manifest = r#"{
+      "name": "monorepo-web",
+      "dependencies": {
+        "@acme/ui": "workspace:*",
+        "local-pkg": "file:../pkg",
+        "linked-lib": "link:../x",
+        "portaled": "portal:../portal",
+        "patched": "patch:lodash@npm%3A4.17.21#./lodash.patch",
+        "git-https": "git+https://github.com/org/repo.git#main",
+        "git-proto": "git://github.com/org/repo.git",
+        "http-tarball": "http://example.com/pkg.tgz",
+        "https-tarball": "https://example.com/pkg.tgz",
+        "gh-shorthand": "github:org/repo",
+        "react": "^19.0.0"
+      },
+      "devDependencies": {
+        "@acme/eslint-config": "workspace:^",
+        "vitest": "^2.0.0"
+      }
+    }"#;
+
+    let specs = parse_package_json("apps/web/package.json", manifest).expect("package.json");
+    let names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["react", "vitest"]);
+}
+
+#[test]
+fn supports_and_parses_variant_requirements_txt_manifests() {
+    for name in [
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements_prod.txt",
+        "deploy/requirements-ci.txt",
+    ] {
+        assert!(
+            is_supported_manifest(&PathBuf::from(name)),
+            "expected {name} to be supported"
+        );
+    }
+    assert!(!is_supported_manifest(&PathBuf::from("notes.txt")));
+
+    let tmp = TempDir::new().expect("tempdir");
+    fs::write(
+        tmp.path().join("requirements-dev.txt"),
+        "pytest>=8.0.0\nruff==0.6.0\n",
+    )
+    .expect("write requirements-dev.txt");
+
+    let specs =
+        parse_manifest(tmp.path(), &PathBuf::from("requirements-dev.txt")).expect("parse dev reqs");
+    let names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["pytest", "ruff"]);
+    assert!(specs.iter().all(|s| s.ecosystem == Ecosystem::Pypi));
+}
+

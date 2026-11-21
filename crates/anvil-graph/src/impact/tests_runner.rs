@@ -9,7 +9,8 @@ use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::traits::CompressedOutput;
-use rustc_hash::FxHashSet;
+
+use super::tests_native::{run_kotlin_tests, run_rust_tests};
 
 /// Runs targeted test runners for `related_tests`, skipping gracefully when a runner is absent.
 pub fn run_impacted_tests(
@@ -28,16 +29,13 @@ pub fn run_impacted_tests(
         results.push(run_js_tests(repo_root, config, &buckets.js_ts)?);
     }
     if !buckets.python.is_empty() {
-        results.push(run_simple_file_runner(
-            repo_root,
-            config,
-            "pytest",
-            &[],
-            &buckets.python,
-        )?);
+        results.push(run_simple_file_runner(repo_root, config, "pytest", &[], &buckets.python)?);
     }
     if !buckets.dart.is_empty() {
         results.push(run_dart_flutter_tests(repo_root, config, &buckets.dart)?);
+    }
+    if !buckets.kotlin.is_empty() {
+        results.push(run_kotlin_tests(repo_root, config, &buckets.kotlin)?);
     }
     if !buckets.rust.is_empty() {
         results.extend(run_rust_tests(repo_root, config, &buckets.rust)?);
@@ -50,6 +48,7 @@ struct TestBuckets<'a> {
     js_ts: Vec<&'a str>,
     python: Vec<&'a str>,
     dart: Vec<&'a str>,
+    kotlin: Vec<&'a str>,
     rust: Vec<&'a str>,
 }
 
@@ -61,6 +60,8 @@ fn partition_tests<'a>(related_tests: &'a [String]) -> TestBuckets<'a> {
             buckets.python.push(raw.as_str());
         } else if lower.ends_with(".dart") {
             buckets.dart.push(raw.as_str());
+        } else if lower.ends_with(".kt") {
+            buckets.kotlin.push(raw.as_str());
         } else if lower.ends_with(".rs") {
             buckets.rust.push(raw.as_str());
         } else if lower.ends_with(".ts")
@@ -84,12 +85,19 @@ fn run_js_tests(
     if let Some(vitest) = resolve_local_or_path_bin(repo_root, "vitest") {
         let mut args = vec!["related", "--run"];
         args.extend_from_slice(files);
-        return exec_compressed(repo_root, config, &vitest, "vitest related", &args);
+        return exec_compressed(repo_root, repo_root, config, &vitest, "vitest related", &args);
     }
     if let Some(jest) = resolve_local_or_path_bin(repo_root, "jest") {
         let mut args = vec!["--findRelatedTests"];
         args.extend_from_slice(files);
-        return exec_compressed(repo_root, config, &jest, "jest --findRelatedTests", &args);
+        return exec_compressed(
+            repo_root,
+            repo_root,
+            config,
+            &jest,
+            "jest --findRelatedTests",
+            &args,
+        );
     }
     Ok(skip_output("vitest/jest", "test runner binary not found"))
 }
@@ -106,94 +114,14 @@ fn run_dart_flutter_tests(
     {
         let mut args = vec!["test"];
         args.extend_from_slice(files);
-        return exec_compressed(repo_root, config, &flutter, "flutter test", &args);
+        return exec_compressed(repo_root, repo_root, config, &flutter, "flutter test", &args);
     }
     if let Some(dart) = resolve_local_or_path_bin(repo_root, "dart") {
         let mut args = vec!["test"];
         args.extend_from_slice(files);
-        return exec_compressed(repo_root, config, &dart, "dart test", &args);
+        return exec_compressed(repo_root, repo_root, config, &dart, "dart test", &args);
     }
     Ok(skip_output("dart/flutter", "test runner binary not found"))
-}
-
-fn run_rust_tests(
-    repo_root: &Path,
-    config: &AnvilConfig,
-    files: &[&str],
-) -> Result<Vec<CompressedOutput>> {
-    let Some(cargo) = resolve_local_or_path_bin(repo_root, "cargo") else {
-        return Ok(vec![skip_output("cargo", "cargo binary not found")]);
-    };
-
-    let mut crates = Vec::new();
-    let mut seen = FxHashSet::default();
-    for f in files {
-        let pkg = detect_rust_crate_for_file(repo_root, f);
-        if seen.insert(pkg.clone()) {
-            crates.push(pkg);
-        }
-    }
-
-    let mut out = Vec::with_capacity(crates.len());
-    for pkg in crates {
-        if pkg.is_empty() {
-            out.push(exec_compressed(
-                repo_root,
-                config,
-                &cargo,
-                "cargo test",
-                &["test"],
-            )?);
-        } else {
-            let label = format!("cargo test -p {pkg}");
-            out.push(exec_compressed(
-                repo_root,
-                config,
-                &cargo,
-                &label,
-                &["test", "-p", &pkg],
-            )?);
-        }
-    }
-    Ok(out)
-}
-
-fn detect_rust_crate_for_file(repo_root: &Path, rel_file: &str) -> String {
-    let norm = rel_file.replace('\\', "/");
-    let mut parts = norm.split('/');
-    if parts.next() == Some("crates")
-        && let Some(dir_name) = parts.next()
-    {
-        let crate_toml = repo_root.join("crates").join(dir_name).join("Cargo.toml");
-        if let Ok(content) = fs::read_to_string(crate_toml)
-            && let Some(pkg) = parse_cargo_pkg_name(&content)
-        {
-            return pkg;
-        }
-        return dir_name.to_owned();
-    }
-    String::new()
-}
-
-fn parse_cargo_pkg_name(toml: &str) -> Option<String> {
-    let mut in_pkg = false;
-    for raw in toml.lines() {
-        let line = raw.trim();
-        if line.starts_with('[') {
-            in_pkg = line == "[package]";
-            continue;
-        }
-        if in_pkg
-            && let Some(rest) = line.strip_prefix("name")
-            && let Some(val) = rest.trim_start().strip_prefix('=')
-        {
-            let clean = val.trim().trim_matches(|c| c == '"' || c == '\'');
-            if !clean.is_empty() {
-                return Some(clean.to_owned());
-            }
-        }
-    }
-    None
 }
 
 fn run_simple_file_runner(
@@ -208,21 +136,22 @@ fn run_simple_file_runner(
     };
     let mut args = base_args.to_vec();
     args.extend_from_slice(files);
-    exec_compressed(repo_root, config, &bin_path, bin, &args)
+    exec_compressed(repo_root, repo_root, config, &bin_path, bin, &args)
 }
 
-fn exec_compressed(
-    repo_root: &Path,
+pub(super) fn exec_compressed(
+    log_root: &Path,
+    work_dir: &Path,
     config: &AnvilConfig,
     bin_path: &Path,
     label: &str,
     args: &[&str],
 ) -> Result<CompressedOutput> {
-    let output = match Command::new(bin_path).args(args).current_dir(repo_root).output() {
+    let output = match Command::new(bin_path).args(args).current_dir(work_dir).output() {
         Ok(out) => out,
         Err(err) => {
             return compress_output(
-                Some(repo_root),
+                Some(log_root),
                 label,
                 1,
                 &format!("failed to execute `{}`: {err}", bin_path.display()),
@@ -238,7 +167,7 @@ fn exec_compressed(
         String::from_utf8_lossy(&output.stderr)
     );
     compress_output(
-        Some(repo_root),
+        Some(log_root),
         label,
         code,
         &combined,
@@ -247,7 +176,7 @@ fn exec_compressed(
     )
 }
 
-fn skip_output(tool: &str, reason: &str) -> CompressedOutput {
+pub(super) fn skip_output(tool: &str, reason: &str) -> CompressedOutput {
     CompressedOutput {
         tool: tool.to_owned(),
         passed: true,

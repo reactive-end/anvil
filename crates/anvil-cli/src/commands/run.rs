@@ -86,14 +86,28 @@ fn run_process(root: &Path, program: &str, args: &[String], full_cmd: &[String])
 }
 
 fn run_via_shell(root: &Path, cmd: &[String]) -> Result<Output> {
-    let escaped = escape_shell_command(cmd);
-    if cfg!(windows) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let escaped = cmd
+            .iter()
+            .map(|arg| escape_windows_cmd_arg(arg))
+            .collect::<Vec<_>>()
+            .join(" ");
         Command::new("cmd")
-            .args(["/C", &escaped])
+            .args(["/D", "/S", "/C"])
+            .raw_arg(format!("\"{escaped}\""))
             .current_dir(root)
             .output()
             .with_context(|| format!("failed to execute `{escaped}` via cmd /C"))
-    } else {
+    }
+    #[cfg(not(windows))]
+    {
+        let escaped = cmd
+            .iter()
+            .map(|arg| escape_posix_shell_arg(arg))
+            .collect::<Vec<_>>()
+            .join(" ");
         Command::new("sh")
             .args(["-c", &escaped])
             .current_dir(root)
@@ -102,28 +116,73 @@ fn run_via_shell(root: &Path, cmd: &[String]) -> Result<Output> {
     }
 }
 
-fn escape_shell_command(cmd: &[String]) -> String {
-    cmd.iter()
-        .map(|arg| escape_shell_arg(arg))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn escape_shell_arg(arg: &str) -> String {
+#[cfg(windows)]
+fn escape_windows_cmd_arg(arg: &str) -> String {
     if arg.is_empty() {
         return "\"\"".to_owned();
     }
+    let has_space_or_quote = arg.chars().any(|c| c.is_whitespace() || c == '"');
+    if !has_space_or_quote {
+        let mut out = String::with_capacity(arg.len() + 4);
+        for ch in arg.chars() {
+            if matches!(
+                ch,
+                '&' | '|' | '<' | '>' | '(' | ')' | '^' | '%' | '!' | ';' | ',' | '='
+            ) {
+                out.push('^');
+            }
+            out.push(ch);
+        }
+        return out;
+    }
+
+    let mut out = String::with_capacity(arg.len() + 8);
+    out.push('"');
+    let mut backslashes = 0usize;
+    for ch in arg.chars() {
+        match ch {
+            '\\' => backslashes += 1,
+            '"' => {
+                out.push_str(&"\\".repeat(backslashes * 2));
+                backslashes = 0;
+                out.push_str("\"\\^\"\"");
+            }
+            '%' => {
+                out.push_str(&"\\".repeat(backslashes));
+                backslashes = 0;
+                out.push_str("\"^%\"");
+            }
+            _ => {
+                if backslashes > 0 {
+                    out.push_str(&"\\".repeat(backslashes));
+                    backslashes = 0;
+                }
+                out.push(ch);
+            }
+        }
+    }
+    if backslashes > 0 {
+        out.push_str(&"\\".repeat(backslashes * 2));
+    }
+    out.push('"');
+    out
+}
+
+#[cfg(not(windows))]
+fn escape_posix_shell_arg(arg: &str) -> String {
+    if arg.is_empty() {
+        return "''".to_owned();
+    }
     let needs_quotes = arg.chars().any(|c| {
-        c.is_whitespace() || matches!(c, '"' | '\'' | '&' | '|' | ';' | '<' | '>' | '(' | ')' | '$')
+        c.is_whitespace()
+            || matches!(
+                c,
+                '"' | '\'' | '&' | '|' | ';' | '<' | '>' | '(' | ')' | '$' | '^' | '%'
+            )
     });
     if !needs_quotes {
         return arg.to_owned();
     }
-    if cfg!(windows) {
-        let escaped = arg.replace('"', "\\\"");
-        format!("\"{escaped}\"")
-    } else {
-        let escaped = arg.replace('\'', "'\\''");
-        format!("'{escaped}'")
-    }
+    let escaped = arg.replace('\'', "'\\''");
+    format!("'{escaped}'")
 }

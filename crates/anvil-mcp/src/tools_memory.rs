@@ -36,9 +36,12 @@ fn handle_save(server: &mut McpServer, args: &Value) -> Result<Value> {
         ttl_seconds: args.get("ttl_seconds").and_then(Value::as_i64),
     };
 
+    let cache_was_clean = server.chunks_cache_is_clean();
     let mem = server.ensure_memory_no_sync()?;
     let saved = mem.save(input)?;
-    server.refresh_chunks_mtime();
+    if cache_was_clean {
+        server.refresh_chunks_mtime();
+    }
     Ok(json!({
         "saved": true,
         "observation": saved,

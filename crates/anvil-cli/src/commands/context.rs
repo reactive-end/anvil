@@ -8,7 +8,7 @@ use anvil_core::config::AnvilConfig;
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::model::CodeGraph;
 use anvil_memory::MemoryEngine;
-use anvil_tasks::resolve_author;
+use anvil_tasks::resolve_author_fast;
 use rustc_hash::FxHashSet;
 
 use crate::cli::subcmds::ContextSubcmd;
@@ -26,7 +26,7 @@ pub fn execute(root: &Path, sub: ContextSubcmd) -> Result<()> {
 fn build_and_print_packet(root: &Path, targets: &[String], max_tokens: usize) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
     let engine = CodeGraphEngine::load_cached(root, config)?;
-    let author = resolve_author(root).unwrap_or_else(|_| "cli".to_owned());
+    let author = resolve_author_fast(root).unwrap_or_else(|_| "cli".to_owned());
     let mem = MemoryEngine::open(root, author)?;
 
     let target_files = resolve_target_files(&engine, targets);

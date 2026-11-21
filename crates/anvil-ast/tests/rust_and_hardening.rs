@@ -199,3 +199,45 @@ export class RealCardComponent {}
     assert!(!ng_facts.symbols.iter().any(|s| s.name == "comment-fake"));
     assert!(ng_facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate && e.target_path_or_symbol == "./real-card.html"));
 }
+
+#[test]
+fn rust_pub_use_emits_reexports_and_expect_cfg_attr_are_flagged() {
+    let src = r#"
+use crate::internal::Secret;
+pub use crate::core::{Config, Runner as AppRunner};
+pub use crate::utils::*;
+
+#[expect(dead_code)]
+pub fn warned() {}
+
+#[cfg_attr(all(), allow(unused_variables))]
+pub fn cfg_allowed(x: i32) {}
+
+#[cfg_attr(feature = "allow(x)", derive(Debug))]
+pub struct CleanStruct;
+"#;
+    let facts = analyze_file(Path::new("src/lib.rs"), src, &cfg()).expect("rust lib");
+    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "crate::internal::Secret"));
+    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::ReExports && e.target_path_or_symbol == "crate::core::Config"));
+    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::ReExports && e.target_path_or_symbol == "crate::core::Runner"));
+    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::ReExports && e.target_path_or_symbol == "crate::utils"));
+
+    let escape_diags: Vec<_> = facts
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule == "no-escape-hatches")
+        .collect();
+    assert_eq!(escape_diags.len(), 2, "diags: {:?}", facts.diagnostics);
+    assert_eq!(escape_diags[0].line, 6);
+    assert_eq!(escape_diags[1].line, 9);
+
+    let allowed = r#"
+// anvil-allow(no-rust-allow): rustc 1.85 migration [ANV-99]
+#[expect(dead_code)]
+// anvil-allow(no-rust-allow): platform cfg shim [ANV-100]
+#[cfg_attr(all(), allow(unused_variables))]
+pub fn ok(x: i32) {}
+"#;
+    let ok_facts = analyze_file(Path::new("src/ok.rs"), allowed, &cfg()).expect("rust ok");
+    assert!(ok_facts.diagnostics.is_empty(), "unexpected: {:?}", ok_facts.diagnostics);
+}

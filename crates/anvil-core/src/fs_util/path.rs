@@ -50,7 +50,22 @@ fn find_bin_in_dir(dir: &Path, name: &str) -> Option<PathBuf> {
         None
     } else {
         let candidate = dir.join(name);
-        candidate.is_file().then_some(candidate)
+        is_executable_file(&candidate).then_some(candidate)
+    }
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.is_file() && meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        meta.is_file()
     }
 }
 

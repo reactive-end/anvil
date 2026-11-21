@@ -64,8 +64,10 @@ impl CodeGraph {
         self.file_nodes.reserve(self.file_hashes.len());
         self.symbol_index.reserve(self.nodes.len() / 2);
 
+        let mut dead_nodes = 0usize;
         for (idx, node) in self.nodes.iter().enumerate() {
             if node.is_tombstone() {
+                dead_nodes += 1;
                 continue;
             }
             let nid = idx as u32;
@@ -106,6 +108,7 @@ impl CodeGraph {
             }
         }
 
+        self.tombstone_nodes = dead_nodes;
         self.rebuild_adjacency();
     }
 
@@ -114,9 +117,11 @@ impl CodeGraph {
         let node_count = self.nodes.len();
         let mut out_deg = vec![0u32; node_count];
         let mut in_deg = vec![0u32; node_count];
+        let mut dead_edges = 0usize;
 
         for edge in &self.edges {
             if edge.is_tombstone() {
+                dead_edges += 1;
                 continue;
             }
             let src = edge.source as usize;
@@ -131,6 +136,7 @@ impl CodeGraph {
                 }
             }
         }
+        self.tombstone_edges = dead_edges;
 
         self.forward_adj.clear();
         self.reverse_adj.clear();

@@ -5,11 +5,12 @@ mod matcher;
 pub mod types;
 
 pub use eval::{
-    CandidateTestMatch, CandidateTestReport, evaluate_promoted_rules, load_promoted_rules,
-    test_candidate,
+    CandidateTestMatch, CandidateTestReport, CompiledPromotedRules, compile_promoted_rules,
+    evaluate_compiled, evaluate_promoted_rules, load_promoted_rules, test_candidate,
 };
 pub use types::{
-    CandidateInput, PromotedRule, RatchetCandidate, RatchetEvaluation, RuleCandidate,
+    CandidateInput, CandidateOptions, PromotedRule, RatchetCandidate, RatchetEvaluation,
+    RuleCandidate,
 };
 
 use std::fs;
@@ -36,6 +37,15 @@ pub fn rules_dir(repo_root: &Path) -> PathBuf {
 
 /// Logs a candidate mistake; increments recurrence if `rule_name` already exists.
 pub fn log_candidate(repo_root: &Path, input: CandidateInput) -> Result<RatchetCandidate> {
+    log_candidate_with_options(repo_root, input, CandidateOptions::default())
+}
+
+/// Logs a candidate mistake with optional `file_globs` and `severity` overrides.
+pub fn log_candidate_with_options(
+    repo_root: &Path,
+    input: CandidateInput,
+    options: CandidateOptions,
+) -> Result<RatchetCandidate> {
     let dir = candidates_dir(repo_root);
     fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
 
@@ -44,6 +54,12 @@ pub fn log_candidate(repo_root: &Path, input: CandidateInput) -> Result<RatchetC
     if let Some(mut found) = existing.into_iter().find(|c| c.rule_name == input.rule_name) {
         found.recurrence = found.recurrence.saturating_add(1);
         found.high_impact |= input.high_impact;
+        if !options.file_globs.is_empty() {
+            found.file_globs = options.file_globs;
+        }
+        if options.severity.is_some() {
+            found.severity = options.severity;
+        }
         found.updated_at = now;
         if let Some(ex) = input.example
             && !found.examples.contains(&ex)
@@ -62,8 +78,8 @@ pub fn log_candidate(repo_root: &Path, input: CandidateInput) -> Result<RatchetC
         description: input.description,
         pattern: (!pat_trimmed.is_empty()).then(|| pat_trimmed.to_owned()),
         languages: input.languages,
-        file_globs: Vec::new(),
-        severity: None,
+        file_globs: options.file_globs,
+        severity: options.severity,
         recurrence: 1,
         high_impact: input.high_impact,
         deterministic: input.deterministic,

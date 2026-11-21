@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
@@ -56,11 +56,27 @@ fn with_file_lock_serializes_threads_and_releases_on_error() -> Result<()> {
         h.join().expect("thread join")?;
     }
     assert_eq!(fs::read_to_string(counter.as_path())?, "20");
-    assert!(!lock.exists());
+
+    // OS advisory lock is released immediately after closure returns or errors.
+    let probe = OpenOptions::new().read(true).write(true).open(lock.as_path())?;
+    assert!(probe.try_lock().is_ok());
+    drop(probe);
 
     let err_res: Result<()> = with_file_lock(&lock, 500, || anyhow::bail!("boom"));
     assert!(err_res.is_err());
-    assert!(!lock.exists());
+
+    let probe_after_err = OpenOptions::new().read(true).write(true).open(lock.as_path())?;
+    assert!(probe_after_err.try_lock().is_ok());
+    drop(probe_after_err);
+
+    // Held OS advisory lock blocks concurrent acquisition until timeout.
+    let held = OpenOptions::new().create(true).read(true).write(true).truncate(false).open(lock.as_path())?;
+    held.try_lock().expect("acquire outer lock");
+    let timed_out: Result<()> = with_file_lock(&lock, 40, || Ok(()));
+    assert!(timed_out.is_err());
+    drop(held);
+
+    with_file_lock(&lock, 500, || Ok(()))?;
     Ok(())
 }
 

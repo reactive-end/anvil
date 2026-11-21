@@ -123,6 +123,15 @@ fn barrel_rule_flags_pure_reexports_and_allows_real_logic() {
     let non_index = "export { Button } from './button';\n";
     let ok2 = analyze_file(Path::new("src/public_api.ts"), non_index, &cfg).expect("non index");
     assert!(ok2.diagnostics.is_empty());
+
+    let header_allowed = concat!(
+        "#!/usr/bin/env node\n",
+        "// Copyright (c) 2026 Anvil\n",
+        "// anvil-allow(no-barrel-files): public package entrypoint [ANV-20]\n",
+        "export { Button } from './button';\n",
+    );
+    let ok3 = analyze_file(Path::new("src/index.ts"), header_allowed, &cfg).expect("line 3 allow");
+    assert!(ok3.diagnostics.is_empty(), "unexpected: {:?}", ok3.diagnostics);
 }
 
 #[test]

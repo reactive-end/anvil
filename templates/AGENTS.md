@@ -8,11 +8,11 @@
 1. **Use `anvil` CLI & MCP** instead of manual guesswork:
    - `anvil check` — Tiered verification (`Tier 0` AST, `Tier 1` impact + typecheck + targeted tests, `Tier 2` visual QA & deps).
    - `anvil run -- <cmd>` — Token-compressed runner (1-line PASS; <= 50-line structured failure; raw log in `.harness/.state/logs/`).
-   - `anvil impact <files> --origin` — Blast-radius via `anvil-graph`; fix the true origin, never patch downstream.
+   - `anvil impact <files> --origin <target>` — Blast-radius via `anvil-graph`; fix the true origin, never patch downstream.
    - `anvil circuit status|reset` — Stops blind retries after 3 identical failures (`N=3`); escalate and inspect root cause.
    - `anvil tasks start|update|done|build` — Conflict-free team task ledger (`.harness/tasks/` -> `tasks.json`).
    - `anvil ratchet log|list|review|test|promote` — Graduate recurring mistakes into deterministic rules with human approval.
-   - `anvil deps` — Audit npm/PyPI/pub.dev/Maven dependencies for deprecation or >24mo staleness.
+   - `anvil deps` — Audit npm/PyPI/pub.dev/Maven/Cargo dependencies for deprecation or >24mo staleness.
    - `anvil qa run|onboard|eval-web|scan-mobile` — Objective DOM/View-Tree checks + before/after screenshots.
    - `anvil doctor` — Verify repo config, strict TS/lint setup, and adapter health.
 2. **MCP Tools (`anvil mcp`, configured in `.agents/mcp_config.json`)**:

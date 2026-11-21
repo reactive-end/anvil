@@ -1,8 +1,11 @@
 //! Reverse-BFS blast radius analysis and test-impact mapping.
 
 mod guard;
+mod sibling;
+mod tests_native;
 mod tests_runner;
 mod typecheck;
+mod typecheck_filter;
 
 use std::collections::VecDeque;
 use std::time::Instant;
@@ -78,7 +81,7 @@ pub fn compute_blast_radius(
     );
 
     let (impacted_files, mut related_tests) = split_consumers_and_tests(discovered);
-    collect_sibling_tests(graph, &norm_changed, &impacted_files, &mut related_tests);
+    sibling::collect_sibling_tests(graph, &norm_changed, &impacted_files, &mut related_tests);
     related_tests.sort();
     related_tests.dedup();
 
@@ -162,10 +165,10 @@ fn split_consumers_and_tests(
     let mut impacted = Vec::new();
     let mut tests = Vec::new();
     for (file, (depth, via_edges)) in discovered {
-        if is_test_file(&file) {
+        if sibling::is_test_file(&file) {
             tests.push(file);
         } else {
-            let is_screen = is_screen_file(&file);
+            let is_screen = sibling::is_screen_file(&file);
             impacted.push(ImpactedItem {
                 file,
                 depth,
@@ -176,74 +179,4 @@ fn split_consumers_and_tests(
     }
     impacted.sort_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.file.cmp(&b.file)));
     (impacted, tests)
-}
-
-fn collect_sibling_tests(
-    graph: &CodeGraph,
-    changed: &[String],
-    impacted: &[ImpactedItem],
-    tests: &mut Vec<String>,
-) {
-    let mut stems = Vec::new();
-    for f in changed.iter().chain(impacted.iter().map(|i| &i.file)) {
-        if !is_test_file(f)
-            && let Some(stem) = file_stem_name(f)
-        {
-            stems.push(stem);
-        }
-    }
-    for candidate in graph.file_hashes.keys() {
-        if is_test_file(candidate)
-            && let Some(c_stem) = test_base_stem(candidate)
-            && stems.iter().any(|s| s == &c_stem)
-        {
-            tests.push(candidate.clone());
-        }
-    }
-}
-
-fn is_test_file(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    let fname = lower.rsplit('/').next().unwrap_or(&lower);
-    lower.contains(".test.")
-        || lower.contains(".spec.")
-        || lower.contains("/__tests__/")
-        || fname.starts_with("test_")
-        || fname.ends_with("_test.py")
-        || fname.ends_with("_test.dart")
-        || fname.ends_with("test.kt")
-        || fname.ends_with("_test.rs")
-        || fname.ends_with("_tests.rs")
-        || (lower.ends_with(".rs") && (lower.contains("/tests/") || lower.starts_with("tests/")))
-}
-
-fn is_screen_file(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower.contains("screen")
-        || lower.contains("page")
-        || lower.ends_with(".component.html")
-        || lower.contains("/views/")
-}
-
-fn file_stem_name(path: &str) -> Option<String> {
-    let fname = path.rsplit('/').next()?;
-    Some(fname.split('.').next()?.to_ascii_lowercase())
-}
-
-fn test_base_stem(path: &str) -> Option<String> {
-    let fname = path.rsplit('/').next()?.to_ascii_lowercase();
-    for suffix in [".test.", ".spec."] {
-        if let Some((stem, _)) = fname.split_once(suffix) {
-            return Some(stem.to_owned());
-        }
-    }
-    if let Some(rest) = fname.strip_prefix("test_") {
-        return rest.split('.').next().map(str::to_owned);
-    }
-    for suffix in ["_test.py", "_test.dart", "test.kt", "_test.rs", "_tests.rs"] {
-        if let Some(stem) = fname.strip_suffix(suffix) {
-            return Some(stem.to_owned());
-        }
-    }
-    None
 }

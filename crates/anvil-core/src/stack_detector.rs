@@ -50,16 +50,13 @@ impl WorkspaceDetection {
     }
 }
 
-/// Scans `workspace_root` for project manifests at root or across child repositories.
+/// Scans `workspace_root` for project manifests at root and across child repositories.
 pub fn detect_workspace(workspace_root: &Path) -> Result<WorkspaceDetection> {
+    let mut repos = Vec::new();
     if let Some(root_repo) = inspect_repo_dir(workspace_root, ".")? {
-        return Ok(WorkspaceDetection {
-            is_multi_repo: false,
-            repos: vec![root_repo],
-        });
+        repos.push(root_repo);
     }
 
-    let mut repos = Vec::new();
     collect_child_repos(workspace_root, workspace_root, 0, 2, &mut repos)?;
     repos.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
     Ok(WorkspaceDetection {

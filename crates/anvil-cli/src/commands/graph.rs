@@ -42,7 +42,6 @@ fn cmd_build(
             stats.semantic_nodes_added, stats.semantic_edges_added, stats.hyperedges_linked
         );
     }
-    let _ = engine.detect_communities();
     let bin = engine.save()?;
     println!(
         "graph built: {} nodes, {} edges -> {}",

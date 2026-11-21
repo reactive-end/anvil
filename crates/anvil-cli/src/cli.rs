@@ -101,7 +101,7 @@ pub enum Command {
         #[command(subcommand)]
         sub: CircuitSubcmd,
     },
-    /// Audit dependencies for deprecation or staleness across npm/PyPI/pub.dev/Maven.
+    /// Audit dependencies for deprecation or staleness across npm/PyPI/pub.dev/Maven/Cargo.
     Deps {
         /// Scan all supported manifests in the repository instead of git diff.
         #[arg(long)]

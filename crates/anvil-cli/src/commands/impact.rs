@@ -6,7 +6,10 @@ use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_core::git::{self, DiffScope};
 use anvil_graph::CodeGraphEngine;
+use anvil_graph::impact::BlastRadiusReport;
 use anvil_graph::model::CodeGraph;
+
+use crate::commands::ExitCodeError;
 
 /// Executes `anvil impact [files...] [--depth N] [--origin <sym>] [--typecheck]`.
 pub fn execute(
@@ -41,6 +44,15 @@ pub fn execute(
     }
 
     let report = engine.blast_radius(&target_files, depth);
+    print_blast_report(&report);
+
+    if typecheck && !run_impact_typecheck(&engine, &report)? {
+        return Err(ExitCodeError::with_message(1, "anvil impact --typecheck failed").into());
+    }
+    Ok(())
+}
+
+fn print_blast_report(report: &BlastRadiusReport) {
     println!(
         "blast radius (depth={}, {:.2}ms): {} changed -> {} impacted file(s), {} related test(s)",
         report.max_depth,
@@ -61,22 +73,26 @@ pub fn execute(
     for test in &report.related_tests {
         println!("  [test] {test}");
     }
+}
 
-    if typecheck {
-        let mut scope = report.changed_files.clone();
-        for item in &report.impacted_files {
-            if !scope.contains(&item.file) {
-                scope.push(item.file.clone());
-            }
-        }
-        for out in engine.run_impacted_typecheck(&scope)? {
-            println!("typecheck [{}]: {}", out.tool, out.summary);
-            for line in &out.lines {
-                println!("  {line}");
-            }
+fn run_impact_typecheck(engine: &CodeGraphEngine, report: &BlastRadiusReport) -> Result<bool> {
+    let mut scope = report.changed_files.clone();
+    for item in &report.impacted_files {
+        if !scope.contains(&item.file) {
+            scope.push(item.file.clone());
         }
     }
-    Ok(())
+    let mut all_passed = true;
+    for out in engine.run_impacted_typecheck(&scope)? {
+        println!("typecheck [{}]: {}", out.tool, out.summary);
+        for line in &out.lines {
+            println!("  {line}");
+        }
+        if !out.passed {
+            all_passed = false;
+        }
+    }
+    Ok(all_passed)
 }
 
 fn print_origin(engine: &CodeGraphEngine, sym: &str) {

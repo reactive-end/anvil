@@ -174,6 +174,14 @@ fn is_barrel_like(file: &str) -> bool {
     let name = file.rsplit('/').next().unwrap_or(file);
     matches!(
         name,
-        "index.ts" | "index.tsx" | "index.js" | "index.jsx" | "index.mts" | "index.mjs" | "__init__.py"
+        "index.ts"
+            | "index.tsx"
+            | "index.js"
+            | "index.jsx"
+            | "index.mts"
+            | "index.mjs"
+            | "__init__.py"
+            | "lib.rs"
+            | "mod.rs"
     )
 }

@@ -219,3 +219,82 @@ fn mcp_memory_syncs_new_external_chunk_on_chunks_dir_mtime_change() {
     );
     assert_eq!(parse_tool_json(&second[0])["count"], json!(1));
 }
+
+#[test]
+fn mcp_negotiates_protocol_version_and_emits_compact_tool_json() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(
+        &mut server,
+        &[
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": { "protocolVersion": "2025-03-26" }
+            }),
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "initialize"
+            }),
+            call_req(3, "graph_query", json!({ "term": "add", "limit": 3 })),
+        ],
+    );
+    assert_eq!(resps[0].result.as_ref().unwrap()["protocolVersion"], json!("2025-03-26"));
+    assert_eq!(resps[1].result.as_ref().unwrap()["protocolVersion"], json!("2024-11-05"));
+    let text = resps[2].result.as_ref().unwrap()["content"][0]["text"]
+        .as_str()
+        .unwrap();
+    assert!(!text.contains('\n'), "expected compact JSON without newlines, got: {text}");
+}
+
+#[test]
+fn mcp_mem_save_before_read_still_syncs_preexisting_external_chunk() {
+    let repo = setup_sample_repo();
+    let chunks_dir = repo.path().join(".harness/memory/chunks");
+    fs::create_dir_all(&chunks_dir).unwrap();
+    let chunk = json!({
+        "id": "01J00000000000000000000009",
+        "topic_key": "decision/preexisting-team-chunk",
+        "kind": "decision",
+        "title": "Preexisting teammate insight",
+        "what": "Already on disk before MCP server first saves",
+        "why": "mem_save must never mask initial chunk sync",
+        "location": "src/math.ts",
+        "learned": "Keep chunks_synced_once false until sync runs",
+        "related_files": ["src/math.ts"],
+        "related_symbols": [],
+        "author": "teammate",
+        "created_at": 1700000000000i64,
+        "updated_at": 1700000000000i64,
+        "expires_at": null
+    });
+    fs::write(
+        chunks_dir.join("teammate-01J00000000000000000000009.jsonl"),
+        format!("{chunk}\n"),
+    )
+    .unwrap();
+
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(
+        &mut server,
+        &[
+            call_req(
+                1,
+                "mem_save",
+                json!({
+                    "kind": "decision",
+                    "title": "Local save first",
+                    "what": "Save before any read tool",
+                    "why": "Repro sync-masking P0",
+                    "where": "src/app.ts",
+                    "learned": "Must not skip teammate chunk sync"
+                }),
+            ),
+            call_req(2, "mem_search", json!({ "query": "Preexisting teammate", "limit": 5 })),
+        ],
+    );
+    assert_eq!(parse_tool_json(&resps[0])["saved"], json!(true));
+    assert_eq!(parse_tool_json(&resps[1])["count"], json!(1));
+}

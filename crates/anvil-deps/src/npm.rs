@@ -14,8 +14,30 @@ const DEP_SECTIONS: &[&str] = &[
     "optionalDependencies",
 ];
 const NPM_ABBREVIATED_ACCEPT: &str = "application/vnd.npm.install-v1+json";
+const NON_REGISTRY_SPECIFIERS: &[&str] = &[
+    "workspace:",
+    "file:",
+    "link:",
+    "portal:",
+    "patch:",
+    "git+",
+    "git://",
+    "http://",
+    "https://",
+    "github:",
+];
+
+fn is_non_registry_specifier(spec: &str) -> bool {
+    let normalized = spec.trim().to_ascii_lowercase();
+    NON_REGISTRY_SPECIFIERS
+        .iter()
+        .any(|prefix| normalized.starts_with(prefix))
+}
 
 /// Parses dependency entries from a `package.json` file.
+///
+/// Skips non-registry specifiers (`workspace:`, `file:`, `link:`, `portal:`, `patch:`,
+/// `git+`, `git://`, `http://`, `https://`, `github:`) so monorepo/local deps do not 404.
 pub fn parse_package_json(manifest_path: &str, content: &str) -> Result<Vec<DependencySpec>> {
     let root: Value = serde_json::from_str(content)
         .with_context(|| format!("failed to parse JSON in {manifest_path}"))?;
@@ -28,6 +50,9 @@ pub fn parse_package_json(manifest_path: &str, content: &str) -> Result<Vec<Depe
             continue;
         };
         for (name, version) in table {
+            if version.as_str().is_some_and(is_non_registry_specifier) {
+                continue;
+            }
             if seen.insert(name.clone()) {
                 specs.push(DependencySpec {
                     ecosystem: Ecosystem::Npm,

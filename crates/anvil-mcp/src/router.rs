@@ -9,7 +9,7 @@ use crate::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, JsonRpcRequest, JsonRpcResponse, METHOD_NOT_FOUND,
 };
 
-const PROTOCOL_VERSION: &str = "2024-11-05";
+const DEFAULT_PROTOCOL_VERSION: &str = "2024-11-05";
 
 /// Dispatches an incoming MCP JSON-RPC 2.0 request or notification.
 pub fn dispatch(server: &mut McpServer, req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
@@ -23,7 +23,14 @@ pub fn dispatch(server: &mut McpServer, req: &JsonRpcRequest) -> Option<JsonRpcR
     let resp = match req.method.as_str() {
         "initialize" => {
             server.mark_initialized();
-            JsonRpcResponse::ok(id, initialize_result())
+            let requested = req
+                .params
+                .as_ref()
+                .and_then(|p| p.get("protocolVersion"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            JsonRpcResponse::ok(id, initialize_result(requested))
         }
         "ping" => JsonRpcResponse::ok(id, json!({})),
         "tools/list" => JsonRpcResponse::ok(id, json!({ "tools": tool_definitions() })),
@@ -33,9 +40,10 @@ pub fn dispatch(server: &mut McpServer, req: &JsonRpcRequest) -> Option<JsonRpcR
     Some(resp)
 }
 
-fn initialize_result() -> Value {
+fn initialize_result(requested_version: Option<&str>) -> Value {
+    let negotiated = requested_version.unwrap_or(DEFAULT_PROTOCOL_VERSION);
     json!({
-        "protocolVersion": PROTOCOL_VERSION,
+        "protocolVersion": negotiated,
         "capabilities": {
             "tools": { "listChanged": false }
         },
@@ -69,7 +77,7 @@ fn dispatch_tool_call(
     };
 
     match outcome {
-        Ok(payload) => match serde_json::to_string_pretty(&payload) {
+        Ok(payload) => match serde_json::to_string(&payload) {
             Ok(text) => JsonRpcResponse::ok(id, tool_text_result(text, false)),
             Err(err) => JsonRpcResponse::err(id, INTERNAL_ERROR, err.to_string()),
         },

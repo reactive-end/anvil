@@ -104,23 +104,34 @@ fn clean_type_name(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
 }
 
 fn extract_use(node: Node<'_>, state: &mut ExtractState<'_>) {
+    let kind = if is_public(node) {
+        EdgeKind::ReExports
+    } else {
+        EdgeKind::Imports
+    };
     if let Some(arg) = node.child_by_field_name("argument") {
-        collect_use_paths(arg, "", ExtractState::line_of(node), state);
+        collect_use_paths(arg, "", ExtractState::line_of(node), kind, state);
     }
 }
 
-fn collect_use_paths(node: Node<'_>, prefix: &str, line: u32, state: &mut ExtractState<'_>) {
+fn collect_use_paths(
+    node: Node<'_>,
+    prefix: &str,
+    line: u32,
+    kind: EdgeKind,
+    state: &mut ExtractState<'_>,
+) {
     match node.kind() {
         "identifier" | "scoped_identifier" | "crate" | "self" | "super" => {
             let text = state.node_text(node).trim();
             let path = if text == "self" && !prefix.is_empty() { prefix.to_owned() } else { join_rust_path(prefix, text) };
             if let Some(clean) = ExtractState::sanitize_call_target(path) {
-                state.push_edge(None, clean, EdgeKind::Imports, line);
+                state.push_edge(None, clean, kind, line);
             }
         }
         "use_as_clause" => {
             if let Some(p) = node.child_by_field_name("path") {
-                collect_use_paths(p, prefix, line, state);
+                collect_use_paths(p, prefix, line, kind, state);
             }
         }
         "scoped_use_list" => {
@@ -129,20 +140,20 @@ fn collect_use_paths(node: Node<'_>, prefix: &str, line: u32, state: &mut Extrac
                 .map(|p| join_rust_path(prefix, state.node_text(p).trim()))
                 .unwrap_or_else(|| prefix.to_owned());
             if let Some(list) = node.child_by_field_name("list") {
-                collect_use_paths(list, &sub, line, state);
+                collect_use_paths(list, &sub, line, kind, state);
             }
         }
         "use_list" => {
             let mut cursor = node.walk();
             for item in node.named_children(&mut cursor) {
-                collect_use_paths(item, prefix, line, state);
+                collect_use_paths(item, prefix, line, kind, state);
             }
         }
         "use_wildcard" => {
             if let Some(child) = node.named_child(0) {
-                collect_use_paths(child, prefix, line, state);
+                collect_use_paths(child, prefix, line, kind, state);
             } else if let Some(clean) = ExtractState::sanitize_call_target(prefix.to_owned()) {
-                state.push_edge(None, clean, EdgeKind::Imports, line);
+                state.push_edge(None, clean, kind, line);
             }
         }
         _ => {}

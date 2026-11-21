@@ -3,7 +3,8 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration as StdDuration, Instant};
 
 use anvil_deps::{
     AuditOptions, DepIssueKind, Ecosystem, PackageHealthInfo, RegistryFetcher, audit_changed_files,
@@ -193,4 +194,80 @@ fn expired_cache_entry_triggers_fresh_fetch() {
     assert_eq!(r2.network_fetches, 1);
     assert_eq!(r2.cache_hits, 0);
     assert_eq!(fetcher.call_count(), 2);
+}
+
+struct EcosystemConcurrencyFetcher {
+    cargo_in_flight: AtomicUsize,
+    cargo_max_in_flight: AtomicUsize,
+    npm_in_flight: AtomicUsize,
+    npm_max_in_flight: AtomicUsize,
+}
+
+impl EcosystemConcurrencyFetcher {
+    fn new() -> Self {
+        Self {
+            cargo_in_flight: AtomicUsize::new(0),
+            cargo_max_in_flight: AtomicUsize::new(0),
+            npm_in_flight: AtomicUsize::new(0),
+            npm_max_in_flight: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl RegistryFetcher for EcosystemConcurrencyFetcher {
+    fn fetch(&self, ecosystem: Ecosystem, package: &str) -> Result<PackageHealthInfo> {
+        match ecosystem {
+            Ecosystem::Cargo => {
+                let cur = self.cargo_in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                self.cargo_max_in_flight.fetch_max(cur, Ordering::SeqCst);
+                thread::sleep(StdDuration::from_millis(15));
+                self.cargo_in_flight.fetch_sub(1, Ordering::SeqCst);
+            }
+            Ecosystem::Npm => {
+                let cur = self.npm_in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                self.npm_max_in_flight.fetch_max(cur, Ordering::SeqCst);
+                thread::sleep(StdDuration::from_millis(30));
+                self.npm_in_flight.fetch_sub(1, Ordering::SeqCst);
+            }
+            _ => {}
+        }
+        Ok(PackageHealthInfo {
+            ecosystem,
+            name: package.to_owned(),
+            latest_version: Some("1.0.0".to_owned()),
+            last_publish: Some(Utc::now() - Duration::days(5)),
+            deprecated: false,
+            deprecation_message: None,
+            archived: false,
+            repository_url: None,
+        })
+    }
+}
+
+#[test]
+fn cargo_misses_run_sequentially_while_npm_keeps_parallel_concurrency() {
+    let tmp = TempDir::new().expect("tempdir");
+    fs::write(
+        tmp.path().join("Cargo.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n[dependencies]\na = \"1\"\nb = \"1\"\nc = \"1\"\nd = \"1\"\n",
+    )
+    .expect("write Cargo.toml");
+    fs::write(
+        tmp.path().join("package.json"),
+        r#"{ "dependencies": { "p1": "1.0.0", "p2": "1.0.0", "p3": "1.0.0", "p4": "1.0.0", "p5": "1.0.0", "p6": "1.0.0" } }"#,
+    )
+    .expect("write package.json");
+
+    let fetcher = EcosystemConcurrencyFetcher::new();
+    let report = audit_manifests(
+        tmp.path(),
+        &[PathBuf::from("Cargo.toml"), PathBuf::from("package.json")],
+        &fetcher,
+        &AuditOptions::default(),
+    )
+    .expect("mixed audit");
+
+    assert_eq!(report.checked_packages, 10);
+    assert_eq!(fetcher.cargo_max_in_flight.load(Ordering::SeqCst), 1);
+    assert!(fetcher.npm_max_in_flight.load(Ordering::SeqCst) >= 2);
 }

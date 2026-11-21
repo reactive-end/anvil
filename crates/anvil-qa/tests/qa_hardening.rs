@@ -228,3 +228,103 @@ fn playwright_rs_and_generated_script_contain_zero_eval_and_pass_node_check() {
         String::from_utf8_lossy(&check.stderr)
     );
 }
+
+const DEEP_HIDDEN_TREE_FIXTURE_JS: &str = r#"
+function el(opts) {
+  return {
+    tagName: opts.tagName, id: opts.id || "", className: "",
+    parentElement: opts.parentElement || null, children: [],
+    childNodes: opts.text ? [{ nodeType: 3, nodeValue: opts.text }] : [],
+    textContent: opts.text || "", attributes: {}, _style: opts.style || {},
+    _rect: { left: 0, top: 0, width: 100, height: 20, right: 100, bottom: 20 },
+    scrollWidth: 300, clientWidth: 100,
+    getBoundingClientRect() { return this._rect; },
+    contains() { return false; }
+  };
+}
+const root = el({ tagName: "HTML" });
+const hiddenGate = el({ tagName: "DIV", id: "gate", parentElement: root, style: { display: "none" } });
+const all = [root, hiddenGate];
+let parent = hiddenGate;
+for (let i = 0; i < 60; i++) {
+  const node = el({ tagName: "DIV", id: `d-${i}`, parentElement: parent, text: `hidden-${i}` });
+  all.push(node);
+  parent = node;
+}
+const deepBtn = el({ tagName: "BUTTON", id: "deep-btn", parentElement: parent });
+all.push(deepBtn);
+
+let styleCalls = 0;
+globalThis.__mockWindow = { innerWidth: 1440, innerHeight: 900 };
+globalThis.__mockGetComputedStyle = (node) => { styleCalls += 1; return node._style || {}; };
+globalThis.__mockDocument = {
+  documentElement: root,
+  querySelectorAll(sel) {
+    if (sel.includes("button")) return [deepBtn];
+    if (sel === "img") return [];
+    return all;
+  }
+};
+globalThis.__getStyleCalls = () => styleCalls;
+"#;
+
+#[test]
+fn dom_audit_caches_visibility_with_weakmap_on_deep_hidden_trees() {
+    let script_literal = serde_json::to_string(DOM_AUDIT_SCRIPT).expect("serialize script");
+    let harness = format!(
+        r#"
+const vm = require("node:vm");
+{DEEP_HIDDEN_TREE_FIXTURE_JS}
+const sandbox = {{
+  window: globalThis.__mockWindow,
+  document: globalThis.__mockDocument,
+  getComputedStyle: globalThis.__mockGetComputedStyle,
+  WeakMap, Set, Array, Math, String, Number, Boolean, Object, JSON,
+}};
+sandbox.globalThis = sandbox;
+const result = vm.runInNewContext({script_literal}, sandbox);
+process.stdout.write(JSON.stringify({{ result, styleCalls: globalThis.__getStyleCalls() }}));
+"#
+    );
+
+    let output = Command::new("node")
+        .arg("-e")
+        .arg(harness)
+        .output()
+        .expect("node must execute deep hidden tree fixture");
+    assert!(
+        output.status.success(),
+        "node failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid JSON output");
+    assert_eq!(parsed["result"]["passed"], true);
+    let style_calls = parsed["styleCalls"].as_u64().expect("styleCalls number");
+    // 63 nodes total; without WeakMap caching, 61 nodes * ~31 avg depth would be >1800 calls.
+    assert!(
+        style_calls <= 65,
+        "expected O(N) style lookups <= 65 with WeakMap caching, got {style_calls}"
+    );
+}
+
+#[test]
+fn web_rs_has_zero_allow_attributes_and_playwright_supports_phases_and_cwd_require() {
+    let web_rs = include_str!("../src/web.rs");
+    assert!(
+        !web_rs.contains("#[allow("),
+        "web.rs must not contain any #[allow(...)] attributes"
+    );
+
+    let dir = tempdir().expect("tempdir");
+    for phase in ["before", "after"] {
+        let script = build_playwright_runner_script("http://127.0.0.1:4173", phase, dir.path())
+            .expect("build playwright script");
+        assert!(script.contains(&format!(r#"const phase = "{phase}";"#)));
+        assert!(script.contains(r#"createRequire(path.join(process.cwd(), "package.json"))"#));
+        assert!(script.contains(r#"await import("playwright")"#));
+    }
+
+    let invalid = build_playwright_runner_script("http://127.0.0.1:4173", "../bad", dir.path());
+    assert!(invalid.is_err(), "invalid phase must be rejected");
+}

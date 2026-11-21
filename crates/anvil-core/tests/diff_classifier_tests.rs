@@ -79,3 +79,22 @@ fn docs_and_deps_and_contracts_classify_accurately() {
         assert_eq!(contract.minimum_tier, Tier::Tier1);
     }
 }
+
+#[test]
+fn style_classifier_never_bypasses_onclick_or_background_sync_calls() {
+    let onclick_bypass = "@@ -5,2 +5,2 @@\n- className=\"btn\"\n+ className=\"btn\" onClick={deleteDb}\n";
+    let d1 = classify_files(&[ChangedFile::with_hunks("src/Danger.tsx", onclick_bypass)]);
+    assert_eq!(d1.primary_category, DiffCategory::Ui);
+    assert_eq!(d1.minimum_tier, Tier::Tier2);
+    assert!(!d1.skip_logic_tests);
+
+    let bg_sync = "@@ -5,2 +5,2 @@\n- className=\"btn\"\n+ backgroundSync()\n";
+    let d2 = classify_files(&[ChangedFile::with_hunks("src/Danger.tsx", bg_sync)]);
+    assert_eq!(d2.primary_category, DiffCategory::Ui);
+    assert!(!d2.skip_logic_tests);
+
+    let pure_css_prop = "@@ -5,2 +5,2 @@\n-  background-color: red;\n+  background-color: blue;\n";
+    let d3 = classify_files(&[ChangedFile::with_hunks("src/Widget.html", pure_css_prop)]);
+    assert_eq!(d3.primary_category, DiffCategory::StyleOnly);
+    assert!(d3.skip_logic_tests);
+}

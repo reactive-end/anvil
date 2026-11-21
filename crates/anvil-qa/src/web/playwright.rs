@@ -35,17 +35,36 @@ struct RawPlaywrightCapture {
     page_errors: Vec<String>,
 }
 
+fn validate_phase(phase: &str) -> Result<&str> {
+    match phase {
+        "before" | "after" => Ok(phase),
+        _ => bail!("unsupported QA phase `{phase}` (expected `before` or `after`)"),
+    }
+}
+
 /// Generates a standalone Node+Playwright runner script for `desktop` (1440x900) and `mobile` (390x844).
 pub fn build_playwright_runner_script(url: &str, phase: &str, out_dir: &Path) -> Result<String> {
+    let phase = validate_phase(phase)?;
     let url_json = serde_json::to_string(url)?;
     let phase_json = serde_json::to_string(phase)?;
     let out_json = serde_json::to_string(&out_dir.to_string_lossy().into_owned())?;
     let audit_iife = DOM_AUDIT_SCRIPT.trim().trim_end_matches(';');
 
     Ok(format!(
-        r#"import {{ chromium }} from "playwright";
-import fs from "node:fs";
+        r#"import fs from "node:fs";
 import path from "node:path";
+import {{ createRequire }} from "node:module";
+
+async function loadPlaywright() {{
+  try {{
+    const req = createRequire(path.join(process.cwd(), "package.json"));
+    return req("playwright");
+  }} catch {{
+    return await import("playwright");
+  }}
+}}
+
+const {{ chromium }} = await loadPlaywright();
 
 const url = {url_json};
 const phase = {phase_json};
@@ -95,6 +114,7 @@ pub fn run_playwright_capture(
     phase: &str,
     out_dir: &Path,
 ) -> Result<Vec<ViewportCapture>> {
+    let phase = validate_phase(phase)?;
     fs::create_dir_all(out_dir)
         .with_context(|| format!("failed to create QA output dir {}", out_dir.display()))?;
     let script_path = out_dir.join(format!("anvil-qa-{phase}.mjs"));

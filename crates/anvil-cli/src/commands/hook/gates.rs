@@ -7,7 +7,7 @@ use anvil_adapters::contract::{InboxMessage, MessageLevel, NormalizedHookInput};
 use anvil_ast::analyze_file;
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
-use anvil_core::ratchet::{PromotedRule, evaluate_promoted_rules, load_promoted_rules};
+use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
 use anvil_core::traits::{Diagnostic, Severity};
 use serde_json::Value;
 
@@ -29,8 +29,11 @@ pub fn collect_post_tool_messages(
     if let Ok(rules) = load_promoted_rules(root)
         && !rules.is_empty()
     {
-        let diags = evaluate_promoted_rules(&rules, rel, &source);
-        push_diagnostics("ratchet", rel, diags, messages);
+        let compiled = compile_promoted_rules(&rules);
+        if !compiled.is_empty() {
+            let diags = evaluate_compiled(&compiled, rel, &source);
+            push_diagnostics("ratchet", rel, diags, messages);
+        }
     }
 }
 
@@ -40,7 +43,8 @@ pub fn collect_changed_gate_errors(
     changed: &[String],
     config: &AnvilConfig,
 ) -> Vec<String> {
-    let rules: Vec<PromotedRule> = load_promoted_rules(root).unwrap_or_default();
+    let rules = load_promoted_rules(root).unwrap_or_default();
+    let compiled = compile_promoted_rules(&rules);
     let mut errs = Vec::new();
     for rel in changed {
         let Ok(src) = fs::read_to_string(root.join(rel)) else {
@@ -49,8 +53,8 @@ pub fn collect_changed_gate_errors(
         if let Ok(facts) = analyze_file(Path::new(rel), &src, config) {
             extend_error_lines(&mut errs, facts.diagnostics);
         }
-        if !rules.is_empty() {
-            extend_error_lines(&mut errs, evaluate_promoted_rules(&rules, rel, &src));
+        if !compiled.is_empty() {
+            extend_error_lines(&mut errs, evaluate_compiled(&compiled, rel, &src));
         }
     }
     errs

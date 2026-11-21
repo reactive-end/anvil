@@ -1,7 +1,7 @@
 # anvil
 
 Native Rust AI engineering harness for **Antigravity** and **Claude Code**.  
-Zero external runtime dependencies — single stripped native binary (`16.86 MB` on Windows x86_64) embedding `tree-sitter` grammars (including Rust), an incremental code graph (`anvil-graph`), SQLite FTS5 + Git-safe persistent memory (`anvil-memory`), unified stdio MCP server (`anvil mcp`), tiered verification, conflict-free team task ledger, and hybrid Web/Mobile visual QA.
+Zero external runtime dependencies — single stripped native binary (`16.92 MB` on Windows x86_64) embedding `tree-sitter` grammars (including Rust), an incremental code graph (`anvil-graph`), SQLite FTS5 + Git-safe persistent memory (`anvil-memory`), unified stdio MCP server (`anvil mcp`), tiered verification, conflict-free team task ledger, and hybrid Web/Mobile visual QA.
 
 ## Installation
 
@@ -55,7 +55,7 @@ anvil init                                # Initialize .harness/, thin adapters,
 anvil sync                                # Non-destructively sync .harness/skills/ and adapter configs
 anvil doctor                              # Audit config, adapters, JSONC/extends tsconfig, graph, memory, identity, circuit, tools
 anvil check                               # Diff-classified Tier 0 / Tier 1 / Tier 2 verification (--full, --tier 0|1|2, --no-tests)
-anvil impact                              # Reverse-BFS blast radius (--depth 2, --origin <target>, --typecheck)
+anvil impact <files> --origin <target>    # Reverse-BFS blast radius & upstream origin (--depth 2, --typecheck)
 anvil graph build|update|query|path|explain|report|merge
 anvil mem save|search|timeline|get|context|sync|check-stale|cleanup
 anvil mcp                                 # Start unified stdio MCP server (graph_* + mem_*)
@@ -63,7 +63,7 @@ anvil tasks start|update|done|plan|build|list
 anvil ratchet log|list|review|test|promote # Governed linter rule testing & promotion (triple filter)
 anvil circuit status|reset                # Inspect or reset the N=3 Circuit Breaker
 anvil deps [--all] [manifests...]         # Audit dependency age/deprecation
-anvil qa onboard|select-web|select-mobile|eval-web|run|scan-mobile
+anvil qa onboard|select-web|select-mobile|eval-web|run [--phase before|after]|scan-mobile
 anvil context pack <targets...>           # Minimal token-budgeted subagent context packet
 anvil run -- <cmd>                        # Token-compressed command execution with raw log archiving
 ```
@@ -76,16 +76,16 @@ Running `anvil init` or `anvil sync` non-destructively configures both agents fr
 - **Claude Code**: `.claude/settings.json`, `.mcp.json` (`anvil mcp`), `.claude/skills/`, and `CLAUDE.md`.
 - **Unified MCP Tools (`anvil mcp`)**: `graph_impact`, `graph_origin`, `graph_query`, `graph_path`, `graph_explain`, `mem_save`, `mem_search`, `mem_timeline`, `mem_get`, `mem_context`.
 
-## Benchmarks (v0.2 Release Build, Windows x86_64)
+## Benchmarks (v0.2.0 Release Build, Windows x86_64)
 
-Measured with `target/release/anvil.exe` (`17,679,360` bytes / `16.86 MB`) on this Rust workspace (`186` `.rs` files, `1,776` nodes, `7,059` edges) and `cargo test --release -p anvil-graph --test fliiper_benchmark -- --nocapture` (read-only against `fliiper-front`: `1,167` files, `8,641` nodes, `24,494` edges):
+Measured with `target/release/anvil.exe` (`17,738,240` bytes / `16.92 MB`) on this Rust workspace (`194` `.rs` files, `1,892` nodes, `7,510` edges) and `cargo test --release -p anvil-graph --test fliiper_benchmark -- --nocapture` (read-only against `fliiper-front`: `1,167` files, `8,641` nodes, `24,494` edges):
 
 | Operation | Measured Latency |
 | :--- | :--- |
 | `anvil --version` (process startup) | `13.77 ms` median |
 | `anvil mem search` (CLI process + SQLite FTS5) | `27.60 ms` median |
 | `anvil graph query` (CLI process + `NodeId(u32)` graph load + BM25) | `19.61 ms` median |
-| `fliiper-front` cold graph build (`1,167` files / `8,641` nodes / `24,494` edges) | `460.34 ms` |
-| `fliiper-front` binary save / load (`postcard` + `NodeId(u32)`) | `11.10 ms` save / `25.68 ms` load |
-| `fliiper-front` incremental 1-file update | `4.41 ms` |
-| `fliiper-front` reverse-BFS blast radius (`depth=2`, `impacted=5`) | `0.27 ms` |
+| `fliiper-front` cold graph build (`1,167` files / `8,641` nodes / `24,494` edges) | `283.68 ms` |
+| `fliiper-front` binary save / load (`postcard` + `NodeId(u32)`) | `7.35 ms` save / `17.69 ms` load |
+| `fliiper-front` incremental 1-file update | `3.93 ms` |
+| `fliiper-front` reverse-BFS blast radius (`depth=2`, `impacted=5`) | `0.29 ms` |

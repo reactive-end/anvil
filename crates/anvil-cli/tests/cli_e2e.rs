@@ -285,3 +285,54 @@ fn cli_hands_free_task_tracking_hooks_e2e() {
     assert!(injected.contains("Auto-registered task T-"));
     assert!(!injected.contains(&task_id1));
 }
+
+#[test]
+fn graph_update_prints_nonzero_added_count_on_new_file() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    fs::write(root.join("src/added.ts"), "export const extra = 42;\n").unwrap();
+    let update_out = assert_ok(&run_anvil(root, &["graph", "update"]), "graph update");
+    assert!(
+        update_out.contains("+1 added"),
+        "expected `+1 added` in graph update output, got: {update_out}"
+    );
+}
+
+#[test]
+fn mem_sync_prints_nonzero_ingested_count_for_new_chunk() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    let chunks_dir = root.join(".harness/memory/chunks");
+    fs::create_dir_all(&chunks_dir).unwrap();
+    let chunk = json!({
+        "id": "01J00000000000000000000001",
+        "topic_key": "decision/sync-test",
+        "kind": "decision",
+        "title": "Sync test chunk",
+        "what": "Verify mem sync ingests new chunks on first call",
+        "why": "Avoid double sync eating ingested count",
+        "location": "commands/mem.rs",
+        "learned": "Open without sync before mem.sync()",
+        "related_files": ["src/core.ts"],
+        "related_symbols": [],
+        "author": "teammate",
+        "created_at": 1700000000000i64,
+        "updated_at": 1700000000000i64,
+        "expires_at": null
+    });
+    fs::write(
+        chunks_dir.join("teammate-01J00000000000000000000001.jsonl"),
+        format!("{chunk}\n"),
+    )
+    .unwrap();
+
+    let sync_out = assert_ok(&run_anvil(root, &["mem", "sync"]), "mem sync");
+    assert!(
+        sync_out.contains("ingested=1") && sync_out.contains("applied=1"),
+        "expected ingested=1 applied=1, got: {sync_out}"
+    );
+}

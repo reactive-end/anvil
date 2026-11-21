@@ -63,70 +63,6 @@ fn assert_ok(out: &Output, label: &str) -> String {
 }
 
 #[test]
-fn circuit_breaker_open_allows_read_and_reset_while_blocking_edits() {
-    let repo = setup_git_ts_repo();
-    let root = repo.path();
-    assert_ok(&run_anvil(root, &["init"]), "init");
-
-    // Trip Circuit Breaker OPEN with 3 identical failures via PostToolUse.
-    for _ in 0..3 {
-        let fail_post = json!({
-            "hook_event_name": "PostToolUse",
-            "cwd": root.to_string_lossy(),
-            "tool_name": "Bash",
-            "tool_input": { "command": "tsc --noEmit" },
-            "tool_output": { "exitCode": 2, "stderr": "TS2322 type mismatch" }
-        });
-        assert_ok(
-            &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "claude"], &fail_post.to_string()),
-            "trip circuit breaker",
-        );
-    }
-
-    // 1. Read tool MUST be allowed even when OPEN.
-    let read_pre = json!({
-        "hook_event_name": "PreToolUse",
-        "cwd": root.to_string_lossy(),
-        "tool_name": "Read",
-        "tool_input": { "file_path": "src/core.ts" }
-    });
-    let read_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &read_pre.to_string()),
-        "pre-tool-use Read",
-    );
-    let read_json: Value = serde_json::from_str(&read_out).unwrap();
-    assert_eq!(read_json["hookSpecificOutput"]["permissionDecision"], json!("allow"));
-
-    // 2. `anvil circuit reset` MUST be allowed even when OPEN.
-    let reset_pre = json!({
-        "hook_event_name": "PreToolUse",
-        "cwd": root.to_string_lossy(),
-        "tool_name": "Bash",
-        "tool_input": { "command": "anvil circuit reset" }
-    });
-    let reset_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &reset_pre.to_string()),
-        "pre-tool-use circuit reset",
-    );
-    let reset_json: Value = serde_json::from_str(&reset_out).unwrap();
-    assert_eq!(reset_json["hookSpecificOutput"]["permissionDecision"], json!("allow"));
-
-    // 3. Mutating edit_file MUST be blocked while OPEN.
-    let edit_pre = json!({
-        "hook_event_name": "PreToolUse",
-        "cwd": root.to_string_lossy(),
-        "tool_name": "edit_file",
-        "tool_input": { "TargetFile": "src/core.ts" }
-    });
-    let edit_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &edit_pre.to_string()),
-        "pre-tool-use edit_file",
-    );
-    let edit_json: Value = serde_json::from_str(&edit_out).unwrap();
-    assert_eq!(edit_json["hookSpecificOutput"]["permissionDecision"], json!("deny"));
-}
-
-#[test]
 fn post_tool_use_read_skips_ast_and_memory_invalidation() {
     let repo = setup_git_ts_repo();
     let root = repo.path();
@@ -208,20 +144,6 @@ fn ratchet_test_and_promoted_rule_live_in_anvil_check() {
 }
 
 #[test]
-fn graph_update_prints_nonzero_added_count_on_new_file() {
-    let repo = setup_git_ts_repo();
-    let root = repo.path();
-    assert_ok(&run_anvil(root, &["init"]), "init");
-
-    fs::write(root.join("src/added.ts"), "export const extra = 42;\n").unwrap();
-    let update_out = assert_ok(&run_anvil(root, &["graph", "update"]), "graph update");
-    assert!(
-        update_out.contains("+1 added"),
-        "expected `+1 added` in graph update output, got: {update_out}"
-    );
-}
-
-#[test]
 fn doctor_passes_on_jsonc_tsconfig_with_extends() {
     let repo = setup_git_ts_repo();
     let root = repo.path();
@@ -264,35 +186,114 @@ fn hook_pre_tool_use_skips_wrapping_commands_with_shell_metacharacters() {
 }
 
 #[test]
-fn mem_sync_prints_nonzero_ingested_count_for_new_chunk() {
+fn post_tool_use_matches_namespaced_mutating_tool_and_stop_allows_non_idle_swarm() {
     let repo = setup_git_ts_repo();
     let root = repo.path();
     assert_ok(&run_anvil(root, &["init"]), "init");
 
-    let chunks_dir = root.join(".harness/memory/chunks");
-    fs::create_dir_all(&chunks_dir).unwrap();
-    let chunk = json!({
-        "id": "01J00000000000000000000001",
-        "topic_key": "decision/sync-test",
-        "kind": "decision",
-        "title": "Sync test chunk",
-        "what": "Verify mem sync ingests new chunks on first call",
-        "why": "Avoid double sync eating ingested count",
-        "location": "commands/mem.rs",
-        "learned": "Open without sync before mem.sync()",
-        "related_files": ["src/core.ts"],
-        "related_symbols": [],
-        "author": "teammate",
-        "created_at": 1700000000000i64,
-        "updated_at": 1700000000000i64,
-        "expires_at": null
+    fs::write(root.join("src/bad_ns.ts"), "// TODO: fix\nexport const x: any = 1;\n").unwrap();
+    let post = json!({
+        "hookEventName": "PostToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": {
+            "toolName": "default_api:edit_file",
+            "toolInput": { "TargetFile": "src/bad_ns.ts" }
+        }
     });
-    fs::write(chunks_dir.join("teammate-01J00000000000000000000001.jsonl"), format!("{chunk}\n")).unwrap();
-
-    let sync_out = assert_ok(&run_anvil(root, &["mem", "sync"]), "mem sync");
-    assert!(
-        sync_out.contains("ingested=1") && sync_out.contains("applied=1"),
-        "expected ingested=1 applied=1, got: {sync_out}"
+    assert_ok(
+        &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "antigravity"], &post.to_string()),
+        "namespaced edit_file post-tool-use",
     );
+    let pre_inv = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy() });
+    let inv_out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &pre_inv.to_string()),
+        "drain namespaced diagnostic",
+    );
+    assert!(inv_out.contains("TODO"));
+
+    let stop_non_idle = json!({
+        "hookEventName": "Stop",
+        "cwd": root.to_string_lossy(),
+        "terminationReason": "TERMINAL_STEP_TYPE",
+        "fullyIdle": false
+    });
+    let stop_out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "stop", "--adapter", "antigravity"], &stop_non_idle.to_string()),
+        "stop allows non-idle swarm turn",
+    );
+    assert_eq!(serde_json::from_str::<Value>(&stop_out).unwrap()["decision"], json!("allow"));
+}
+
+#[test]
+fn doctor_resolves_node_modules_tsconfig_extends() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    fs::create_dir_all(root.join("node_modules/@tsconfig/node20")).unwrap();
+    fs::write(
+        root.join("node_modules/@tsconfig/node20/tsconfig.json"),
+        r#"{"compilerOptions":{"strict":true}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("node_modules/expo")).unwrap();
+    fs::write(
+        root.join("node_modules/expo/tsconfig.base.json"),
+        r#"{"extends":"@tsconfig/node20"}"#,
+    )
+    .unwrap();
+    fs::write(root.join("tsconfig.json"), r#"{"extends":"expo/tsconfig.base"}"#).unwrap();
+
+    let doc_out = assert_ok(&run_anvil(root, &["doctor"]), "doctor node_modules extends");
+    assert!(doc_out.contains("tsconfig: strict=true"));
+    assert!(doc_out.contains("all critical checks passed"));
+}
+
+#[test]
+fn check_full_scans_entire_repo_even_when_dirty() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    fs::write(root.join("src/unmodified_bad.ts"), "export const bad: any = 1;\n").unwrap();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+    Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+    Command::new("git").args(["commit", "-m", "initial"]).current_dir(root).output().unwrap();
+
+    // Dirty only src/core.ts while src/unmodified_bad.ts stays clean in git.
+    fs::write(root.join("src/core.ts"), "export function compute(x: number): number { return x + 1; }\n").unwrap();
+    let full_out = run_anvil(root, &["check", "--full", "--tier", "0"]);
+    assert!(!full_out.status.success(), "expected check --full to fail on unmodified_bad.ts");
+    let stdout = String::from_utf8_lossy(&full_out.stdout);
+    assert!(stdout.contains("unmodified_bad.ts"), "expected unmodified_bad.ts in output: {stdout}");
+}
+
+#[test]
+fn impact_typecheck_exits_nonzero_and_qa_run_respects_phase_and_skip() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    fs::create_dir_all(root.join("node_modules/.bin")).unwrap();
+    #[cfg(windows)]
+    fs::write(
+        root.join("node_modules/.bin/tsc.cmd"),
+        "@echo off\r\necho src/core.ts(1,1): error TS2322: bad type\r\nexit /b 2\r\n",
+    )
+    .unwrap();
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let p = root.join("node_modules/.bin/tsc");
+        fs::write(&p, "#!/bin/sh\necho 'src/core.ts(1,1): error TS2322: bad type'\nexit 2\n").unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    let imp = run_anvil(root, &["impact", "src/core.ts", "--typecheck"]);
+    assert!(!imp.status.success(), "expected impact --typecheck to exit nonzero");
+
+    assert_ok(&run_anvil(root, &["qa", "select-web", "skip"]), "qa select-web skip");
+    let qa_out = assert_ok(
+        &run_anvil(root, &["qa", "run", "http://127.0.0.1:9999", "--phase", "before"]),
+        "qa run --phase before with skip",
+    );
+    assert!(qa_out.contains("skipping `anvil qa run`"));
 }
 

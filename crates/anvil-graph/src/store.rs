@@ -1,19 +1,43 @@
-//! Compact binary persistence (`postcard`) and NetworkX node-link JSON export.
+//! Compact binary persistence (`postcard` with 24-byte stats header) and NetworkX JSON export.
 
 mod export;
+mod wire;
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use anvil_core::fs_util::atomic_write;
-use anvil_core::traits::{Language, SymbolKind};
 use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
 
-use crate::model::{CodeGraph, CompactEdge, GraphNode, INVALID_NODE_ID, NodeKind};
+use crate::model::CodeGraph;
 
 pub use export::export_networkx_json;
+use wire::{GraphWire, build_wire_nodes, unpack_wire_nodes};
+
+const GRAPH_MAGIC: &[u8; 8] = b"ANVLGRPH";
+const GRAPH_VERSION: u32 = 2;
+const HEADER_LEN: usize = 24;
+
+/// Fixed 24-byte header prepended to `graph.bin` for sub-0.1ms stats reading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GraphHeader {
+    pub version: u32,
+    pub live_nodes: u32,
+    pub live_edges: u32,
+    pub file_count: u32,
+}
+
+/// Reads ONLY the 24-byte header of `graph.bin` with zero graph deserialization.
+pub fn read_header(path: &Path) -> Result<GraphHeader> {
+    let mut file = fs::File::open(path)
+        .with_context(|| format!("failed to open binary graph {}", path.display()))?;
+    let mut buf = [0u8; HEADER_LEN];
+    file.read_exact(&mut buf)
+        .with_context(|| format!("failed to read header from {}", path.display()))?;
+    parse_header(&buf)
+}
 
 /// Returns the default binary graph path `.harness/.state/graph.bin`.
 pub fn default_bin_path(repo_root: &Path) -> PathBuf {
@@ -25,30 +49,7 @@ pub fn default_json_path(repo_root: &Path) -> PathBuf {
     repo_root.join(".harness").join(".state").join("graph.json")
 }
 
-#[derive(Serialize, Deserialize)]
-struct GraphWire {
-    repo_root: String,
-    files: Vec<(String, String, (u64, u64))>,
-    nodes: Vec<WireNode>,
-    edges: Vec<CompactEdge>,
-    externals: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct WireNode {
-    file_idx: u32,
-    id_suffix: String,
-    kind: NodeKind,
-    label: String,
-    line: u32,
-    language: Option<Language>,
-    symbol_kind: Option<SymbolKind>,
-    signature: Option<String>,
-    exported: bool,
-    community: Option<usize>,
-}
-
-/// Serializes `graph` into a compact deduplicated binary file using `atomic_write`.
+/// Serializes `graph` into a header-prefixed compact binary file using `atomic_write`.
 pub fn save_binary(graph: &CodeGraph, path: &Path) -> Result<()> {
     let mut files = Vec::with_capacity(graph.file_hashes.len());
     let mut file_to_idx: FxHashMap<&str, u32> =
@@ -60,27 +61,10 @@ pub fn save_binary(graph: &CodeGraph, path: &Path) -> Result<()> {
         files.push((rel.clone(), hash.clone(), stat));
     }
 
-    let nodes = graph
-        .nodes
-        .iter()
-        .map(|n| {
-            let file_idx = file_to_idx.get(n.file.as_str()).copied().unwrap_or(INVALID_NODE_ID);
-            let id_suffix = encode_node_id_suffix(n, file_idx);
-            let label = if n.kind == NodeKind::File { String::new() } else { n.label.clone() };
-            WireNode {
-                file_idx,
-                id_suffix,
-                kind: n.kind,
-                label,
-                line: n.line,
-                language: n.language,
-                symbol_kind: n.symbol_kind,
-                signature: n.signature.clone(),
-                exported: n.exported,
-                community: n.community,
-            }
-        })
-        .collect();
+    let (nodes, live_nodes) = build_wire_nodes(graph, &file_to_idx);
+    let live_edges = u32::try_from(graph.edges.iter().filter(|e| !e.is_tombstone()).count())
+        .unwrap_or(u32::MAX);
+    let file_count = u32::try_from(files.len()).unwrap_or(u32::MAX);
 
     let wire = GraphWire {
         repo_root: graph.repo_root.clone(),
@@ -89,7 +73,15 @@ pub fn save_binary(graph: &CodeGraph, path: &Path) -> Result<()> {
         edges: graph.edges.clone(),
         externals: graph.externals.clone(),
     };
-    let bytes = postcard::to_stdvec(&wire).context("failed to serialize code graph to postcard")?;
+    let header = encode_header(GraphHeader {
+        version: GRAPH_VERSION,
+        live_nodes,
+        live_edges,
+        file_count,
+    });
+    let mut bytes = Vec::with_capacity(HEADER_LEN + graph.nodes.len() * 32 + graph.edges.len() * 8);
+    bytes.extend_from_slice(&header);
+    postcard::to_io(&wire, &mut bytes).context("failed to serialize code graph to postcard")?;
     atomic_write(path, &bytes)
 }
 
@@ -97,8 +89,9 @@ pub fn save_binary(graph: &CodeGraph, path: &Path) -> Result<()> {
 pub fn load_binary(path: &Path) -> Result<CodeGraph> {
     let bytes =
         fs::read(path).with_context(|| format!("failed to read binary graph {}", path.display()))?;
-    let wire: GraphWire =
-        postcard::from_bytes(&bytes).context("failed to deserialize binary code graph")?;
+    let _header = parse_header(&bytes)?;
+    let wire: GraphWire = postcard::from_bytes(&bytes[HEADER_LEN..])
+        .context("failed to deserialize binary code graph")?;
 
     let file_count = wire.files.len();
     let mut file_paths = Vec::with_capacity(file_count);
@@ -112,32 +105,7 @@ pub fn load_binary(path: &Path) -> Result<CodeGraph> {
         }
     }
 
-    let nodes = wire
-        .nodes
-        .into_iter()
-        .map(|wn| {
-            let file = file_paths.get(wn.file_idx as usize).cloned().unwrap_or_default();
-            let label = if wn.kind == NodeKind::File && wn.label.is_empty() {
-                file.rsplit('/').next().unwrap_or(&file).to_owned()
-            } else {
-                wn.label
-            };
-            let id = decode_node_id(wn.kind, &file, &label, wn.id_suffix);
-            GraphNode {
-                id,
-                kind: wn.kind,
-                label,
-                file,
-                line: wn.line,
-                language: wn.language,
-                symbol_kind: wn.symbol_kind,
-                signature: wn.signature,
-                exported: wn.exported,
-                community: wn.community,
-            }
-        })
-        .collect();
-
+    let nodes = unpack_wire_nodes(wire.nodes, &file_paths);
     let mut graph = CodeGraph {
         repo_root: wire.repo_root,
         file_hashes,
@@ -151,34 +119,31 @@ pub fn load_binary(path: &Path) -> Result<CodeGraph> {
     Ok(graph)
 }
 
-fn encode_node_id_suffix(node: &GraphNode, file_idx: u32) -> String {
-    if node.is_tombstone() {
-        return String::new();
-    }
-    if file_idx != INVALID_NODE_ID {
-        match node.kind {
-            NodeKind::File => return String::new(),
-            NodeKind::Symbol => {
-                let prefix = format!("sym:{}::", node.file);
-                if let Some(rest) = node.id.strip_prefix(&prefix) {
-                    return if rest == node.label { String::new() } else { rest.to_owned() };
-                }
-            }
-            NodeKind::Semantic => {}
-        }
-    }
-    node.id.clone()
+fn encode_header(header: GraphHeader) -> [u8; HEADER_LEN] {
+    let mut buf = [0u8; HEADER_LEN];
+    buf[..8].copy_from_slice(GRAPH_MAGIC);
+    buf[8..12].copy_from_slice(&header.version.to_le_bytes());
+    buf[12..16].copy_from_slice(&header.live_nodes.to_le_bytes());
+    buf[16..20].copy_from_slice(&header.live_edges.to_le_bytes());
+    buf[20..24].copy_from_slice(&header.file_count.to_le_bytes());
+    buf
 }
 
-fn decode_node_id(kind: NodeKind, file: &str, label: &str, suffix: String) -> String {
-    match kind {
-        NodeKind::File if suffix.is_empty() && !file.is_empty() => CodeGraph::file_node_id(file),
-        NodeKind::Symbol if !file.is_empty() && suffix.is_empty() => {
-            CodeGraph::symbol_node_id(file, label)
-        }
-        NodeKind::Symbol if !file.is_empty() && !suffix.starts_with("sym:") => {
-            CodeGraph::symbol_node_id(file, &suffix)
-        }
-        _ => suffix,
+fn parse_header(buf: &[u8]) -> Result<GraphHeader> {
+    if buf.len() < HEADER_LEN {
+        bail!("binary graph header truncated ({} < {HEADER_LEN} bytes)", buf.len());
     }
+    if &buf[..8] != GRAPH_MAGIC {
+        bail!("invalid binary graph magic header");
+    }
+    let version = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+    if version != GRAPH_VERSION {
+        bail!("unsupported binary graph version {version} (expected {GRAPH_VERSION})");
+    }
+    Ok(GraphHeader {
+        version,
+        live_nodes: u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]),
+        live_edges: u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]),
+        file_count: u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]),
+    })
 }

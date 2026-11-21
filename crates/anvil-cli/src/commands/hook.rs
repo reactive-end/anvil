@@ -15,6 +15,7 @@ use anvil_adapters::{antigravity, claude_code};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, classify_files};
+use anvil_core::fs_util::with_file_lock;
 use anvil_core::git::{self, DiffScope};
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
@@ -25,8 +26,8 @@ use serde_json::Value;
 
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
 use payload::{
-    extract_command_field, extract_rel_file, is_circuit_recovery_command, is_continuation_active,
-    is_mutating_file_tool, is_read_only_tool, resolve_hook_root, should_wrap_with_anvil_run,
+    extract_command_field, extract_rel_file, is_circuit_recovery_command, is_mutating_file_tool,
+    is_read_only_tool, resolve_hook_root, should_bypass_stop, should_wrap_with_anvil_run,
 };
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
@@ -50,7 +51,7 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         }
         HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input),
         HookEvent::PostToolUse => handle_post_tool_use(&effective_root, &config, &input),
-        HookEvent::Stop => handle_stop(&effective_root, &config, is_continuation_active(&raw_stdin)),
+        HookEvent::Stop => handle_stop(&effective_root, &config, should_bypass_stop(&raw_stdin)),
     };
 
     let rendered = match adapter {
@@ -64,25 +65,23 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
 fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
     let mut messages = Vec::new();
     let author = resolve_author_fast(root).unwrap_or_else(|_| "hook".to_owned());
-    if let Ok(mut mem) = MemoryEngine::open(root, author) {
-        let _ = mem.sync();
-        if let Ok(hits) = mem.session_context(450)
-            && !hits.is_empty()
-        {
-            let summary: Vec<String> = hits
-                .into_iter()
-                .map(|h| format!("[{}] {}", h.kind, h.title))
-                .collect();
-            messages.push(InboxMessage::new(
-                "anvil-memory",
-                MessageLevel::Info,
-                summary.join("; "),
-                None,
-            ));
-        }
+    if let Ok(mem) = MemoryEngine::open(root, author)
+        && let Ok(hits) = mem.session_context(450)
+        && !hits.is_empty()
+    {
+        let summary: Vec<String> = hits
+            .into_iter()
+            .map(|h| format!("[{}] {}", h.kind, h.title))
+            .collect();
+        messages.push(InboxMessage::new(
+            "anvil-memory",
+            MessageLevel::Info,
+            summary.join("; "),
+            None,
+        ));
     }
-    if let Ok(g) = store::load_binary(&store::default_bin_path(root)) {
-        let msg = format!("Graph ready ({} nodes, {} edges)", g.nodes.len(), g.edges.len());
+    if let Ok(header) = store::read_header(&store::default_bin_path(root)) {
+        let msg = format!("Graph ready ({} nodes, {} edges)", header.live_nodes, header.live_edges);
         messages.push(InboxMessage::new("anvil-graph", MessageLevel::Info, msg, None));
     }
     if let Ok(tasks) = list_tasks(root)
@@ -152,11 +151,16 @@ fn handle_post_tool_use(
     {
         collect_post_tool_messages(root, &rel, config, &mut messages);
         let bin_path = store::default_bin_path(root);
-        if bin_path.is_file()
-            && let Ok(mut graph) = store::load_binary(&bin_path)
-            && matches!(update_file(&mut graph, root, &rel, config), Ok(true))
-        {
-            let _ = store::save_binary(&graph, &bin_path);
+        if bin_path.is_file() {
+            let lock_path = root.join(".harness/.state/graph.lock");
+            let _ = with_file_lock(&lock_path, 2000, || {
+                if let Ok(mut graph) = store::load_binary(&bin_path)
+                    && matches!(update_file(&mut graph, root, &rel, config), Ok(true))
+                {
+                    let _ = store::save_binary(&graph, &bin_path);
+                }
+                Ok(())
+            });
         }
         if let Ok(mut mem) = MemoryEngine::open_without_sync(root, "hook") {
             let _ = mem.mark_files_changed(std::slice::from_ref(&rel));
@@ -166,11 +170,11 @@ fn handle_post_tool_use(
     HookOutcome::with_messages(messages)
 }
 
-fn handle_stop(root: &Path, config: &AnvilConfig, continuation_active: bool) -> HookOutcome {
-    task_auto::refresh_tasks_json_if_changed(root);
-    if continuation_active {
+fn handle_stop(root: &Path, config: &AnvilConfig, bypass_stop: bool) -> HookOutcome {
+    if bypass_stop {
         return HookOutcome::allow();
     }
+    task_auto::refresh_tasks_json_if_changed(root);
     if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status()
         && st.is_open()
     {
