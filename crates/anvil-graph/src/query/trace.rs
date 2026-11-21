@@ -1,13 +1,14 @@
-//! Shortest path, node explanation, and anti-slop upstream origin tracing.
+//! Shortest path and architectural node explanation.
 
 use std::collections::VecDeque;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 
-use crate::analytics::find_god_nodes;
-use crate::model::{CodeGraph, GraphEdgeKind, GraphNode, NodeKind};
+use crate::model::{CodeGraph, GraphEdgeKind, GraphNode, NodeId};
 use crate::query::resolve_target_node;
+
+const GOD_NODE_DEGREE_THRESHOLD: usize = 12;
 
 /// Directed edge step in a shortest path between two graph nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -45,51 +46,42 @@ pub struct ExplainResult {
     pub is_god_node: bool,
 }
 
-/// Upstream source-of-truth trace for anti-slop edits (`find_origin`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct OriginResult {
-    pub queried: String,
-    pub origin_node_id: String,
-    pub origin_file: String,
-    pub origin_label: String,
-    pub origin_line: u32,
-    pub hops: Vec<String>,
-}
-
 /// Finds the shortest directed path between `from` and `to` (resolved by ID, file path, or symbol).
 pub fn shortest_path(graph: &CodeGraph, from: &str, to: &str) -> Option<PathResult> {
     let start_id = resolve_target_node(graph, from)?;
     let goal_id = resolve_target_node(graph, to)?;
     if start_id == goal_id {
+        let id_str = graph.get_node(start_id)?.id.clone();
         return Some(PathResult {
-            from: start_id,
-            to: goal_id,
+            from: id_str.clone(),
+            to: id_str,
             steps: Vec::new(),
         });
     }
 
     let mut queue = VecDeque::new();
-    let mut visited: FxHashSet<String> = FxHashSet::default();
-    let mut parent: FxHashMap<String, (String, GraphEdgeKind, u32)> = FxHashMap::default();
-    queue.push_back(start_id.clone());
-    visited.insert(start_id.clone());
+    let mut visited: FxHashSet<NodeId> = FxHashSet::default();
+    let mut parent: FxHashMap<NodeId, (NodeId, GraphEdgeKind, u32)> = FxHashMap::default();
+    queue.push_back(start_id);
+    visited.insert(start_id);
 
     while let Some(curr) = queue.pop_front() {
-        if let Some(edge_idxs) = graph.forward_adj.get(&curr) {
-            for &idx in edge_idxs {
-                let Some(edge) = graph.edges.get(idx) else {
-                    continue;
-                };
-                if edge.source.is_empty() || !edge.resolved {
-                    continue;
+        let Some(edge_idxs) = graph.forward_adj.get(curr as usize) else {
+            continue;
+        };
+        for &idx in edge_idxs {
+            let Some(edge) = graph.edges.get(idx as usize) else {
+                continue;
+            };
+            if !edge.is_resolved() {
+                continue;
+            }
+            if visited.insert(edge.target) {
+                parent.insert(edge.target, (curr, edge.kind, edge.line));
+                if edge.target == goal_id {
+                    return Some(reconstruct_path(graph, start_id, goal_id, &parent));
                 }
-                if visited.insert(edge.target.clone()) {
-                    parent.insert(edge.target.clone(), (curr.clone(), edge.kind, edge.line));
-                    if edge.target == goal_id {
-                        return Some(reconstruct_path(start_id, goal_id, &parent));
-                    }
-                    queue.push_back(edge.target.clone());
-                }
+                queue.push_back(edge.target);
             }
         }
     }
@@ -97,70 +89,83 @@ pub fn shortest_path(graph: &CodeGraph, from: &str, to: &str) -> Option<PathResu
 }
 
 fn reconstruct_path(
-    start_id: String,
-    goal_id: String,
-    parent: &FxHashMap<String, (String, GraphEdgeKind, u32)>,
+    graph: &CodeGraph,
+    start_id: NodeId,
+    goal_id: NodeId,
+    parent: &FxHashMap<NodeId, (NodeId, GraphEdgeKind, u32)>,
 ) -> PathResult {
     let mut steps = Vec::new();
-    let mut cur = goal_id.clone();
+    let mut cur = goal_id;
     while cur != start_id {
-        let Some((prev, kind, line)) = parent.get(&cur) else {
+        let Some(&(prev, kind, line)) = parent.get(&cur) else {
             break;
         };
+        let from_str = graph.get_node(prev).map_or_else(String::new, |n| n.id.clone());
+        let to_str = graph.get_node(cur).map_or_else(String::new, |n| n.id.clone());
         steps.push(PathStep {
-            from: prev.clone(),
-            to: cur.clone(),
-            kind: *kind,
-            line: *line,
+            from: from_str,
+            to: to_str,
+            kind,
+            line,
         });
-        cur = prev.clone();
+        cur = prev;
     }
     steps.reverse();
     PathResult {
-        from: start_id,
-        to: goal_id,
+        from: graph.get_node(start_id).map_or_else(String::new, |n| n.id.clone()),
+        to: graph.get_node(goal_id).map_or_else(String::new, |n| n.id.clone()),
         steps,
     }
 }
 
-/// Returns incoming/outgoing neighbors, community, and god-node status for `symbol_or_file`.
+/// Returns incoming/outgoing neighbors, community, and O(1) degree god-node status.
 pub fn explain(graph: &CodeGraph, symbol_or_file: &str) -> Option<ExplainResult> {
-    let node_id = resolve_target_node(graph, symbol_or_file)?;
-    let node = graph.nodes.get(&node_id)?.clone();
+    let nid = resolve_target_node(graph, symbol_or_file)?;
+    let node = graph.get_node(nid)?.clone();
 
-    let incoming = graph
-        .incoming_edges(&node_id)
+    let mut non_contain_in = 0usize;
+    let incoming: Vec<NeighborEdge> = graph
+        .incoming_edges(nid)
         .into_iter()
-        .map(|e| NeighborEdge {
-            node_id: e.source.clone(),
-            file: graph
-                .nodes
-                .get(&e.source)
-                .map(|n| n.file.clone())
-                .unwrap_or_default(),
-            kind: e.kind,
-            line: e.line,
+        .filter_map(|e| {
+            if e.kind != GraphEdgeKind::Contains {
+                non_contain_in += 1;
+            }
+            let src = graph.get_node(e.source)?;
+            Some(NeighborEdge {
+                node_id: src.id.clone(),
+                file: src.file.clone(),
+                kind: e.kind,
+                line: e.line,
+            })
         })
         .collect();
 
-    let outgoing = graph
-        .outgoing_edges(&node_id)
+    let mut non_contain_out = 0usize;
+    let outgoing: Vec<NeighborEdge> = graph
+        .outgoing_edges(nid)
         .into_iter()
-        .map(|e| NeighborEdge {
-            node_id: e.target.clone(),
-            file: graph
-                .nodes
-                .get(&e.target)
-                .map(|n| n.file.clone())
-                .unwrap_or_default(),
-            kind: e.kind,
-            line: e.line,
+        .filter_map(|e| {
+            if e.kind != GraphEdgeKind::Contains {
+                non_contain_out += 1;
+            }
+            let (node_id, file) = if e.is_resolved() {
+                let tgt = graph.get_node(e.target)?;
+                (tgt.id.clone(), tgt.file.clone())
+            } else {
+                let ext = graph.external_str(e.target)?;
+                (format!("ext:{ext}"), String::new())
+            };
+            Some(NeighborEdge {
+                node_id,
+                file,
+                kind: e.kind,
+                line: e.line,
+            })
         })
         .collect();
 
-    let is_god_node = find_god_nodes(graph, 10)
-        .iter()
-        .any(|g| g.id == node_id && g.total_degree >= 5);
+    let is_god_node = non_contain_in + non_contain_out >= GOD_NODE_DEGREE_THRESHOLD;
 
     Some(ExplainResult {
         community: node.community,
@@ -169,60 +174,4 @@ pub fn explain(graph: &CodeGraph, symbol_or_file: &str) -> Option<ExplainResult>
         outgoing,
         is_god_node,
     })
-}
-
-/// Traces upstream `ReExports` / `Extends` / `Imports` chains to find the source-of-truth definition.
-pub fn find_origin(graph: &CodeGraph, symbol_or_file: &str) -> Option<OriginResult> {
-    let start_id = resolve_target_node(graph, symbol_or_file)?;
-    let mut current = start_id;
-    let mut visited = FxHashSet::default();
-    let mut hops = Vec::new();
-
-    while visited.insert(current.clone()) {
-        hops.push(current.clone());
-        let next = graph
-            .outgoing_edges(&current)
-            .into_iter()
-            .find(|e| {
-                e.resolved
-                    && matches!(
-                        e.kind,
-                        GraphEdgeKind::ReExports | GraphEdgeKind::Extends | GraphEdgeKind::Implements
-                    )
-            })
-            .or_else(|| {
-                let node = graph.nodes.get(&current)?;
-                if node.kind == NodeKind::File && is_barrel_like(&node.file) {
-                    graph
-                        .outgoing_edges(&current)
-                        .into_iter()
-                        .find(|e| e.resolved && e.kind == GraphEdgeKind::Imports)
-                } else {
-                    None
-                }
-            });
-
-        match next {
-            Some(edge) => current = edge.target.clone(),
-            None => break,
-        }
-    }
-
-    let origin = graph.nodes.get(&current)?;
-    Some(OriginResult {
-        queried: symbol_or_file.to_owned(),
-        origin_node_id: origin.id.clone(),
-        origin_file: origin.file.clone(),
-        origin_label: origin.label.clone(),
-        origin_line: origin.line,
-        hops,
-    })
-}
-
-fn is_barrel_like(file: &str) -> bool {
-    let name = file.rsplit('/').next().unwrap_or(file);
-    matches!(
-        name,
-        "index.ts" | "index.tsx" | "index.js" | "index.jsx" | "__init__.py"
-    )
 }

@@ -33,6 +33,7 @@ pub fn detect_language(path: &Path) -> Language {
         "py" | "pyi" => Language::Python,
         "kt" | "kts" => Language::Kotlin,
         "dart" => Language::Dart,
+        "rs" => Language::Rust,
         "json" => Language::Json,
         "yaml" | "yml" => Language::Yaml,
         "md" | "mdx" => Language::Markdown,

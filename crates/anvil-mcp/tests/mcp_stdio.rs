@@ -181,3 +181,41 @@ fn mcp_graph_tools_roundtrip() {
     assert_eq!(parse_tool_json(&resps[3])["found"], json!(true));
     assert_eq!(parse_tool_json(&resps[4])["found"], json!(true));
 }
+
+#[test]
+fn mcp_memory_syncs_new_external_chunk_on_chunks_dir_mtime_change() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+
+    let first = run_session(
+        &mut server,
+        &[call_req(1, "mem_search", json!({ "query": "external chunk", "limit": 5 }))],
+    );
+    assert_eq!(parse_tool_json(&first[0])["count"], json!(0));
+
+    let chunks_dir = repo.path().join(".harness/memory/chunks");
+    fs::create_dir_all(&chunks_dir).unwrap();
+    let chunk = json!({
+        "id": "01J00000000000000000000002",
+        "topic_key": "gotcha/external-chunk",
+        "kind": "gotcha",
+        "title": "External chunk arrival",
+        "what": "Teammate pulled a new memory chunk",
+        "why": "MCP server must detect chunks dir mtime change",
+        "location": "src/math.ts",
+        "learned": "Check chunks dir mtime before skipping sync",
+        "related_files": ["src/math.ts"],
+        "related_symbols": [],
+        "author": "teammate",
+        "created_at": 1700000000000i64,
+        "updated_at": 1700000000000i64,
+        "expires_at": null
+    });
+    fs::write(chunks_dir.join("teammate-01J00000000000000000000002.jsonl"), format!("{chunk}\n")).unwrap();
+
+    let second = run_session(
+        &mut server,
+        &[call_req(2, "mem_search", json!({ "query": "external chunk", "limit": 5 }))],
+    );
+    assert_eq!(parse_tool_json(&second[0])["count"], json!(1));
+}

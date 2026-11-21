@@ -1,7 +1,6 @@
 //! Thin adapters for Antigravity and Claude Code hooks, configs, docs, and skills.
 
 pub mod antigravity;
-mod atomic_fs;
 pub mod claude_code;
 pub mod contract;
 pub mod inbox;

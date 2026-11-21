@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
 use crate::antigravity::config::{ensure_array_field, ensure_object_field, read_json_object};
-use crate::atomic_fs;
 use crate::contract::HookEvent;
+use crate::sync::write_if_changed;
 
 const CLAUDE_EVENTS: &[HookEvent] = &[
     HookEvent::SessionStart,
@@ -47,7 +47,7 @@ pub fn merge_settings_config(repo_root: &Path) -> Result<bool> {
 
     let formatted = serde_json::to_string_pretty(&Value::Object(root))
         .context("failed to serialize .claude/settings.json")?;
-    atomic_fs::write_if_changed(&path, &format!("{formatted}\n"))
+    write_if_changed(&path, &format!("{formatted}\n"))
 }
 
 /// Non-destructively merges the `anvil mcp` server entry into root `.mcp.json`.
@@ -66,7 +66,7 @@ pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
 
     let formatted = serde_json::to_string_pretty(&Value::Object(root))
         .context("failed to serialize .mcp.json")?;
-    atomic_fs::write_if_changed(&path, &format!("{formatted}\n"))
+    write_if_changed(&path, &format!("{formatted}\n"))
 }
 
 fn upsert_claude_hook_entry(entries: &mut Vec<Value>, command: &str, use_matcher: bool) {

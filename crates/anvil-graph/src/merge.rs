@@ -1,120 +1,178 @@
 //! Multi-repo unified graph merging (e.g. `fliiper/` + `centinela/`).
 
-use rustc_hash::FxHashMap;
+use crate::model::{
+    CodeGraph, CompactEdge, GraphEdgeKind, GraphNode, INVALID_NODE_ID, NodeId, NodeKind,
+};
 
-use crate::model::{CodeGraph, GraphEdge, GraphEdgeKind, GraphNode, NodeKind};
+const COMMON_UNRESOLVED_CALLS: &[&str] = &[
+    "map", "get", "set", "push", "pop", "filter", "reduce", "forEach", "find", "some", "every",
+    "len", "is_empty", "new", "from", "into", "clone", "default", "to_string", "toString",
+    "valueOf", "trim", "split", "join", "slice", "includes", "contains", "keys", "values",
+    "entries", "parse", "stringify", "resolve", "reject", "then", "catch", "finally", "next",
+    "iter", "collect", "unwrap", "expect", "ok", "err", "run", "init", "build", "load", "save",
+    "read", "write", "open", "close", "log", "warn", "error", "debug", "info", "format", "print",
+    "println", "assert", "add", "remove", "insert", "delete", "clear", "update", "create",
+    "start", "stop", "handle", "apply", "call", "bind", "subscribe", "pipe", "emit", "send",
+    "fetch", "post", "put", "patch", "head",
+];
 
 /// Merges multiple named repository graphs into a single prefix-namespaced `CodeGraph`.
 pub fn merge_graphs(repos: &[(&str, &CodeGraph)]) -> CodeGraph {
     let mut merged = CodeGraph::new("multi-repo");
-
     for &(repo_name, sub) in repos {
-        let prefix = CodeGraph::normalize_rel_path(repo_name).trim_matches('/').to_owned();
-        let mut id_map: FxHashMap<&str, String> = FxHashMap::default();
-        id_map.reserve(sub.nodes.len());
-
-        for (rel_path, hash) in &sub.file_hashes {
-            merged
-                .file_hashes
-                .insert(format!("{prefix}/{rel_path}"), hash.clone());
-        }
-
-        for (old_id, node) in &sub.nodes {
-            let new_file = if node.file.is_empty() {
-                String::new()
-            } else {
-                format!("{prefix}/{}", node.file)
-            };
-            let new_id = prefix_node_id(&prefix, old_id, node.kind);
-            id_map.insert(old_id.as_str(), new_id.clone());
-
-            merged.nodes.insert(
-                new_id.clone(),
-                GraphNode {
-                    id: new_id,
-                    kind: node.kind,
-                    label: node.label.clone(),
-                    file: new_file,
-                    line: node.line,
-                    language: node.language,
-                    symbol_kind: node.symbol_kind,
-                    signature: node.signature.clone(),
-                    exported: node.exported,
-                    community: node.community,
-                },
-            );
-        }
-
-        for edge in &sub.edges {
-            let source = id_map
-                .get(edge.source.as_str())
-                .cloned()
-                .unwrap_or_else(|| prefix_node_id(&prefix, &edge.source, NodeKind::File));
-            let target = id_map
-                .get(edge.target.as_str())
-                .cloned()
-                .unwrap_or_else(|| edge.target.clone());
-            merged.edges.push(GraphEdge {
-                source,
-                target,
-                kind: edge.kind,
-                line: edge.line,
-                resolved: edge.resolved,
-                raw_target: edge.raw_target.clone(),
-            });
-        }
+        merge_subrepo(&mut merged, repo_name, sub);
     }
-
     merged.rebuild_indexes();
     link_cross_repo_symbols(&mut merged);
-    merged.rebuild_indexes();
+    merged.rebuild_adjacency();
     merged
+}
+
+fn merge_subrepo(merged: &mut CodeGraph, repo_name: &str, sub: &CodeGraph) {
+    let prefix = CodeGraph::normalize_rel_path(repo_name).trim_matches('/').to_owned();
+    let mut id_map = vec![INVALID_NODE_ID; sub.nodes.len()];
+
+    for (rel_path, hash) in &sub.file_hashes {
+        merged.file_hashes.insert(format!("{prefix}/{rel_path}"), hash.clone());
+    }
+    for (rel_path, stat) in &sub.file_stats {
+        merged.file_stats.insert(format!("{prefix}/{rel_path}"), *stat);
+    }
+
+    for (old_idx, node) in sub.nodes.iter().enumerate() {
+        if node.is_tombstone() {
+            continue;
+        }
+        let new_file = if node.file.is_empty() {
+            String::new()
+        } else {
+            format!("{prefix}/{}", node.file)
+        };
+        let new_nid = merged.nodes.len() as u32;
+        id_map[old_idx] = new_nid;
+        merged.nodes.push(GraphNode {
+            id: prefix_node_id(&prefix, &node.id, node.kind),
+            kind: node.kind,
+            label: node.label.clone(),
+            file: new_file,
+            line: node.line,
+            language: node.language,
+            symbol_kind: node.symbol_kind,
+            signature: node.signature.clone(),
+            exported: node.exported,
+            community: node.community,
+        });
+    }
+
+    for edge in &sub.edges {
+        if let Some(mapped) = remap_subrepo_edge(merged, sub, edge, &id_map) {
+            merged.edges.push(mapped);
+        }
+    }
+}
+
+fn remap_subrepo_edge(
+    merged: &mut CodeGraph,
+    sub: &CodeGraph,
+    edge: &CompactEdge,
+    id_map: &[u32],
+) -> Option<CompactEdge> {
+    if edge.is_tombstone() {
+        return None;
+    }
+    let new_src = id_map.get(edge.source as usize).copied().unwrap_or(INVALID_NODE_ID);
+    if new_src == INVALID_NODE_ID {
+        return None;
+    }
+    let new_tgt = if edge.is_resolved() {
+        let mapped = id_map.get(edge.target as usize).copied().unwrap_or(INVALID_NODE_ID);
+        if mapped == INVALID_NODE_ID {
+            return None;
+        }
+        mapped
+    } else {
+        let ext = sub.external_str(edge.target)?;
+        merged.intern_external(ext)
+    };
+    Some(CompactEdge {
+        source: new_src,
+        target: new_tgt,
+        kind: edge.kind,
+        line: edge.line,
+    })
 }
 
 fn prefix_node_id(prefix: &str, old_id: &str, kind: NodeKind) -> String {
     match kind {
-        NodeKind::File => {
-            if let Some(rest) = old_id.strip_prefix("file:") {
-                format!("file:{prefix}/{rest}")
-            } else {
-                format!("file:{prefix}/{old_id}")
-            }
-        }
-        NodeKind::Symbol => {
-            if let Some(rest) = old_id.strip_prefix("sym:") {
-                format!("sym:{prefix}/{rest}")
-            } else {
-                format!("sym:{prefix}/{old_id}")
-            }
-        }
-        NodeKind::Semantic => {
-            if let Some(rest) = old_id.strip_prefix("sem:") {
-                format!("sem:{prefix}/{rest}")
-            } else {
-                format!("sem:{prefix}/{old_id}")
-            }
-        }
+        NodeKind::File => format!("file:{prefix}/{}", old_id.strip_prefix("file:").unwrap_or(old_id)),
+        NodeKind::Symbol => format!("sym:{prefix}/{}", old_id.strip_prefix("sym:").unwrap_or(old_id)),
+        NodeKind::Semantic => format!("sem:{prefix}/{}", old_id.strip_prefix("sem:").unwrap_or(old_id)),
     }
 }
 
 fn link_cross_repo_symbols(merged: &mut CodeGraph) {
     let mut cross_edges = Vec::new();
     for edge in &merged.edges {
-        if edge.resolved {
+        if edge.is_tombstone() || edge.is_resolved() {
             continue;
         }
-        if let Some(candidates) = merged.symbol_index.get(&edge.raw_target)
-            && let Some(target_id) = candidates.first()
-        {
-            cross_edges.push(GraphEdge {
-                source: edge.source.clone(),
-                target: target_id.clone(),
+        if !matches!(
+            edge.kind,
+            GraphEdgeKind::Calls
+                | GraphEdgeKind::Extends
+                | GraphEdgeKind::Implements
+                | GraphEdgeKind::Provides
+                | GraphEdgeKind::Injects
+                | GraphEdgeKind::UsesProp
+        ) {
+            continue;
+        }
+        let Some(raw_target) = merged.external_str(edge.target) else {
+            continue;
+        };
+        if !is_linkable_cross_symbol(raw_target) {
+            continue;
+        }
+        let Some(src_node) = merged.get_node(edge.source) else {
+            continue;
+        };
+        let src_repo = src_node.file.split('/').next().unwrap_or("");
+        if let Some(target_nid) = find_cross_repo_target(merged, raw_target, src_repo) {
+            cross_edges.push(CompactEdge {
+                source: edge.source,
+                target: target_nid,
                 kind: GraphEdgeKind::SemanticLink,
                 line: edge.line,
-                resolved: true,
-                raw_target: edge.raw_target.clone(),
             });
         }
     }
     merged.edges.extend(cross_edges);
+}
+
+fn is_linkable_cross_symbol(raw: &str) -> bool {
+    let t = raw.trim();
+    t.len() >= 4
+        && !t.contains('.')
+        && !t.contains('/')
+        && !COMMON_UNRESOLVED_CALLS.contains(&t)
+}
+
+fn find_cross_repo_target(
+    merged: &CodeGraph,
+    raw_target: &str,
+    src_repo: &str,
+) -> Option<NodeId> {
+    let candidates = merged.symbol_index.get(raw_target)?;
+    let matches: Vec<NodeId> = candidates
+        .iter()
+        .copied()
+        .filter(|&nid| {
+            merged.get_node(nid).is_some_and(|n| {
+                n.label == raw_target
+                    && n.exported
+                    && n.file.split('/').next().unwrap_or("") != src_repo
+            })
+        })
+        .collect();
+    (!matches.is_empty() && matches.len() <= 3).then(|| matches[0])
 }

@@ -36,8 +36,8 @@ pub struct GodNode {
 pub fn detect_communities(graph: &mut CodeGraph) -> Vec<CommunitySummary> {
     let mut files: Vec<String> = graph
         .nodes
-        .values()
-        .filter(|n| n.kind == NodeKind::File)
+        .iter()
+        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::File)
         .map(|n| n.file.clone())
         .collect();
     files.sort();
@@ -48,20 +48,23 @@ pub fn detect_communities(graph: &mut CodeGraph) -> Vec<CommunitySummary> {
         .map(|(i, f)| (f.as_str(), i))
         .collect();
 
+    let mut node_to_file_idx = vec![usize::MAX; graph.nodes.len()];
+    for (nid, node) in graph.nodes.iter().enumerate() {
+        if !node.is_tombstone()
+            && let Some(&fi) = file_to_idx.get(node.file.as_str())
+        {
+            node_to_file_idx[nid] = fi;
+        }
+    }
+
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); files.len()];
     for edge in &graph.edges {
-        if edge.source.is_empty() || !edge.resolved || edge.kind == GraphEdgeKind::Contains {
+        if !edge.is_resolved() || edge.kind == GraphEdgeKind::Contains {
             continue;
         }
-        let Some(sf) = graph.nodes.get(&edge.source).map(|n| n.file.as_str()) else {
-            continue;
-        };
-        let Some(tf) = graph.nodes.get(&edge.target).map(|n| n.file.as_str()) else {
-            continue;
-        };
-        if sf != tf
-            && let (Some(&u), Some(&v)) = (file_to_idx.get(sf), file_to_idx.get(tf))
-        {
+        let u = node_to_file_idx.get(edge.source as usize).copied().unwrap_or(usize::MAX);
+        let v = node_to_file_idx.get(edge.target as usize).copied().unwrap_or(usize::MAX);
+        if u != usize::MAX && v != usize::MAX && u != v {
             adj[u].push(v);
             adj[v].push(u);
         }
@@ -78,8 +81,10 @@ pub fn detect_communities(graph: &mut CodeGraph) -> Vec<CommunitySummary> {
         file_comm.insert(f.clone(), cid);
     }
 
-    for node in graph.nodes.values_mut() {
-        node.community = file_comm.get(&node.file).copied();
+    for node in &mut graph.nodes {
+        if !node.is_tombstone() {
+            node.community = file_comm.get(&node.file).copied();
+        }
     }
     summarize_communities(&files, &file_comm)
 }
@@ -143,11 +148,12 @@ fn summarize_communities(
 pub fn find_god_nodes(graph: &CodeGraph, top_n: usize) -> Vec<GodNode> {
     let mut ranked: Vec<GodNode> = graph
         .nodes
-        .values()
-        .filter(|n| n.kind != NodeKind::Semantic)
-        .filter_map(|node| {
-            let in_deg = count_non_contain_edges(graph, graph.reverse_adj.get(&node.id));
-            let out_deg = count_non_contain_edges(graph, graph.forward_adj.get(&node.id));
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| !n.is_tombstone() && n.kind != NodeKind::Semantic)
+        .filter_map(|(nid, node)| {
+            let in_deg = count_non_contain_edges(graph, graph.reverse_adj.get(nid));
+            let out_deg = count_non_contain_edges(graph, graph.forward_adj.get(nid));
             let total = in_deg + out_deg;
             (total > 0).then(|| GodNode {
                 id: node.id.clone(),
@@ -169,14 +175,14 @@ pub fn find_god_nodes(graph: &CodeGraph, top_n: usize) -> Vec<GodNode> {
     ranked
 }
 
-fn count_non_contain_edges(graph: &CodeGraph, idxs: Option<&Vec<usize>>) -> usize {
+fn count_non_contain_edges(graph: &CodeGraph, idxs: Option<&Vec<u32>>) -> usize {
     idxs.map(|v| {
         v.iter()
             .filter(|&&i| {
                 graph
                     .edges
-                    .get(i)
-                    .is_some_and(|e| !e.source.is_empty() && e.kind != GraphEdgeKind::Contains)
+                    .get(i as usize)
+                    .is_some_and(|e| !e.is_tombstone() && e.kind != GraphEdgeKind::Contains)
             })
             .count()
     })
@@ -189,15 +195,23 @@ pub fn generate_report(graph: &mut CodeGraph) -> String {
     let god_nodes = find_god_nodes(graph, 10);
     let cycles = detect_cycles(graph, 10);
 
-    let file_count = graph.nodes.values().filter(|n| n.kind == NodeKind::File).count();
-    let sym_count = graph.nodes.values().filter(|n| n.kind == NodeKind::Symbol).count();
-    let sem_count = graph.nodes.values().filter(|n| n.kind == NodeKind::Semantic).count();
-    let total_edges = graph.edges.iter().filter(|e| !e.source.is_empty()).count();
-    let resolved_edges = graph
-        .edges
+    let file_count = graph
+        .nodes
         .iter()
-        .filter(|e| !e.source.is_empty() && e.resolved)
+        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::File)
         .count();
+    let sym_count = graph
+        .nodes
+        .iter()
+        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::Symbol)
+        .count();
+    let sem_count = graph
+        .nodes
+        .iter()
+        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::Semantic)
+        .count();
+    let total_edges = graph.edges.iter().filter(|e| !e.is_tombstone()).count();
+    let resolved_edges = graph.edges.iter().filter(|e| e.is_resolved()).count();
 
     let mut out = String::new();
     let _ = writeln!(out, "# Anvil Code Graph Report\n");

@@ -1,46 +1,23 @@
 //! Conflict-free Git sync via immutable JSONL chunks in `.harness/memory/chunks/`.
 
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use anvil_core::fs_util::{atomic_write, sanitize_author};
 use chrono::Utc;
-use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 
 use crate::model::{MemoryChunkRecord, SyncStats};
 use crate::redactor;
 use crate::store::MemoryStore;
 
-/// Sanitizes an author identifier so chunk filenames remain portable across OSes.
-pub fn sanitize_author(author: &str) -> String {
-    let cleaned: String = author
-        .trim()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if cleaned.is_empty() {
-        "local".to_owned()
-    } else {
-        cleaned
-    }
-}
-
-/// Writes an immutable JSONL chunk file `<author>-<ulid>.jsonl` and returns `(path, blake3_hex)`.
+/// Writes an immutable JSONL chunk file `<author>-<ulid>.jsonl` atomically and returns `(path, blake3_hex)`.
 pub fn append_record(
     chunks_dir: &Path,
     author: &str,
     record: &MemoryChunkRecord,
 ) -> Result<(PathBuf, String)> {
-    fs::create_dir_all(chunks_dir).with_context(|| {
-        format!("failed to create memory chunks dir {}", chunks_dir.display())
-    })?;
     let safe_author = sanitize_author(author);
     let filename = format!("{safe_author}-{}.jsonl", ulid::Ulid::new());
     let file_path = chunks_dir.join(&filename);
@@ -48,12 +25,7 @@ pub fn append_record(
     line.push('\n');
 
     let hash = blake3::hash(line.as_bytes()).to_hex().to_string();
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&file_path)
-        .with_context(|| format!("failed to create chunk file {}", file_path.display()))?;
-    file.write_all(line.as_bytes())
+    atomic_write(&file_path, line.as_bytes())
         .with_context(|| format!("failed to write chunk file {}", file_path.display()))?;
     Ok((file_path, hash))
 }
@@ -64,15 +36,16 @@ struct PendingChunk {
     records: Vec<MemoryChunkRecord>,
 }
 
-/// Idempotently ingests all new or modified `*.jsonl` chunks in a single SQLite transaction.
+/// Idempotently ingests all new `*.jsonl` chunks in a single SQLite transaction, skipping known files.
 pub fn sync_chunks(chunks_dir: &Path, store: &mut MemoryStore) -> Result<SyncStats> {
     if !chunks_dir.exists() {
         return Ok(SyncStats::default());
     }
 
+    let now_ms = Utc::now().timestamp_millis();
     let chunk_files = list_sorted_chunk_files(chunks_dir)?;
-    let existing_hashes = store.ingested_chunk_hashes()?;
-    let pending = collect_pending_chunks(&chunk_files, &existing_hashes)?;
+    let ingested_names = store.ingested_chunk_filenames()?;
+    let pending = collect_pending_chunks(&chunk_files, &ingested_names, now_ms)?;
 
     let mut stats = SyncStats {
         files_scanned: chunk_files.len(),
@@ -91,7 +64,6 @@ pub fn sync_chunks(chunks_dir: &Path, store: &mut MemoryStore) -> Result<SyncSta
     }
     all_records.sort_by(|a, b| a.updated_at.cmp(&b.updated_at).then_with(|| a.id.cmp(&b.id)));
 
-    let now_ms = Utc::now().timestamp_millis();
     let tx = store.conn_mut().transaction()?;
     for record in &all_records {
         if MemoryStore::upsert_in_tx(&tx, record)?.is_some() {
@@ -121,20 +93,21 @@ fn list_sorted_chunk_files(chunks_dir: &Path) -> Result<Vec<PathBuf>> {
 
 fn collect_pending_chunks(
     files: &[PathBuf],
-    existing_hashes: &FxHashMap<String, String>,
+    ingested_names: &FxHashSet<String>,
+    now_ms: i64,
 ) -> Result<Vec<PendingChunk>> {
     let mut pending = Vec::new();
     for path in files {
         let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
+        if ingested_names.contains(filename) {
+            continue;
+        }
         let bytes =
             fs::read(path).with_context(|| format!("failed to read chunk {}", path.display()))?;
         let hash = blake3::hash(&bytes).to_hex().to_string();
-        if existing_hashes.get(filename).map(String::as_str) == Some(hash.as_str()) {
-            continue;
-        }
-        let records = parse_jsonl_records(&bytes, path)?;
+        let records = parse_jsonl_records(&bytes, path, now_ms)?;
         pending.push(PendingChunk {
             filename: filename.to_owned(),
             blake3_hash: hash,
@@ -144,7 +117,7 @@ fn collect_pending_chunks(
     Ok(pending)
 }
 
-fn parse_jsonl_records(bytes: &[u8], path: &Path) -> Result<Vec<MemoryChunkRecord>> {
+fn parse_jsonl_records(bytes: &[u8], path: &Path, now_ms: i64) -> Result<Vec<MemoryChunkRecord>> {
     let text = std::str::from_utf8(bytes)
         .with_context(|| format!("chunk file is not valid UTF-8: {}", path.display()))?;
     let mut records = Vec::new();
@@ -160,6 +133,9 @@ fn parse_jsonl_records(bytes: &[u8], path: &Path) -> Result<Vec<MemoryChunkRecor
                 idx + 1
             )
         })?;
+        if parsed.expires_at.is_some_and(|exp| exp <= now_ms) {
+            continue;
+        }
         records.push(redactor::redact_record(&parsed));
     }
     Ok(records)

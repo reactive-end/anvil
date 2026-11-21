@@ -6,13 +6,13 @@ use std::path::Path;
 use anyhow::Result;
 use anvil_core::ratchet::{
     CandidateInput, evaluate_candidate, list_candidates, list_rules, log_candidate,
-    promote_candidate,
+    promote_candidate, test_candidate,
 };
 
 use crate::cli::subcmds::RatchetSubcmd;
 use crate::commands::ExitCodeError;
 
-/// Executes `anvil ratchet <log|list|review|promote>`.
+/// Executes `anvil ratchet <log|list|review|test|promote>`.
 pub fn execute(root: &Path, sub: RatchetSubcmd) -> Result<()> {
     match sub {
         RatchetSubcmd::Log {
@@ -44,6 +44,7 @@ pub fn execute(root: &Path, sub: RatchetSubcmd) -> Result<()> {
         }
         RatchetSubcmd::List => cmd_list(root)?,
         RatchetSubcmd::Review { id, samples } => cmd_review(root, &id, &samples)?,
+        RatchetSubcmd::Test { id } => cmd_test(root, &id)?,
         RatchetSubcmd::Promote { id } => {
             let promoted = promote_candidate(root, &id)?;
             println!(
@@ -102,6 +103,23 @@ fn cmd_review(root: &Path, id: &str, raw_samples: &[String]) -> Result<()> {
     }
     if !eval.eligible {
         return Err(ExitCodeError::silent(1).into());
+    }
+    Ok(())
+}
+
+fn cmd_test(root: &Path, id: &str) -> Result<()> {
+    let report = test_candidate(root, id)?;
+    println!(
+        "ratchet test `{}` ({}): scanned={} matches={} elapsed={}ms under_budget={}",
+        report.id,
+        report.rule_name,
+        report.files_scanned,
+        report.match_count,
+        report.elapsed_ms,
+        report.under_budget
+    );
+    for m in &report.sample_matches {
+        println!("  {}:{}: {}", m.file, m.line, m.snippet);
     }
     Ok(())
 }

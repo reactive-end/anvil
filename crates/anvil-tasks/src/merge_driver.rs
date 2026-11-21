@@ -5,12 +5,13 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use anvil_core::fs_util::atomic_write;
 use chrono::Utc;
 use rustc_hash::FxHashMap;
 
 use crate::builder::{consolidate_tasks, read_all_task_records};
-use crate::fs_util::{atomic_write_bytes, atomic_write_json, read_json_file};
 use crate::model::{ConsolidatedTasksFile, TaskEntry, TaskMeta};
+use crate::{atomic_write_json, read_json_file};
 
 const GITATTR_ENTRY: &str = "tasks.json merge=anvil-tasks";
 const DEFAULT_DRIVER_CMD: &str = "anvil tasks merge-driver %O %A %B";
@@ -88,7 +89,7 @@ fn ensure_gitattributes(repo: &Path) -> Result<()> {
     }
     updated.push_str(GITATTR_ENTRY);
     updated.push('\n');
-    atomic_write_bytes(&path, updated.as_bytes())
+    atomic_write(&path, updated.as_bytes())
 }
 
 fn run_git_config(repo: &Path, key: &str, value: &str) -> Result<()> {

@@ -3,12 +3,12 @@
 use std::fs;
 use std::path::Path;
 
+use anvil_core::fs_util::strip_jsonc;
 use anvil_core::traits::{EdgeKind, EdgeRef};
 use rustc_hash::FxHashSet;
 use serde::Deserialize;
 
-use crate::model::CodeGraph;
-use crate::resolvers::jsonc::strip_jsonc;
+use crate::model::{CodeGraph, NodeId};
 use crate::resolvers::{join_normalized, normalize_join_rel, pick_preferred_symbol};
 
 const TS_EXTENSIONS: &[&str] = &[
@@ -115,17 +115,17 @@ fn resolve_extends_path(dir: &Path, ext: &str) -> Option<std::path::PathBuf> {
     with_json.is_file().then_some(with_json)
 }
 
-/// Resolves a TypeScript/JavaScript `EdgeRef` to a target node ID when internal.
+/// Resolves a TypeScript/JavaScript `EdgeRef` to a target `NodeId` when internal.
 pub fn resolve_ts_edge(
     edge: &EdgeRef,
     file_imports: &[String],
     graph: &CodeGraph,
     rules: &TsConfigRules,
-) -> Option<String> {
+) -> Option<NodeId> {
     match edge.kind {
         EdgeKind::Imports | EdgeKind::ReExports => {
             resolve_module_specifier(&edge.source_file, &edge.target_path_or_symbol, graph, rules)
-                .map(|rel| CodeGraph::file_node_id(&rel))
+                .and_then(|rel| graph.node_by_id(&CodeGraph::file_node_id(&rel)).map(|(id, _)| id))
         }
         EdgeKind::UsesProp => {
             let component = edge.target_path_or_symbol.split('.').next().unwrap_or("");

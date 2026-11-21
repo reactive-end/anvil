@@ -1,9 +1,9 @@
 //! `anvil hook`: unified Antigravity & Claude Code hook dispatcher.
 
+mod gates;
 mod payload;
 mod task_auto;
 
-use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 
@@ -12,22 +12,21 @@ use anvil_adapters::contract::{
     AdapterKind, HookEvent, HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput,
 };
 use anvil_adapters::{antigravity, claude_code};
-use anvil_ast::analyze_file;
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, classify_files};
 use anvil_core::git::{self, DiffScope};
-use anvil_core::traits::Severity;
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
-use anvil_tasks::{list_tasks, resolve_author};
+use anvil_tasks::{list_tasks, resolve_author_fast};
 use serde_json::Value;
 
+use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
 use payload::{
-    extract_command_field, extract_rel_file, is_continuation_active, resolve_hook_root,
-    should_wrap_with_anvil_run,
+    extract_command_field, extract_rel_file, is_circuit_recovery_command, is_continuation_active,
+    is_mutating_file_tool, is_read_only_tool, resolve_hook_root, should_wrap_with_anvil_run,
 };
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
@@ -64,38 +63,68 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
 
 fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
     let mut messages = Vec::new();
-    let author = resolve_author(root).unwrap_or_else(|_| "hook".to_owned());
+    let author = resolve_author_fast(root).unwrap_or_else(|_| "hook".to_owned());
     if let Ok(mut mem) = MemoryEngine::open(root, author) {
         let _ = mem.sync();
-        if let Ok(hits) = mem.session_context(450) && !hits.is_empty() {
-            let summary: Vec<String> = hits.into_iter().map(|h| format!("[{}] {}", h.kind, h.title)).collect();
-            messages.push(InboxMessage::new("anvil-memory", MessageLevel::Info, summary.join("; "), None));
+        if let Ok(hits) = mem.session_context(450)
+            && !hits.is_empty()
+        {
+            let summary: Vec<String> = hits
+                .into_iter()
+                .map(|h| format!("[{}] {}", h.kind, h.title))
+                .collect();
+            messages.push(InboxMessage::new(
+                "anvil-memory",
+                MessageLevel::Info,
+                summary.join("; "),
+                None,
+            ));
         }
     }
     if let Ok(g) = store::load_binary(&store::default_bin_path(root)) {
         let msg = format!("Graph ready ({} nodes, {} edges)", g.nodes.len(), g.edges.len());
         messages.push(InboxMessage::new("anvil-graph", MessageLevel::Info, msg, None));
     }
-    if let Ok(tasks) = list_tasks(root) && let Some(latest) = tasks.last() {
+    if let Ok(tasks) = list_tasks(root)
+        && let Some(latest) = tasks.last()
+    {
         let msg = format!("Latest task {}: {}", latest.task_id, latest.request);
         messages.push(InboxMessage::new("anvil-tasks", MessageLevel::Info, msg, None));
     }
-    if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status() && st.is_open() {
+    if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status()
+        && st.is_open()
+    {
         let msg = "Circuit Breaker is OPEN; run `anvil circuit reset` after fixing.".to_owned();
-        messages.push(InboxMessage::new("circuit-breaker", MessageLevel::Error, msg, None));
+        messages.push(InboxMessage::new(
+            "circuit-breaker",
+            MessageLevel::Error,
+            msg,
+            None,
+        ));
     }
     HookOutcome::with_messages(messages)
 }
 
-fn handle_pre_tool_use(root: &Path, config: &AnvilConfig, input: &NormalizedHookInput) -> HookOutcome {
-    if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status() && st.is_open() {
+fn handle_pre_tool_use(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+) -> HookOutcome {
+    let cmd_field = extract_command_field(input.tool_input.as_ref());
+    if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status()
+        && st.is_open()
+    {
+        let is_recovery = cmd_field.is_some_and(|(_, cmd)| is_circuit_recovery_command(cmd));
+        if is_read_only_tool(input.tool_name.as_deref()) || is_recovery {
+            return HookOutcome::allow();
+        }
         let tool = input.tool_name.as_deref().unwrap_or("tool");
         return HookOutcome::deny(format!(
             "Circuit Breaker OPEN ({} identical failures) — blocked `{tool}`. Run `anvil circuit reset` after fixing.",
             st.consecutive_failures
         ));
     }
-    if let Some((key, cmd)) = extract_command_field(input.tool_input.as_ref()) {
+    if let Some((key, cmd)) = cmd_field {
         if cmd.contains("--no-verify") {
             return HookOutcome::deny("Forbidden `--no-verify` bypass flag detected.");
         }
@@ -103,16 +132,25 @@ fn handle_pre_tool_use(root: &Path, config: &AnvilConfig, input: &NormalizedHook
             && let Some(mut obj) = input.tool_input.as_ref().and_then(Value::as_object).cloned()
         {
             obj.insert(key.to_owned(), Value::String(format!("anvil run -- {cmd}")));
-            return HookOutcome::overwrite(Value::Object(obj), Some("Wrapped command with `anvil run`".to_owned()));
+            return HookOutcome::overwrite(
+                Value::Object(obj),
+                Some("Wrapped command with `anvil run`".to_owned()),
+            );
         }
     }
     HookOutcome::allow()
 }
 
-fn handle_post_tool_use(root: &Path, config: &AnvilConfig, input: &NormalizedHookInput) -> HookOutcome {
+fn handle_post_tool_use(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+) -> HookOutcome {
     let mut messages = Vec::new();
-    if let Some(rel) = extract_rel_file(root, input.tool_input.as_ref()) {
-        collect_tier0_messages(root, &rel, config, &mut messages);
+    if is_mutating_file_tool(input.tool_name.as_deref())
+        && let Some(rel) = extract_rel_file(root, input.tool_input.as_ref())
+    {
+        collect_post_tool_messages(root, &rel, config, &mut messages);
         let bin_path = store::default_bin_path(root);
         if bin_path.is_file()
             && let Ok(mut graph) = store::load_binary(&bin_path)
@@ -120,7 +158,7 @@ fn handle_post_tool_use(root: &Path, config: &AnvilConfig, input: &NormalizedHoo
         {
             let _ = store::save_binary(&graph, &bin_path);
         }
-        if let Ok(mut mem) = MemoryEngine::open(root, "hook") {
+        if let Ok(mut mem) = MemoryEngine::open_without_sync(root, "hook") {
             let _ = mem.mark_files_changed(std::slice::from_ref(&rel));
         }
     }
@@ -128,86 +166,57 @@ fn handle_post_tool_use(root: &Path, config: &AnvilConfig, input: &NormalizedHoo
     HookOutcome::with_messages(messages)
 }
 
-fn collect_tier0_messages(root: &Path, rel: &str, config: &AnvilConfig, messages: &mut Vec<InboxMessage>) {
-    let Ok(source) = fs::read_to_string(root.join(rel)) else { return; };
-    let Ok(facts) = analyze_file(Path::new(rel), &source, config) else { return; };
-    for d in facts.diagnostics {
-        let lvl = match d.severity {
-            Severity::Error => MessageLevel::Error,
-            Severity::Warning => MessageLevel::Warning,
-            Severity::Info => MessageLevel::Info,
-        };
-        let msg = format!("L{}: {}", d.line, d.message);
-        messages.push(InboxMessage::new(format!("tier0:{}", d.rule), lvl, msg, Some(rel.to_owned())));
-    }
-}
-
 fn handle_stop(root: &Path, config: &AnvilConfig, continuation_active: bool) -> HookOutcome {
-    task_auto::refresh_tasks_json_if_present(root);
+    task_auto::refresh_tasks_json_if_changed(root);
     if continuation_active {
         return HookOutcome::allow();
     }
-    if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status() && st.is_open() {
+    if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status()
+        && st.is_open()
+    {
         let msg = "Circuit Breaker OPEN — stopping for human escalation.".to_owned();
-        return HookOutcome::with_messages(vec![InboxMessage::new("circuit-breaker", MessageLevel::Error, msg, None)]);
+        return HookOutcome::with_messages(vec![InboxMessage::new(
+            "circuit-breaker",
+            MessageLevel::Error,
+            msg,
+            None,
+        )]);
     }
     let changed = git::changed_files(root, DiffScope::WorkingTree).unwrap_or_default();
     if changed.is_empty() {
         return HookOutcome::allow();
     }
-    let errs = collect_changed_tier0_errors(root, &changed, config);
+    let errs = collect_changed_gate_errors(root, &changed, config);
     if !errs.is_empty() {
-        return HookOutcome::block_stop(format!("Tier 0 AST gate failed ({} error(s)): {}", errs.len(), errs.join("; ")));
+        return HookOutcome::block_stop(format!(
+            "Tier 0 AST gate failed ({} error(s)): {}",
+            errs.len(),
+            errs.join("; ")
+        ));
     }
     if let Some(block) = task_auto::check_pending_task_summary(root, &changed) {
         return block;
     }
     let mut messages = Vec::new();
-    if let Ok(engine) = CodeGraphEngine::load_or_build(root, config.clone()) {
+    if let Ok(engine) = CodeGraphEngine::load_cached(root, config.clone()) {
         let blast = engine.blast_radius(&changed, 2);
         if !blast.impacted_files.is_empty() {
-            let msg = format!("{} impacted file(s), {} related test(s)", blast.impacted_files.len(), blast.related_tests.len());
+            let msg = format!(
+                "{} impacted file(s), {} related test(s)",
+                blast.impacted_files.len(),
+                blast.related_tests.len()
+            );
             messages.push(InboxMessage::new("tier1:impact", MessageLevel::Info, msg, None));
         }
     }
     let classified = classify_files(&changed.iter().map(ChangedFile::from_path).collect::<Vec<_>>());
     if classified.needs_visual_qa {
-        messages.push(InboxMessage::new("tier2:qa", MessageLevel::Warning, "UI files changed; verify with `anvil qa`.".to_owned(), None));
+        messages.push(InboxMessage::new(
+            "tier2:qa",
+            MessageLevel::Warning,
+            "UI files changed; verify with `anvil qa`.".to_owned(),
+            None,
+        ));
     }
     HookOutcome::with_messages(messages)
-}
-
-fn collect_changed_tier0_errors(root: &Path, changed: &[String], config: &AnvilConfig) -> Vec<String> {
-    let mut errs = Vec::new();
-    for rel in changed {
-        if let Ok(src) = fs::read_to_string(root.join(rel))
-            && let Ok(facts) = analyze_file(Path::new(rel), &src, config)
-        {
-            errs.extend(
-                facts.diagnostics.into_iter()
-                    .filter(|d| d.severity == Severity::Error)
-                    .map(|d| format!("{}:{} [{}] {}", d.file, d.line, d.rule, d.message)),
-            );
-        }
-    }
-    errs
-}
-
-fn update_circuit_from_output(root: &Path, config: &AnvilConfig, input: &NormalizedHookInput, messages: &mut Vec<InboxMessage>) {
-    let Some(out) = &input.tool_output else { return; };
-    let code = out.get("exitCode").or_else(|| out.get("exit_code")).and_then(Value::as_i64);
-    let cb = CircuitBreaker::new(root, config.circuit_breaker_limit);
-    match code {
-        Some(0) => { let _ = cb.record_success(); }
-        Some(c) => {
-            let tool = input.tool_name.as_deref().unwrap_or("command");
-            let snippet = out.get("stderr").or_else(|| out.get("output")).and_then(Value::as_str).unwrap_or("non-zero exit");
-            let cmd = extract_command_field(input.tool_input.as_ref()).map(|(_, s)| s).unwrap_or(tool);
-            if let Ok(st) = cb.record_failure(tool, &format!("exit {c}: {snippet}"), cmd) && st.is_open() {
-                let msg = "Circuit Breaker tripped OPEN after 3 identical failures; run `anvil circuit reset`.".to_owned();
-                messages.push(InboxMessage::new("circuit-breaker", MessageLevel::Error, msg, None));
-            }
-        }
-        None => {}
-    }
 }

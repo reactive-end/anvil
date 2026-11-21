@@ -8,10 +8,13 @@ pub mod pytest_ruff;
 pub mod tsc;
 pub mod vitest_jest;
 
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
+use regex::Regex;
 use ulid::Ulid;
 
 use crate::traits::{CompressedOutput, OutputParser};
@@ -29,7 +32,8 @@ pub fn compress_output(
     max_lines: usize,
     max_tokens: usize,
 ) -> Result<CompressedOutput> {
-    let mut parsed = select_parser(command).parse(command, exit_code, raw_output);
+    let cleaned = strip_ansi(raw_output);
+    let mut parsed = select_parser(command).parse(command, exit_code, &cleaned);
 
     if parsed.passed {
         parsed.lines.clear();
@@ -46,6 +50,17 @@ pub fn compress_output(
         parsed.raw_log_path = Some(log_path);
     }
     Ok(parsed)
+}
+
+/// Strips ANSI CSI color/formatting escape sequences (`\x1b[...m` etc.).
+pub fn strip_ansi(input: &str) -> Cow<'_, str> {
+    if !input.contains('\x1b') {
+        return Cow::Borrowed(input);
+    }
+    static ANSI_RE: OnceLock<Regex> = OnceLock::new();
+    let re = ANSI_RE
+        .get_or_init(|| Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").expect("valid ansi regex"));
+    re.replace_all(input, "")
 }
 
 /// Selects the most specific parser for `command`, falling back to `generic`.

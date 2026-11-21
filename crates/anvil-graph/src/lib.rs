@@ -48,27 +48,52 @@ impl CodeGraphEngine {
         })
     }
 
-    /// Loads `.harness/.state/graph.bin` and refreshes changed files, or builds from scratch.
-    pub fn load_or_build(repo_root: impl AsRef<Path>, config: AnvilConfig) -> Result<Self> {
+    /// Pure binary load from `.harness/.state/graph.bin` (zero walk, zero hashing, zero communities).
+    /// Falls back to `build_full` only if `graph.bin` is absent or corrupt.
+    pub fn load_cached(repo_root: impl AsRef<Path>, config: AnvilConfig) -> Result<Self> {
         let root = repo_root.as_ref().to_path_buf();
         let bin_path = store::default_bin_path(&root);
-        let mut graph = if bin_path.is_file() {
+        let graph = if bin_path.is_file() {
             match store::load_binary(&bin_path) {
-                Ok(mut g) => {
-                    builder::update_incremental(&mut g, &root, &config)?;
-                    g
+                Ok(g) => g,
+                Err(err) => {
+                    eprintln!("warning: corrupt graph cache {}: {err}; rebuilding", bin_path.display());
+                    builder::build_full(&root, &config)?
                 }
-                Err(_) => builder::build_full(&root, &config)?,
             }
         } else {
             builder::build_full(&root, &config)?
         };
-        let _ = analytics::detect_communities(&mut graph);
-        Ok(Self {
-            repo_root: root,
-            config,
-            graph,
-        })
+        Ok(Self { repo_root: root, config, graph })
+    }
+
+    /// Alias for `load_cached` for pure binary loads prior to explicit incremental updates.
+    pub fn load_binary_only(repo_root: impl AsRef<Path>, config: AnvilConfig) -> Result<Self> {
+        Self::load_cached(repo_root, config)
+    }
+
+    /// Loads `.harness/.state/graph.bin` and refreshes changed files via `(mtime, len)` fast-path.
+    pub fn load_or_build(repo_root: impl AsRef<Path>, config: AnvilConfig) -> Result<Self> {
+        let root = repo_root.as_ref().to_path_buf();
+        let bin_path = store::default_bin_path(&root);
+        let graph = if bin_path.is_file() {
+            match store::load_binary(&bin_path) {
+                Ok(mut g) => {
+                    let stats = builder::update_incremental(&mut g, &root, &config)?;
+                    if stats.added > 0 || stats.modified > 0 || stats.removed > 0 {
+                        store::save_binary(&g, &bin_path)?;
+                    }
+                    g
+                }
+                Err(err) => {
+                    eprintln!("warning: corrupt graph cache {}: {err}; rebuilding", bin_path.display());
+                    builder::build_full(&root, &config)?
+                }
+            }
+        } else {
+            builder::build_full(&root, &config)?
+        };
+        Ok(Self { repo_root: root, config, graph })
     }
 
     /// Saves the binary graph atomically to `.harness/.state/graph.bin`.
@@ -95,7 +120,7 @@ impl CodeGraphEngine {
         builder::update_file(&mut self.graph, &self.repo_root, rel_path, &self.config)
     }
 
-    /// Incrementally refreshes all modified files using parallel `blake3` hashing.
+    /// Incrementally refreshes modified files using `(mtime, len)` + `blake3` fast-path.
     pub fn update_incremental(&mut self) -> Result<IncrementalStats> {
         builder::update_incremental(&mut self.graph, &self.repo_root, &self.config)
     }
@@ -138,6 +163,11 @@ impl CodeGraphEngine {
     /// Invokes native typecheckers filtered to `impacted_files` via `anvil-core` compressor.
     pub fn run_impacted_typecheck(&self, impacted_files: &[String]) -> Result<Vec<CompressedOutput>> {
         impact::run_impacted_typecheck(&self.repo_root, &self.config, impacted_files)
+    }
+
+    /// Runs targeted test runners for `related_tests` via `anvil-core` compressor.
+    pub fn run_impacted_tests(&self, related_tests: &[String]) -> Result<Vec<CompressedOutput>> {
+        impact::run_impacted_tests(&self.repo_root, &self.config, related_tests)
     }
 
     /// Computes communities and generates a compact `GRAPH_REPORT.md` string.
@@ -228,12 +258,11 @@ impl SymbolFreshnessProvider for CodeGraphEngine {
 }
 
 fn has_symbol(graph: &CodeGraph, sym: &str) -> bool {
-    if graph.nodes.contains_key(sym) || graph.symbol_index.contains_key(sym) {
+    if graph.contains_node_id(sym) || graph.symbol_index.contains_key(sym) {
         return true;
     }
-    let lower = sym.to_ascii_lowercase();
-    if graph.symbol_index.contains_key(&lower) {
-        return true;
-    }
-    graph.nodes.values().any(|n| n.label == sym || n.id.ends_with(&format!("::{sym}")))
+    let suffix = format!("::{sym}");
+    graph.nodes.iter().any(|n| {
+        !n.is_tombstone() && (n.label.eq_ignore_ascii_case(sym) || n.id.ends_with(&suffix))
+    })
 }

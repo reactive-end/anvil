@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
-use crate::model::{CodeGraph, GraphEdge, GraphEdgeKind, GraphNode, NodeKind};
+use crate::model::{CodeGraph, CompactEdge, GraphEdgeKind, GraphNode, NodeId, NodeKind};
 use hyperedges::{RawHyperedge, ingest_hyperedges};
 
 /// Statistics reported after overlaying a `graphify-out/graph.json` file.
@@ -53,8 +53,6 @@ struct RawGraphifyNode {
 struct RawGraphifyLink {
     source: String,
     target: String,
-    #[serde(default)]
-    relation: String,
 }
 
 /// Overlays semantic/rationale nodes and hyperedges from a Graphify NetworkX JSON file without altering AST nodes.
@@ -80,17 +78,19 @@ fn ingest_semantic_nodes(
     graph: &mut CodeGraph,
     nodes: &[RawGraphifyNode],
     stats: &mut OverlayStats,
-) -> FxHashMap<String, String> {
-    let mut id_map: FxHashMap<String, String> = FxHashMap::default();
+) -> FxHashMap<String, NodeId> {
+    let mut id_map: FxHashMap<String, NodeId> = FxHashMap::default();
     for node in nodes {
         let norm_file = CodeGraph::normalize_rel_path(&node.source_file);
         if is_semantic_node(node) {
-            let sem_id = CodeGraph::semantic_node_id(&node.id);
-            if !graph.nodes.contains_key(&sem_id) {
-                graph.nodes.insert(
-                    sem_id.clone(),
+            let sem_id_str = CodeGraph::semantic_node_id(&node.id);
+            let sem_nid = if let Some((existing_nid, _)) = graph.node_by_id(&sem_id_str) {
+                existing_nid
+            } else {
+                stats.semantic_nodes_added += 1;
+                graph.insert_node_with_slot(
                     GraphNode {
-                        id: sem_id.clone(),
+                        id: sem_id_str,
                         kind: NodeKind::Semantic,
                         label: if node.label.is_empty() {
                             node.id.clone()
@@ -105,18 +105,16 @@ fn ingest_semantic_nodes(
                         exported: false,
                         community: None,
                     },
-                );
-                stats.semantic_nodes_added += 1;
-            }
-            id_map.insert(node.id.clone(), sem_id.clone());
-            if let Some(file_node) = find_matching_file_node(graph, &norm_file) {
-                graph.edges.push(GraphEdge {
-                    source: sem_id,
-                    target: file_node,
+                    None,
+                )
+            };
+            id_map.insert(node.id.clone(), sem_nid);
+            if let Some(file_nid) = find_matching_file_node(graph, &norm_file) {
+                graph.edges.push(CompactEdge {
+                    source: sem_nid,
+                    target: file_nid,
                     kind: GraphEdgeKind::SemanticLink,
                     line: 1,
-                    resolved: true,
-                    raw_target: norm_file,
                 });
                 stats.semantic_edges_added += 1;
             }
@@ -130,22 +128,22 @@ fn ingest_semantic_nodes(
 fn ingest_semantic_links(
     graph: &mut CodeGraph,
     links: &[RawGraphifyLink],
-    id_map: &FxHashMap<String, String>,
+    id_map: &FxHashMap<String, NodeId>,
     stats: &mut OverlayStats,
 ) {
     for link in links {
-        if let (Some(src), Some(dst)) = (id_map.get(&link.source), id_map.get(&link.target))
-            && (src.starts_with("sem:") || dst.starts_with("sem:"))
-        {
-            graph.edges.push(GraphEdge {
-                source: src.clone(),
-                target: dst.clone(),
-                kind: GraphEdgeKind::SemanticLink,
-                line: 1,
-                resolved: true,
-                raw_target: link.relation.clone(),
-            });
-            stats.semantic_edges_added += 1;
+        if let (Some(&src), Some(&dst)) = (id_map.get(&link.source), id_map.get(&link.target)) {
+            let is_sem = graph.get_node(src).is_some_and(|n| n.kind == NodeKind::Semantic)
+                || graph.get_node(dst).is_some_and(|n| n.kind == NodeKind::Semantic);
+            if is_sem {
+                graph.edges.push(CompactEdge {
+                    source: src,
+                    target: dst,
+                    kind: GraphEdgeKind::SemanticLink,
+                    line: 1,
+                });
+                stats.semantic_edges_added += 1;
+            }
         }
     }
 }
@@ -158,30 +156,31 @@ fn is_semantic_node(node: &RawGraphifyNode) -> bool {
     ) || node.origin.eq_ignore_ascii_case("llm")
 }
 
-pub(crate) fn find_matching_file_node(graph: &CodeGraph, norm_file: &str) -> Option<String> {
+pub(crate) fn find_matching_file_node(graph: &CodeGraph, norm_file: &str) -> Option<NodeId> {
     if norm_file.is_empty() {
         return None;
     }
     let exact = CodeGraph::file_node_id(norm_file);
-    if graph.nodes.contains_key(&exact) {
-        return Some(exact);
+    if let Some((nid, _)) = graph.node_by_id(&exact) {
+        return Some(nid);
     }
     graph
         .nodes
-        .values()
-        .find(|n| n.kind == NodeKind::File && n.file.ends_with(norm_file))
-        .map(|n| n.id.clone())
+        .iter()
+        .enumerate()
+        .find(|(_, n)| !n.is_tombstone() && n.kind == NodeKind::File && n.file.ends_with(norm_file))
+        .map(|(idx, _)| idx as u32)
 }
 
-fn find_matching_code_node(graph: &CodeGraph, norm_file: &str, label: &str) -> Option<String> {
+fn find_matching_code_node(graph: &CodeGraph, norm_file: &str, label: &str) -> Option<NodeId> {
     if !label.is_empty()
         && let Some(ids) = graph.symbol_index.get(label)
     {
-        for id in ids {
-            if let Some(n) = graph.nodes.get(id)
+        for &nid in ids {
+            if let Some(n) = graph.get_node(nid)
                 && (norm_file.is_empty() || n.file.ends_with(norm_file))
             {
-                return Some(id.clone());
+                return Some(nid);
             }
         }
     }

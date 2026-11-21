@@ -7,14 +7,13 @@ pub mod transport;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::SystemTime;
 
 use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_graph::{CodeGraphEngine, store};
 use anvil_memory::MemoryEngine;
-use serde::Deserialize;
+use anvil_tasks::resolve_author_fast;
 
 use crate::transport::{JsonRpcRequest, JsonRpcResponse};
 
@@ -25,6 +24,8 @@ pub struct McpServer {
     graph: Option<CodeGraphEngine>,
     graph_bin_mtime: Option<SystemTime>,
     memory: Option<MemoryEngine>,
+    chunks_dir_mtime: Option<SystemTime>,
+    chunks_synced_once: bool,
     initialized: bool,
 }
 
@@ -39,6 +40,8 @@ impl McpServer {
             graph: None,
             graph_bin_mtime: None,
             memory: None,
+            chunks_dir_mtime: None,
+            chunks_synced_once: false,
             initialized: false,
         })
     }
@@ -68,14 +71,14 @@ impl McpServer {
         transport::run_stdio_loop(|req| self.handle_message(req))
     }
 
-    /// Lazily loads (or reloads if updated externally on disk) the `CodeGraphEngine`.
+    /// Lazily loads (or reloads if `graph.bin` mtime changed) the cached `CodeGraphEngine`.
     pub fn ensure_graph(&mut self) -> Result<&mut CodeGraphEngine> {
         let bin_path = store::default_bin_path(&self.repo_root);
         let disk_mtime = fs::metadata(&bin_path).and_then(|m| m.modified()).ok();
         let needs_reload = self.graph.is_none() || disk_mtime != self.graph_bin_mtime;
 
         if needs_reload {
-            let engine = CodeGraphEngine::load_or_build(&self.repo_root, self.config.clone())?;
+            let engine = CodeGraphEngine::load_cached(&self.repo_root, self.config.clone())?;
             if !bin_path.exists() {
                 let _ = engine.save();
             }
@@ -88,16 +91,46 @@ impl McpServer {
             .ok_or_else(|| anyhow::anyhow!("code graph failed to initialize"))
     }
 
-    /// Lazily opens the repository `MemoryEngine`.
+    /// Lazily opens `MemoryEngine` and syncs only when `.harness/memory/chunks/` mtime changed.
     pub fn ensure_memory(&mut self) -> Result<&mut MemoryEngine> {
+        self.ensure_memory_internal(true)
+    }
+
+    /// Lazily opens `MemoryEngine` without scanning chunks (for `mem_save`).
+    pub fn ensure_memory_no_sync(&mut self) -> Result<&mut MemoryEngine> {
+        self.ensure_memory_internal(false)
+    }
+
+    /// Records current `.harness/memory/chunks/` mtime after a local `mem_save`.
+    pub fn refresh_chunks_mtime(&mut self) {
+        let chunks_dir = self.repo_root.join(".harness/memory/chunks");
+        self.chunks_dir_mtime = fs::metadata(&chunks_dir).and_then(|m| m.modified()).ok();
+        self.chunks_synced_once = self.chunks_dir_mtime.is_some();
+    }
+
+    fn ensure_memory_internal(&mut self, sync_if_changed: bool) -> Result<&mut MemoryEngine> {
         if self.memory.is_none() {
-            let author = resolve_cached_author(&self.repo_root);
-            let engine = MemoryEngine::open(&self.repo_root, author)?;
+            let author = resolve_author_fast(&self.repo_root).unwrap_or_else(|_| "mcp".to_owned());
+            let engine = MemoryEngine::open_without_sync(&self.repo_root, author)?;
             self.memory = Some(engine);
         }
-        self.memory
+        let mem = self
+            .memory
             .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("memory engine failed to initialize"))
+            .ok_or_else(|| anyhow::anyhow!("memory engine failed to initialize"))?;
+
+        if sync_if_changed {
+            let chunks_dir = self.repo_root.join(".harness/memory/chunks");
+            let disk_mtime = fs::metadata(&chunks_dir).and_then(|m| m.modified()).ok();
+            if disk_mtime.is_some()
+                && (!self.chunks_synced_once || disk_mtime != self.chunks_dir_mtime)
+            {
+                mem.sync()?;
+                self.chunks_dir_mtime = disk_mtime;
+                self.chunks_synced_once = true;
+            }
+        }
+        Ok(mem)
     }
 }
 
@@ -105,33 +138,4 @@ impl McpServer {
 pub fn run_stdio_server(repo_root: &Path) -> Result<()> {
     let mut server = McpServer::new(repo_root)?;
     server.run_stdio()
-}
-
-#[derive(Deserialize)]
-struct CachedIdentity {
-    author: String,
-}
-
-fn resolve_cached_author(repo_root: &Path) -> String {
-    let cache_path = repo_root.join(".harness/.state/identity.json");
-    if let Ok(raw) = fs::read_to_string(cache_path)
-        && let Ok(parsed) = serde_json::from_str::<CachedIdentity>(&raw)
-        && !parsed.author.trim().is_empty()
-    {
-        return parsed.author;
-    }
-
-    if let Ok(out) = Command::new("git")
-        .args(["config", "user.name"])
-        .current_dir(repo_root)
-        .output()
-        && out.status.success()
-    {
-        let name = String::from_utf8_lossy(&out.stdout).trim().to_owned();
-        if !name.is_empty() {
-            return name;
-        }
-    }
-
-    "mcp".to_owned()
 }

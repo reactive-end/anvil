@@ -15,17 +15,21 @@ pub fn export_html(graph: &CodeGraph, path: &Path) -> Result<()> {
     }
     let nodes: Vec<_> = graph
         .nodes
-        .values()
-        .filter(|n| n.kind == NodeKind::File)
+        .iter()
+        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::File)
         .take(400)
         .map(|n| serde_json::json!({ "id": n.id, "label": n.label, "community": n.community.unwrap_or(0) }))
         .collect();
     let edges: Vec<_> = graph
         .edges
         .iter()
-        .filter(|e| !e.source.is_empty() && e.resolved && e.kind != GraphEdgeKind::Contains)
+        .filter(|e| e.is_resolved() && e.kind != GraphEdgeKind::Contains)
         .take(800)
-        .map(|e| serde_json::json!({ "source": e.source, "target": e.target }))
+        .filter_map(|e| {
+            let src = graph.get_node(e.source)?;
+            let tgt = graph.get_node(e.target)?;
+            Some(serde_json::json!({ "source": src.id, "target": tgt.id }))
+        })
         .collect();
     let payload = serde_json::json!({ "nodes": nodes, "edges": edges }).to_string();
     let html = format!(

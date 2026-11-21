@@ -1,8 +1,7 @@
 //! Fast diff classification mapping changed files and hunks to verification Tiers.
 
-use std::sync::OnceLock;
+mod style;
 
-use regex::Regex;
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
@@ -119,11 +118,11 @@ fn classify_single(file: &ChangedFile) -> DiffCategory {
     let normalized = file.path.replace('\\', "/").to_ascii_lowercase();
     let file_name = normalized.rsplit('/').next().unwrap_or(&normalized);
 
-    if is_docs_path(&normalized, file_name) {
-        return DiffCategory::Docs;
-    }
     if is_deps_manifest(file_name, &normalized) {
         return DiffCategory::Deps;
+    }
+    if is_docs_path(&normalized, file_name) {
+        return DiffCategory::Docs;
     }
     if is_style_extension(&normalized) {
         return DiffCategory::StyleOnly;
@@ -136,7 +135,7 @@ fn classify_single(file: &ChangedFile) -> DiffCategory {
     }
     if is_ui_path(&normalized) {
         if let Some(hunks) = &file.hunks
-            && hunks_are_style_only(hunks)
+            && style::hunks_are_style_only(hunks)
         {
             return DiffCategory::StyleOnly;
         }
@@ -169,8 +168,7 @@ fn category_rank(category: DiffCategory) -> u8 {
 }
 
 fn is_docs_path(path: &str, name: &str) -> bool {
-    path.starts_with("docs/")
-        || path.contains("/docs/")
+    has_dir_segment(path, "docs")
         || matches!(name, "license" | "readme" | "changelog")
         || path.ends_with(".md")
         || path.ends_with(".mdx")
@@ -185,7 +183,7 @@ fn is_deps_manifest(name: &str, path: &str) -> bool {
             | "cargo.toml" | "cargo.lock" | "pyproject.toml" | "poetry.lock"
             | "uv.lock" | "pubspec.yaml" | "pubspec.lock" | "libs.versions.toml"
             | "build.gradle" | "build.gradle.kts"
-    ) || (name.starts_with("requirements") && path.ends_with(".txt"))
+    ) || (path.ends_with(".txt") && (name.starts_with("requirements") || has_dir_segment(path, "requirements")))
 }
 
 fn is_style_extension(path: &str) -> bool {
@@ -198,9 +196,18 @@ fn is_contract_path(path: &str) -> bool {
     [".proto", ".graphql", ".gql", ".prisma"]
         .iter()
         .any(|ext| path.ends_with(ext))
-        || ["openapi", "swagger", "/contracts/", "/dto/", "/interfaces/"]
-            .iter()
-            .any(|seg| path.contains(seg))
+        || path.contains("openapi")
+        || path.contains("swagger")
+        || has_dir_segment(path, "contracts")
+        || has_dir_segment(path, "dto")
+        || has_dir_segment(path, "interfaces")
+}
+
+fn has_dir_segment(path: &str, seg: &str) -> bool {
+    path.strip_prefix(seg).is_some_and(|rest| rest.starts_with('/'))
+        || path
+            .match_indices(seg)
+            .any(|(idx, _)| idx > 0 && path.as_bytes()[idx - 1] == b'/' && path[idx + seg.len()..].starts_with('/'))
 }
 
 fn is_config_path(path: &str, name: &str) -> bool {
@@ -221,25 +228,4 @@ fn is_ui_path(path: &str) -> bool {
     [".tsx", ".jsx", ".html", ".vue", ".svelte", "screen.kt", "activity.kt", "_widget.dart"]
         .iter()
         .any(|ext| path.ends_with(ext))
-}
-
-fn hunks_are_style_only(hunks: &str) -> bool {
-    static STYLE_LINE_RE: OnceLock<Regex> = OnceLock::new();
-    let re = STYLE_LINE_RE.get_or_init(|| {
-        Regex::new(r#"^[+-]\s*(?:className=|class=|style=|\.?[a-zA-Z0-9_-]+\s*:\s*['"]?#[0-9a-fA-F]{3,8}|color:|background|border-color)"#)
-            .expect("valid static style regex")
-    });
-    let mut saw_change = false;
-    for line in hunks.lines() {
-        if line.starts_with("+++") || line.starts_with("---") || line.starts_with("@@") {
-            continue;
-        }
-        if line.starts_with('+') || line.starts_with('-') {
-            saw_change = true;
-            if !re.is_match(line) {
-                return false;
-            }
-        }
-    }
-    saw_change
 }

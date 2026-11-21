@@ -22,6 +22,7 @@ pub fn language_for(lang: Language) -> Option<TsLanguage> {
         Language::Python => Some(tree_sitter_python::LANGUAGE.into()),
         Language::Kotlin => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
         Language::Dart => Some(tree_sitter_dart::LANGUAGE.into()),
+        Language::Rust => Some(tree_sitter_rust::LANGUAGE.into()),
         Language::Json | Language::Yaml | Language::Markdown | Language::Other => None,
     }
 }

@@ -1,7 +1,9 @@
 use anyhow::Result;
 use tempfile::TempDir;
 
-use anvil_core::compressor::{DEFAULT_MAX_LINES, DEFAULT_MAX_TOKENS, compress_output};
+use anvil_core::compressor::{
+    DEFAULT_MAX_LINES, DEFAULT_MAX_TOKENS, compress_output, select_parser, strip_ansi,
+};
 
 #[test]
 fn tsc_pass_and_fail_compression() -> Result<()> {
@@ -18,6 +20,23 @@ fn tsc_pass_and_fail_compression() -> Result<()> {
     assert_eq!(fail.total_errors, 1);
     assert_eq!(fail.lines, vec!["src/Button.tsx:14:7 [TS2322] Type 'number' is not assignable to type 'string'."]);
     assert!(fail.raw_log_path.as_ref().is_some_and(|p| p.exists()));
+    Ok(())
+}
+
+#[test]
+fn ansi_stripped_and_tsc_matches_token_boundaries_only() -> Result<()> {
+    let colored = "\x1b[36msrc/Button.tsx\x1b[0m(\x1b[33m14\x1b[0m,\x1b[33m7\x1b[0m): \x1b[31merror TS2322\x1b[0m: Type mismatch\n";
+    assert!(!strip_ansi(colored).contains('\x1b'));
+    let res = compress_output(None, "./node_modules/.bin/tsc.cmd --noEmit", 2, colored, 50, 1200)?;
+    assert_eq!(res.tool, "tsc");
+    assert_eq!(res.total_errors, 1);
+    assert_eq!(res.lines, vec!["src/Button.tsx:14:7 [TS2322] Type mismatch"]);
+
+    assert_eq!(select_parser("npx vue-tsc --noEmit").name(), "tsc");
+    assert_eq!(select_parser("ngc -p tsconfig.json").name(), "tsc");
+    assert_eq!(select_parser("pytest -k test_postcreate").name(), "pytest/ruff");
+    assert_eq!(select_parser("cargo test -p tsc-helper").name(), "generic");
+    assert_eq!(select_parser("cat tsc_notes.md").name(), "generic");
     Ok(())
 }
 

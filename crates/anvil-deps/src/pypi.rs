@@ -1,4 +1,4 @@
-//! PyPI (`pyproject.toml` + `pypi.org/pypi/<pkg>/json`) dependency parser and fetcher.
+//! PyPI (`pyproject.toml` / `requirements.txt` + `pypi.org/pypi/<pkg>/json`) parser & fetcher.
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -31,6 +31,38 @@ pub fn parse_pyproject_toml(manifest_path: &str, content: &str) -> Result<Vec<De
 
     specs.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(specs)
+}
+
+/// Parses pip `requirements.txt` entries into PyPI dependency specs.
+///
+/// Ignores comments, pip CLI flags (`-r`, `-c`, `-e`, `--...`), and local/VCS paths.
+pub fn parse_requirements_txt(manifest_path: &str, content: &str) -> Result<Vec<DependencySpec>> {
+    let mut seen = FxHashSet::default();
+    let mut specs = Vec::new();
+
+    for raw_line in content.lines() {
+        let without_comment = raw_line.split('#').next().unwrap_or(raw_line);
+        let trimmed = without_comment.trim().trim_end_matches('\\').trim();
+        if trimmed.is_empty() || is_non_package_requirement(trimmed) {
+            continue;
+        }
+        push_pep508(trimmed, manifest_path, &mut seen, &mut specs);
+    }
+
+    specs.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(specs)
+}
+
+fn is_non_package_requirement(trimmed: &str) -> bool {
+    trimmed.starts_with('-')
+        || trimmed.starts_with('.')
+        || trimmed.starts_with('/')
+        || trimmed.starts_with("git+")
+        || trimmed.starts_with("hg+")
+        || trimmed.starts_with("svn+")
+        || trimmed.starts_with("bzr+")
+        || trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
 }
 
 /// Fetches package metadata from `https://pypi.org/pypi/<package>/json`.

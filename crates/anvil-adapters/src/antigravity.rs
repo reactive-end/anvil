@@ -92,7 +92,7 @@ pub fn render_output(
             combined.extend(outcome.messages.iter().cloned());
             Ok(render_inject_steps(&combined))
         }
-        HookEvent::Stop => Ok(render_stop(outcome)),
+        HookEvent::Stop => render_stop(repo_root, outcome),
     }
 }
 
@@ -131,7 +131,7 @@ fn render_inject_steps(messages: &[crate::contract::InboxMessage]) -> Value {
     })
 }
 
-fn render_stop(outcome: &HookOutcome) -> Value {
+fn render_stop(repo_root: &Path, outcome: &HookOutcome) -> Result<Value> {
     let mut obj = Map::new();
     let decision = if outcome.block_stop {
         "continue"
@@ -139,8 +139,19 @@ fn render_stop(outcome: &HookOutcome) -> Value {
         "allow"
     };
     obj.insert("decision".to_owned(), Value::String(decision.to_owned()));
-    if let Some(reason) = &outcome.reason {
-        obj.insert("reason".to_owned(), Value::String(reason.clone()));
+
+    if outcome.block_stop {
+        if let Some(reason) = inbox::format_stop_reason(outcome.reason.as_deref(), &outcome.messages)
+        {
+            obj.insert("reason".to_owned(), Value::String(reason));
+        }
+    } else {
+        if !outcome.messages.is_empty() {
+            inbox::push_messages(repo_root, &outcome.messages)?;
+        }
+        if let Some(reason) = &outcome.reason {
+            obj.insert("reason".to_owned(), Value::String(reason.clone()));
+        }
     }
-    Value::Object(obj)
+    Ok(Value::Object(obj))
 }

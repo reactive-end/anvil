@@ -8,6 +8,7 @@ use anyhow::{Context, Result, bail};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::compressor;
 use anvil_core::config::AnvilConfig;
+use anvil_core::fs_util::resolve_local_or_path_bin;
 
 use crate::commands::ExitCodeError;
 
@@ -17,7 +18,7 @@ pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
     let cmd_str = cmd.join(" ");
 
-    let output = run_process(root, program, args, &cmd_str)?;
+    let output = run_process(root, program, args, cmd)?;
     let exit_code = output.status.code().unwrap_or(1);
     let combined = format!(
         "{}{}",
@@ -68,7 +69,15 @@ pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
     Err(ExitCodeError::silent(exit_code).into())
 }
 
-fn run_process(root: &Path, program: &str, args: &[String], full_cmd: &str) -> Result<Output> {
+fn run_process(root: &Path, program: &str, args: &[String], full_cmd: &[String]) -> Result<Output> {
+    if let Some(resolved_bin) = resolve_local_or_path_bin(root, program) {
+        return Command::new(&resolved_bin)
+            .args(args)
+            .current_dir(root)
+            .output()
+            .with_context(|| format!("failed to execute `{}`", resolved_bin.display()));
+    }
+
     match Command::new(program).args(args).current_dir(root).output() {
         Ok(out) => Ok(out),
         Err(err) if err.kind() == ErrorKind::NotFound => run_via_shell(root, full_cmd),
@@ -76,18 +85,45 @@ fn run_process(root: &Path, program: &str, args: &[String], full_cmd: &str) -> R
     }
 }
 
-fn run_via_shell(root: &Path, full_cmd: &str) -> Result<Output> {
+fn run_via_shell(root: &Path, cmd: &[String]) -> Result<Output> {
+    let escaped = escape_shell_command(cmd);
     if cfg!(windows) {
         Command::new("cmd")
-            .args(["/C", full_cmd])
+            .args(["/C", &escaped])
             .current_dir(root)
             .output()
-            .with_context(|| format!("failed to execute `{full_cmd}` via cmd /C"))
+            .with_context(|| format!("failed to execute `{escaped}` via cmd /C"))
     } else {
         Command::new("sh")
-            .args(["-c", full_cmd])
+            .args(["-c", &escaped])
             .current_dir(root)
             .output()
-            .with_context(|| format!("failed to execute `{full_cmd}` via sh -c"))
+            .with_context(|| format!("failed to execute `{escaped}` via sh -c"))
+    }
+}
+
+fn escape_shell_command(cmd: &[String]) -> String {
+    cmd.iter()
+        .map(|arg| escape_shell_arg(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn escape_shell_arg(arg: &str) -> String {
+    if arg.is_empty() {
+        return "\"\"".to_owned();
+    }
+    let needs_quotes = arg.chars().any(|c| {
+        c.is_whitespace() || matches!(c, '"' | '\'' | '&' | '|' | ';' | '<' | '>' | '(' | ')' | '$')
+    });
+    if !needs_quotes {
+        return arg.to_owned();
+    }
+    if cfg!(windows) {
+        let escaped = arg.replace('"', "\\\"");
+        format!("\"{escaped}\"")
+    } else {
+        let escaped = arg.replace('\'', "'\\''");
+        format!("'{escaped}'")
     }
 }

@@ -3,7 +3,7 @@
 use anvil_core::traits::{Diagnostic, Language, Severity};
 use tree_sitter::Node;
 
-use super::{RuleState, has_structured_anvil_allow};
+use super::{RuleState, has_anvil_allow};
 
 /// Checks a single AST node for disallowed untyped escape hatches (`any`, `dynamic`).
 pub fn check_node(node: Node<'_>, state: &mut RuleState<'_>) {
@@ -25,7 +25,7 @@ fn check_ts_any(node: Node<'_>, state: &mut RuleState<'_>) {
         return;
     }
     let line = node.start_position().row as u32 + 1;
-    if has_structured_anvil_allow(state, line) {
+    if has_anvil_allow(state, line, "no-explicit-any") {
         return;
     }
     let col = node.start_position().column as u32 + 1;
@@ -53,7 +53,7 @@ fn check_dart_dynamic(node: Node<'_>, state: &mut RuleState<'_>) {
         return;
     }
     let line = node.start_position().row as u32 + 1;
-    if has_structured_anvil_allow(state, line) {
+    if has_anvil_allow(state, line, "no-unnecessary-dynamic") {
         return;
     }
     let col = node.start_position().column as u32 + 1;

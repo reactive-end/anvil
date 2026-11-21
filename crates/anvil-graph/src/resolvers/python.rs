@@ -2,19 +2,19 @@
 
 use anvil_core::traits::{EdgeKind, EdgeRef};
 
-use crate::model::CodeGraph;
+use crate::model::{CodeGraph, NodeId};
 use crate::resolvers::{join_normalized, pick_preferred_symbol};
 
-/// Resolves Python imports, inheritance, and call targets to internal files or symbols.
+/// Resolves Python imports, inheritance, and call targets to internal `NodeId`s.
 pub fn resolve_python_edge(
     edge: &EdgeRef,
     file_imports: &[String],
     graph: &CodeGraph,
-) -> Option<String> {
+) -> Option<NodeId> {
     match edge.kind {
         EdgeKind::Imports => {
             resolve_python_import(&edge.source_file, &edge.target_path_or_symbol, graph)
-                .map(|rel| CodeGraph::file_node_id(&rel))
+                .and_then(|rel| graph.node_by_id(&CodeGraph::file_node_id(&rel)).map(|(id, _)| id))
         }
         EdgeKind::Calls | EdgeKind::Extends => {
             let sym = edge

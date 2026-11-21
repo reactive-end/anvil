@@ -8,9 +8,10 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use anvil_core::config::AnvilConfig;
+use anvil_core::fs_util::atomic_write;
 use anvil_core::stack_detector;
 
-use crate::{antigravity, atomic_fs, claude_code, templates};
+use crate::{antigravity, claude_code, templates};
 
 const MANAGED_START: &str = "<!-- anvil:managed:start -->";
 const MANAGED_END: &str = "<!-- anvil:managed:end -->";
@@ -54,25 +55,15 @@ fn sync_into(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
     write_embedded_skills(repo_root, report)?;
     sync_skills_targets(repo_root, report)?;
 
-    if antigravity::config::merge_hooks_config(repo_root)? {
-        report
-            .written_files
-            .push(antigravity::config::hooks_config_path(repo_root));
-    }
-    if antigravity::config::merge_mcp_config(repo_root)? {
-        report
-            .written_files
-            .push(antigravity::config::mcp_config_path(repo_root));
-    }
-    if claude_code::config::merge_settings_config(repo_root)? {
-        report
-            .written_files
-            .push(claude_code::config::settings_config_path(repo_root));
-    }
-    if claude_code::config::merge_mcp_config(repo_root)? {
-        report
-            .written_files
-            .push(claude_code::config::mcp_config_path(repo_root));
+    for (path, changed) in [
+        (antigravity::config::hooks_config_path(repo_root), antigravity::config::merge_hooks_config(repo_root)?),
+        (antigravity::config::mcp_config_path(repo_root), antigravity::config::merge_mcp_config(repo_root)?),
+        (claude_code::config::settings_config_path(repo_root), claude_code::config::merge_settings_config(repo_root)?),
+        (claude_code::config::mcp_config_path(repo_root), claude_code::config::merge_mcp_config(repo_root)?),
+    ] {
+        if changed {
+            report.written_files.push(path);
+        }
     }
 
     sync_gitignore(repo_root, report)?;
@@ -81,19 +72,24 @@ fn sync_into(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn write_if_changed(path: &Path, content: &str) -> Result<bool> {
+    if fs::read_to_string(path).is_ok_and(|existing| existing == content) {
+        return Ok(false);
+    }
+    atomic_write(path, content.as_bytes())?;
+    Ok(true)
+}
+
+fn ensure_dir(dir: &Path) -> Result<()> {
+    fs::create_dir_all(dir).with_context(|| format!("failed to create directory {}", dir.display()))
+}
+
 fn ensure_harness_skeleton(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
     let harness = repo_root.join(".harness");
-    let dirs = [
-        harness.join("rules"),
-        harness.join("candidates"),
-        harness.join("skills"),
-        harness.join("memory").join("chunks"),
-        harness.join("tasks"),
-        harness.join(".state"),
-    ];
-    for dir in dirs {
+    for rel in ["rules", "candidates", "skills", "memory/chunks", "tasks", ".state"] {
+        let dir = harness.join(rel);
         if !dir.exists() {
-            atomic_fs::ensure_dir(&dir)?;
+            ensure_dir(&dir)?;
             report.created_dirs.push(dir);
         }
     }
@@ -104,7 +100,7 @@ fn write_embedded_skills(repo_root: &Path, report: &mut SyncReport) -> Result<()
     let skills_root = repo_root.join(".harness").join("skills");
     for skill in templates::EMBEDDED_SKILLS {
         let target = skills_root.join(skill.name).join("SKILL.md");
-        if atomic_fs::write_if_changed(&target, skill.skill_md)? {
+        if write_if_changed(&target, skill.skill_md)? {
             report.written_files.push(target);
         }
     }
@@ -122,7 +118,7 @@ fn sync_skills_targets(repo_root: &Path, report: &mut SyncReport) -> Result<()> 
 
     let mut preserved = BTreeSet::new();
     for target_root in &targets {
-        atomic_fs::ensure_dir(target_root)?;
+        ensure_dir(target_root)?;
         for existing_name in list_subdir_names(target_root)? {
             if !source_names.contains(&existing_name) {
                 preserved.insert(existing_name);
@@ -159,7 +155,7 @@ fn copy_dir_non_destructively(
     dst: &Path,
     report: &mut SyncReport,
 ) -> Result<()> {
-    atomic_fs::ensure_dir(dst)?;
+    ensure_dir(dst)?;
     for entry in fs::read_dir(src).with_context(|| format!("failed to read {}", src.display()))? {
         let entry = entry?;
         let src_path = entry.path();
@@ -171,7 +167,7 @@ fn copy_dir_non_destructively(
                 .with_context(|| format!("failed to read {}", src_path.display()))?;
             let unchanged = fs::read(&dst_path).is_ok_and(|existing| existing == bytes);
             if !unchanged {
-                atomic_fs::atomic_write_bytes(&dst_path, &bytes)?;
+                atomic_write(&dst_path, &bytes)?;
                 report.written_files.push(dst_path);
             }
         }
@@ -200,7 +196,7 @@ fn sync_gitignore(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
         updated.push('\n');
     }
     updated.push_str(".harness/.state/\n");
-    if atomic_fs::write_if_changed(&path, &updated)? {
+    if write_if_changed(&path, &updated)? {
         report.written_files.push(path);
     }
     Ok(())
@@ -217,7 +213,7 @@ fn sync_managed_doc(path: &Path, template: &str, report: &mut SyncReport) -> Res
     };
 
     let merged = merge_managed_markdown(existing.as_deref(), template);
-    if atomic_fs::write_if_changed(path, &merged)? {
+    if write_if_changed(path, &merged)? {
         report.written_files.push(path.to_path_buf());
     }
     Ok(())

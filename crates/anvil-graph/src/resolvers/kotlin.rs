@@ -6,7 +6,7 @@ use std::path::Path;
 use anvil_core::traits::{EdgeKind, EdgeRef};
 use rustc_hash::FxHashMap;
 
-use crate::model::CodeGraph;
+use crate::model::{CodeGraph, NodeId};
 use crate::resolvers::pick_preferred_symbol;
 
 /// Parses `settings.gradle.kts` / `settings.gradle` for `include(":mod")` subprojects.
@@ -46,9 +46,12 @@ pub fn resolve_kotlin_edge(
     edge: &EdgeRef,
     file_imports: &[String],
     graph: &CodeGraph,
-) -> Option<String> {
+    gradle_subprojects: &FxHashMap<String, String>,
+) -> Option<NodeId> {
     match edge.kind {
-        EdgeKind::Imports => resolve_kotlin_import(&edge.target_path_or_symbol, graph),
+        EdgeKind::Imports => {
+            resolve_kotlin_import(&edge.target_path_or_symbol, graph, gradle_subprojects)
+        }
         EdgeKind::Calls | EdgeKind::Extends | EdgeKind::Implements => {
             let sym = edge
                 .target_path_or_symbol
@@ -72,14 +75,18 @@ pub fn resolve_kotlin_edge(
     }
 }
 
-fn resolve_kotlin_import(target: &str, graph: &CodeGraph) -> Option<String> {
+fn resolve_kotlin_import(
+    target: &str,
+    graph: &CodeGraph,
+    gradle_subprojects: &FxHashMap<String, String>,
+) -> Option<NodeId> {
     let trimmed = target.trim();
     if let Some(pkg) = trimmed.strip_suffix(".*") {
         return graph
             .kotlin_packages
             .get(pkg)
             .and_then(|files| files.first())
-            .map(|first| CodeGraph::file_node_id(first));
+            .and_then(|first| graph.node_by_id(&CodeGraph::file_node_id(first)).map(|(id, _)| id));
     }
 
     let (pkg, sym) = trimmed.rsplit_once('.')?;
@@ -87,15 +94,58 @@ fn resolve_kotlin_import(target: &str, graph: &CodeGraph) -> Option<String> {
         if let Some(sym_node) = pick_preferred_symbol(sym, "", pkg_files, graph) {
             return Some(sym_node);
         }
-        if let Some(first) = pkg_files.first() {
-            return Some(CodeGraph::file_node_id(first));
+        if let Some(first) = pkg_files.first()
+            && let Some((id, _)) = graph.node_by_id(&CodeGraph::file_node_id(first))
+        {
+            return Some(id);
         }
     }
 
-    let suffix = format!("{}/{sym}.kt", pkg.replace('.', "/"));
+    let pkg_path = pkg.replace('.', "/");
+    if let Some(sub_hit) = probe_gradle_subprojects(graph, gradle_subprojects, &pkg_path, sym) {
+        return Some(sub_hit);
+    }
+
+    let suffix = format!("{pkg_path}/{sym}.kt");
     graph
         .file_hashes
         .keys()
         .find(|f| f.ends_with(&suffix))
-        .map(|f| CodeGraph::file_node_id(f))
+        .and_then(|f| graph.node_by_id(&CodeGraph::file_node_id(f)).map(|(id, _)| id))
+}
+
+fn probe_gradle_subprojects(
+    graph: &CodeGraph,
+    subprojects: &FxHashMap<String, String>,
+    pkg_path: &str,
+    sym: &str,
+) -> Option<NodeId> {
+    const SRC_ROOTS: &[&str] = &[
+        "src/main/kotlin",
+        "src/commonMain/kotlin",
+        "src/main/java",
+        "src",
+    ];
+    for sub_rel in subprojects.values() {
+        for src_root in SRC_ROOTS {
+            let candidate = format!("{sub_rel}/{src_root}/{pkg_path}/{sym}.kt");
+            if graph.file_hashes.contains_key(&candidate)
+                && let Some((id, _)) = graph.node_by_id(&CodeGraph::file_node_id(&candidate))
+            {
+                return Some(id);
+            }
+        }
+        if let Some(ids) = graph.symbol_index.get(sym) {
+            let prefix = format!("{sub_rel}/");
+            for &nid in ids {
+                if let Some(node) = graph.get_node(nid)
+                    && node.label == sym
+                    && node.file.starts_with(&prefix)
+                {
+                    return Some(nid);
+                }
+            }
+        }
+    }
+    None
 }

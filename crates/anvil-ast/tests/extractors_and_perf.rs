@@ -19,6 +19,7 @@ fn detects_all_supported_languages() {
     assert_eq!(detect_language(Path::new("a.py")), Language::Python);
     assert_eq!(detect_language(Path::new("a.kt")), Language::Kotlin);
     assert_eq!(detect_language(Path::new("a.dart")), Language::Dart);
+    assert_eq!(detect_language(Path::new("a.rs")), Language::Rust);
 }
 
 #[test]

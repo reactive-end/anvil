@@ -1,5 +1,6 @@
 //! AST symbol and edge extractor for TypeScript, TSX, JavaScript, and JSX.
 
+mod calls;
 mod frameworks;
 
 use anvil_core::traits::{EdgeKind, Language, SymbolKind};
@@ -119,7 +120,7 @@ fn extract_class(node: Node<'_>, state: &mut ExtractState<'_>) {
     };
     let class_name = state.node_text(name_node).to_owned();
     let line = ExtractState::line_of(node);
-    let decorators = frameworks::collect_decorators(node, state);
+    let decorators = frameworks::collect_decorators(node);
     let (kind, signature) =
         frameworks::classify_class_decorators(&class_name, &decorators, line, state);
 
@@ -200,9 +201,9 @@ fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {
     let Some(fn_node) = node.child_by_field_name("function") else {
         return;
     };
-    let callee = state.node_text(fn_node).trim();
     let line = ExtractState::line_of(node);
-    if callee == "require"
+    if fn_node.kind() == "identifier"
+        && state.node_text(fn_node).trim() == "require"
         && let Some(args) = node.child_by_field_name("arguments")
         && let Some(first) = args.named_child(0)
         && first.kind() == "string"
@@ -211,7 +212,9 @@ fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {
         state.push_edge(None, target, EdgeKind::Imports, line);
         return;
     }
-    state.push_edge(None, callee.to_owned(), EdgeKind::Calls, line);
+    if let Some(callee) = calls::clean_callee(fn_node, state) {
+        state.push_edge(None, callee, EdgeKind::Calls, line);
+    }
 }
 
 fn extract_jsx(node: Node<'_>, state: &mut ExtractState<'_>) {
@@ -219,10 +222,11 @@ fn extract_jsx(node: Node<'_>, state: &mut ExtractState<'_>) {
         return;
     };
     let tag = state.node_text(name_node).trim().to_owned();
-    let line = ExtractState::line_of(node);
-    if tag.starts_with(char::is_uppercase) {
-        state.push_edge(None, tag.clone(), EdgeKind::Calls, line);
+    if !tag.starts_with(char::is_uppercase) {
+        return;
     }
+    let line = ExtractState::line_of(node);
+    state.push_edge(None, tag.clone(), EdgeKind::Calls, line);
 
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {

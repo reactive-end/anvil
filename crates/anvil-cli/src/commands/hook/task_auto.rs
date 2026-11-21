@@ -1,6 +1,8 @@
 //! Hands-free automatic task tracking helpers for `anvil hook`.
 
+use std::fs;
 use std::path::Path;
+use std::time::SystemTime;
 
 use anvil_adapters::contract::{HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput};
 use anvil_tasks::ledger::tasks_root;
@@ -26,11 +28,46 @@ pub fn handle_prompt_hook(root: &Path, input: &NormalizedHookInput) -> HookOutco
     )])
 }
 
-/// Ensures `tasks.json` is freshly rebuilt whenever `.harness/tasks/` exists.
-pub fn refresh_tasks_json_if_present(root: &Path) {
-    if tasks_root(root).is_dir() {
+/// Rebuilds `tasks.json` ONLY when `.harness/tasks/` has newer metadata or entries than `tasks.json`.
+pub fn refresh_tasks_json_if_changed(root: &Path) {
+    let t_root = tasks_root(root);
+    if !t_root.is_dir() {
+        return;
+    }
+    if needs_tasks_rebuild(root, &t_root) {
         let _ = build_root_tasks_json(root);
     }
+}
+
+fn needs_tasks_rebuild(root: &Path, t_root: &Path) -> bool {
+    let tasks_json = root.join("tasks.json");
+    let Ok(json_mtime) = fs::metadata(&tasks_json).and_then(|m| m.modified()) else {
+        return true;
+    };
+    if is_newer(t_root, json_mtime) {
+        return true;
+    }
+    let Ok(entries) = fs::read_dir(t_root) else {
+        return true;
+    };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        if is_newer(&dir.join("meta.json"), json_mtime)
+            || is_newer(&dir.join("entries"), json_mtime)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_newer(path: &Path, baseline: SystemTime) -> bool {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .is_ok_and(|mtime| mtime > baseline)
 }
 
 /// Blocks `Stop` once if non-harness files changed and the active task lacks a recorded summary.

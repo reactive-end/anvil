@@ -178,6 +178,8 @@ pub enum RatchetSubcmd {
         #[arg(long)]
         samples: Vec<String>,
     },
+    /// Test a candidate regex across matching repository files and measure runtime.
+    Test { id: String },
     /// Promote an eligible candidate into `.harness/rules/`.
     Promote { id: String },
 }
@@ -212,6 +214,12 @@ pub enum QaSubcmd {
         console_errors: Vec<String>,
         #[arg(long, value_delimiter = ',')]
         page_errors: Vec<String>,
+    },
+    /// Run headless Playwright DOM + screenshot capture on a URL.
+    Run {
+        url: String,
+        #[arg(long, default_value = ".harness/.state/qa")]
+        out_dir: PathBuf,
     },
     /// Scan Android `uiautomator` XML, `logcat`, and Roborazzi diffs.
     ScanMobile {

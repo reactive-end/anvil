@@ -4,17 +4,16 @@ mod collect;
 mod walker;
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
-use anvil_ast::analyze_file;
 use anvil_core::config::AnvilConfig;
 use anvil_core::traits::{EdgeRef, Language};
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
-use crate::model::{CodeGraph, GraphEdge};
-use crate::resolvers::{ResolutionContext, kotlin, resolve_file_edges};
+use crate::model::CodeGraph;
+use crate::resolvers::{ResolutionContext, ResolvedEdge, resolve_file_edges};
 
 pub use collect::collect_source_files;
 
@@ -25,6 +24,11 @@ pub struct IncrementalStats {
     pub modified: usize,
     pub removed: usize,
     pub unchanged: usize,
+}
+
+enum IncrementalScanResult {
+    StatOnly { rel: String, stat: (u64, u64) },
+    Extracted { item: walker::ExtractedFile, is_new: bool },
 }
 
 /// Builds a complete `CodeGraph` for `repo_root` using `.gitignore`-aware parallel extraction.
@@ -39,25 +43,27 @@ pub fn build_full(repo_root: &Path, config: &AnvilConfig) -> Result<CodeGraph> {
     let mut graph = CodeGraph::new(norm_root);
     graph.nodes.reserve(extracted.len() * 4);
     graph.file_hashes.reserve(extracted.len());
+    graph.file_stats.reserve(extracted.len());
 
     let mut pending: Vec<(Language, Vec<EdgeRef>)> = Vec::with_capacity(extracted.len());
     for item in extracted {
         let lang = item.facts.language;
-        let edges = walker::insert_file_facts(&mut graph, item, false);
+        let edges = walker::insert_file_facts(&mut graph, item, false, None);
         pending.push((lang, edges));
     }
     graph.rebuild_indexes();
 
     let ctx = ResolutionContext::load(repo_root);
-    let resolved_batches: Vec<Vec<GraphEdge>> = pending
+    let resolved_batches: Vec<Vec<ResolvedEdge>> = pending
         .par_iter()
         .map(|(lang, edges)| resolve_file_edges(*lang, edges, &graph, &ctx))
         .collect();
 
     for batch in resolved_batches {
-        graph.edges.extend(batch);
+        walker::push_resolved_edges(&mut graph, batch, false);
     }
-    graph.rebuild_indexes();
+    graph.rebuild_adjacency();
+    let _ = crate::analytics::detect_communities(&mut graph);
     Ok(graph)
 }
 
@@ -71,45 +77,43 @@ pub fn update_file(
     let rel = CodeGraph::normalize_rel_path(rel_path);
     let abs = repo_root.join(&rel);
     if !abs.is_file() {
-        return Ok(walker::remove_file_incremental(graph, &rel));
+        let (removed, unused) = walker::remove_file_incremental(graph, &rel);
+        walker::finalize_unused_slots(graph, unused);
+        return Ok(removed);
     }
 
+    let meta = fs::metadata(&abs).with_context(|| format!("failed to stat {}", abs.display()))?;
+    let stat = walker::file_stat_from_meta(&meta);
     let bytes =
         fs::read(&abs).with_context(|| format!("failed to read {}", abs.display()))?;
     let hash = blake3::hash(&bytes).to_hex().to_string();
     if graph.file_hashes.get(&rel) == Some(&hash) {
+        graph.file_stats.insert(rel, stat);
         return Ok(false);
     }
 
-    let source = String::from_utf8(bytes)
-        .with_context(|| format!("non-UTF8 source file {}", abs.display()))?;
-    let facts = analyze_file(Path::new(&rel), &source, config)?;
-    let lang = facts.language;
-    let kotlin_pkg = (lang == Language::Kotlin)
-        .then(|| kotlin::extract_kotlin_package(&source))
-        .flatten();
+    let Some(item) = walker::extract_from_bytes(&rel, bytes, stat, config)? else {
+        return Ok(false);
+    };
+    let lang = item.facts.language;
 
-    walker::remove_file_incremental(graph, &rel);
-    let raw_edges = walker::insert_file_facts(
-        graph,
-        walker::ExtractedFile { facts, kotlin_pkg },
-        true,
-    );
+    let (_, mut reuse_slots) = walker::remove_file_incremental(graph, &rel);
+    let raw_edges = walker::insert_file_facts(graph, item, true, Some(&mut reuse_slots));
+    walker::finalize_unused_slots(graph, reuse_slots);
 
     let ctx = ResolutionContext::load(repo_root);
     let new_edges = resolve_file_edges(lang, &raw_edges, graph, &ctx);
-    for edge in new_edges {
-        walker::push_edge(graph, edge, true);
-    }
-    walker::reconcile_incoming_for_file(graph, &rel);
+    walker::push_resolved_edges(graph, new_edges, true);
 
-    if graph.tombstone_edges > graph.edges.len() / 4 {
+    if graph.tombstone_edges > graph.edges.len() / 4
+        || graph.tombstone_nodes > graph.nodes.len() / 4
+    {
         graph.compact_tombstones();
     }
     Ok(true)
 }
 
-/// Scans `repo_root`, hashes files in parallel, and re-parses only added or modified files.
+/// Scans `repo_root` with `(mtime, len)` fast-path and re-parses only added or modified files.
 pub fn update_incremental(
     graph: &mut CodeGraph,
     repo_root: &Path,
@@ -124,52 +128,81 @@ pub fn update_incremental(
         .cloned()
         .collect();
 
-    let hashed: Vec<(PathBuf, String, bool)> = files
+    let scanned: Vec<IncrementalScanResult> = files
         .par_iter()
-        .filter_map(|(abs, rel)| {
-            let bytes = fs::read(abs).ok()?;
-            let hash = blake3::hash(&bytes).to_hex().to_string();
-            let is_new = !graph.file_hashes.contains_key(rel);
-            let changed = graph.file_hashes.get(rel) != Some(&hash);
-            changed.then(|| (abs.clone(), rel.clone(), is_new))
-        })
+        .filter_map(|(abs, rel)| scan_one_incremental(abs, rel, graph, config))
         .collect();
+
+    let mut stat_updates = Vec::new();
+    let mut extracted = Vec::new();
+    for entry in scanned {
+        match entry {
+            IncrementalScanResult::StatOnly { rel, stat } => stat_updates.push((rel, stat)),
+            IncrementalScanResult::Extracted { item, is_new } => extracted.push((item, is_new)),
+        }
+    }
+
+    for (rel, stat) in stat_updates {
+        graph.file_stats.insert(rel, stat);
+    }
 
     let mut stats = IncrementalStats {
         removed: removed_files.len(),
-        unchanged: files.len().saturating_sub(hashed.len()),
+        unchanged: files.len().saturating_sub(extracted.len()),
         ..IncrementalStats::default()
     };
 
-    if removed_files.is_empty() && hashed.is_empty() {
+    if removed_files.is_empty() && extracted.is_empty() {
         return Ok(stats);
     }
 
-    apply_incremental_changes(graph, repo_root, config, &removed_files, &hashed, &mut stats);
+    apply_incremental_changes(graph, repo_root, &removed_files, extracted, &mut stats);
     Ok(stats)
+}
+
+fn scan_one_incremental(
+    abs: &Path,
+    rel: &str,
+    graph: &CodeGraph,
+    config: &AnvilConfig,
+) -> Option<IncrementalScanResult> {
+    let meta = fs::metadata(abs).ok()?;
+    if meta.len() > walker::MAX_FILE_BYTES {
+        return None;
+    }
+    let stat = walker::file_stat_from_meta(&meta);
+    let is_new = !graph.file_hashes.contains_key(rel);
+    if !is_new
+        && stat.0 != 0
+        && graph.file_stats.get(rel) == Some(&stat)
+    {
+        return None;
+    }
+
+    let bytes = fs::read(abs).ok()?;
+    let hash = blake3::hash(&bytes).to_hex().to_string();
+    if graph.file_hashes.get(rel) == Some(&hash) {
+        return Some(IncrementalScanResult::StatOnly {
+            rel: rel.to_owned(),
+            stat,
+        });
+    }
+
+    let item = walker::extract_from_bytes(rel, bytes, stat, config).ok().flatten()?;
+    Some(IncrementalScanResult::Extracted { item, is_new })
 }
 
 fn apply_incremental_changes(
     graph: &mut CodeGraph,
     repo_root: &Path,
-    config: &AnvilConfig,
     removed_files: &[String],
-    hashed: &[(PathBuf, String, bool)],
+    extracted: Vec<(walker::ExtractedFile, bool)>,
     stats: &mut IncrementalStats,
 ) {
     for rem in removed_files {
-        walker::remove_file_incremental(graph, rem);
+        let (_, unused) = walker::remove_file_incremental(graph, rem);
+        walker::finalize_unused_slots(graph, unused);
     }
-
-    let extracted: Vec<(walker::ExtractedFile, bool)> = hashed
-        .par_iter()
-        .filter_map(|(abs, rel, is_new)| {
-            walker::extract_one(abs, rel, config)
-                .ok()
-                .flatten()
-                .map(|ef| (ef, *is_new))
-        })
-        .collect();
 
     let mut pending = Vec::with_capacity(extracted.len());
     for (item, is_new) in extracted {
@@ -180,19 +213,21 @@ fn apply_incremental_changes(
         }
         let path = item.facts.path.clone();
         let lang = item.facts.language;
-        walker::remove_file_incremental(graph, &path);
-        let raw_edges = walker::insert_file_facts(graph, item, true);
+        let (_, mut reuse_slots) = walker::remove_file_incremental(graph, &path);
+        let raw_edges = walker::insert_file_facts(graph, item, true, Some(&mut reuse_slots));
+        walker::finalize_unused_slots(graph, reuse_slots);
         pending.push((lang, raw_edges));
     }
 
     let ctx = ResolutionContext::load(repo_root);
-    let batches: Vec<Vec<GraphEdge>> = pending
+    let batches: Vec<Vec<ResolvedEdge>> = pending
         .par_iter()
         .map(|(lang, edges)| resolve_file_edges(*lang, edges, graph, &ctx))
         .collect();
     for batch in batches {
-        graph.edges.extend(batch);
+        walker::push_resolved_edges(graph, batch, false);
     }
-    graph.compact_tombstones();
-    graph.rebuild_indexes();
+    if !graph.compact_tombstones() {
+        graph.rebuild_adjacency();
+    }
 }

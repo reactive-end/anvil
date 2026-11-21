@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde_json::{Map, Value, json};
 
-use crate::atomic_fs;
 use crate::contract::HookEvent;
+use crate::sync::write_if_changed;
 
 const ANTIGRAVITY_EVENTS: &[HookEvent] = &[
     HookEvent::SessionStart,
@@ -42,7 +42,7 @@ pub fn merge_hooks_config(repo_root: &Path) -> Result<bool> {
 
     let formatted = serde_json::to_string_pretty(&Value::Object(root))
         .context("failed to serialize .agents/hooks.json")?;
-    atomic_fs::write_if_changed(&path, &format!("{formatted}\n"))
+    write_if_changed(&path, &format!("{formatted}\n"))
 }
 
 /// Non-destructively merges the `anvil mcp` server entry into `.agents/mcp_config.json`.
@@ -61,7 +61,7 @@ pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
 
     let formatted = serde_json::to_string_pretty(&Value::Object(root))
         .context("failed to serialize .agents/mcp_config.json")?;
-    atomic_fs::write_if_changed(&path, &format!("{formatted}\n"))
+    write_if_changed(&path, &format!("{formatted}\n"))
 }
 
 fn upsert_anvil_hook_entry(entries: &mut Vec<Value>, command: &str) {

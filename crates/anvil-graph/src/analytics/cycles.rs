@@ -10,8 +10,8 @@ use crate::model::{CodeGraph, GraphEdgeKind, NodeKind};
 pub fn detect_cycles(graph: &CodeGraph, max_cycles: usize) -> Vec<Vec<String>> {
     let mut files: Vec<String> = graph
         .nodes
-        .values()
-        .filter(|n| n.kind == NodeKind::File)
+        .iter()
+        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::File)
         .map(|n| n.file.clone())
         .collect();
     files.sort();
@@ -21,24 +21,25 @@ pub fn detect_cycles(graph: &CodeGraph, max_cycles: usize) -> Vec<Vec<String>> {
         .map(|(i, f)| (f.as_str(), i))
         .collect();
 
+    let mut node_to_file_idx = vec![usize::MAX; graph.nodes.len()];
+    for (nid, node) in graph.nodes.iter().enumerate() {
+        if !node.is_tombstone()
+            && let Some(&fi) = idx_map.get(node.file.as_str())
+        {
+            node_to_file_idx[nid] = fi;
+        }
+    }
+
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); files.len()];
     for edge in &graph.edges {
-        if edge.source.is_empty()
-            || !edge.resolved
+        if !edge.is_resolved()
             || !matches!(edge.kind, GraphEdgeKind::Imports | GraphEdgeKind::ReExports)
         {
             continue;
         }
-        let Some(sf) = graph.nodes.get(&edge.source).map(|n| n.file.as_str()) else {
-            continue;
-        };
-        let Some(tf) = graph.nodes.get(&edge.target).map(|n| n.file.as_str()) else {
-            continue;
-        };
-        if let (Some(&u), Some(&v)) = (idx_map.get(sf), idx_map.get(tf))
-            && u != v
-            && !adj[u].contains(&v)
-        {
+        let u = node_to_file_idx.get(edge.source as usize).copied().unwrap_or(usize::MAX);
+        let v = node_to_file_idx.get(edge.target as usize).copied().unwrap_or(usize::MAX);
+        if u != usize::MAX && v != usize::MAX && u != v && !adj[u].contains(&v) {
             adj[u].push(v);
         }
     }

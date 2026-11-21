@@ -1,7 +1,10 @@
+use std::sync::Arc;
+use std::thread;
+
 use anyhow::Result;
 use tempfile::TempDir;
 
-use anvil_core::circuit_breaker::{CircuitBreaker, CircuitState, normalize_error};
+use anvil_core::circuit_breaker::{CircuitBreaker, CircuitState, fingerprint, normalize_error};
 
 #[test]
 fn circuit_breaker_trips_exactly_on_third_consecutive_identical_failure() -> Result<()> {
@@ -56,5 +59,46 @@ fn different_error_resets_streak_and_success_clears_closed_streak() -> Result<()
         normalize_error("C:\\repo\\a.ts(10,3)  0xDEADBEEF"),
         "C:/repo/a.ts:<loc> 0x<addr>"
     );
+    Ok(())
+}
+
+#[test]
+fn timestamp_duration_and_temp_id_normalization_trips_circuit_reliably() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let cb = CircuitBreaker::new(tmp.path(), 3);
+
+    let e1 = "2026-11-21T10:01:02.111Z FAIL /tmp/run-101 req=550e8400-e29b-41d4-a716-446655440000 in 123ms at src/a.ts:10:2";
+    let e2 = "2026-11-21T10:02:09.999Z FAIL /tmp/run-202 req=123e4567-e89b-12d3-a456-426614174000 in 1.45s at src/a.ts:22:9";
+    let e3 = "2026-11-21T10:03:45Z FAIL /tmp/run-303 req=999e4567-e89b-12d3-a456-426614174999 in 9ms at src/a.ts(33,1)";
+
+    assert_eq!(fingerprint(e1), fingerprint(e2));
+    assert_eq!(fingerprint(e2), fingerprint(e3));
+
+    cb.record_failure("vitest", e1, "npx vitest")?;
+    cb.record_failure("vitest", e2, "npx vitest")?;
+    let s3 = cb.record_failure("vitest", e3, "npx vitest")?;
+    assert_eq!(s3.state, CircuitState::Open);
+    assert_eq!(s3.consecutive_failures, 3);
+    Ok(())
+}
+
+#[test]
+fn circuit_breaker_handles_concurrent_updates_via_file_lock() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = Arc::new(tmp.path().to_path_buf());
+    let mut handles = Vec::new();
+    for _ in 0..4 {
+        let r = Arc::clone(&root);
+        handles.push(thread::spawn(move || -> Result<()> {
+            let cb = CircuitBreaker::new(&r, 10);
+            cb.record_failure("tsc", "same error TS2322", "tsc")?;
+            Ok(())
+        }));
+    }
+    for h in handles {
+        h.join().expect("thread join")?;
+    }
+    let final_status = CircuitBreaker::new(&root, 10).status()?;
+    assert_eq!(final_status.consecutive_failures, 4);
     Ok(())
 }

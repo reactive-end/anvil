@@ -74,6 +74,61 @@
     );
   }
 
+  function getAttr(el, name) {
+    if (!el) return null;
+    if (typeof el.getAttribute === "function") {
+      const val = el.getAttribute(name);
+      if (val !== null && val !== undefined) return String(val);
+    }
+    if (el.attributes && el.attributes[name] !== undefined) {
+      return String(el.attributes[name]);
+    }
+    return null;
+  }
+
+  function hasHiddenAttr(el) {
+    if (!el) return false;
+    if (el.hidden === true) return true;
+    if (typeof el.hasAttribute === "function" && el.hasAttribute("hidden")) return true;
+    return Boolean(el.attributes && Object.prototype.hasOwnProperty.call(el.attributes, "hidden"));
+  }
+
+  function isEffectivelyVisible(el) {
+    let cur = el;
+    while (cur) {
+      if (hasHiddenAttr(cur)) {
+        return false;
+      }
+      if (isHidden(getStyle(cur) || {})) {
+        return false;
+      }
+      cur = cur.parentElement || null;
+    }
+    return true;
+  }
+
+  function isOverlayRoot(el) {
+    if (!el) return false;
+    const tag = String(el.tagName || "").toLowerCase();
+    if (tag === "html" || tag === "body") return false;
+    if (tag === "dialog") return true;
+    if (getAttr(el, "role") === "dialog" || el.role === "dialog") return true;
+    if (getAttr(el, "aria-modal") === "true" || el.ariaModal === "true") return true;
+    const style = getStyle(el) || {};
+    return style.position === "fixed";
+  }
+
+  function overlayLayerOf(el) {
+    let cur = el;
+    while (cur && cur !== doc.documentElement) {
+      if (isOverlayRoot(cur)) {
+        return cur;
+      }
+      cur = cur.parentElement || null;
+    }
+    return null;
+  }
+
   function hasScrollableAncestor(el, axis) {
     let cur = el.parentElement;
     while (cur && cur !== doc.documentElement) {
@@ -126,8 +181,7 @@
     if (String(el.tagName).toLowerCase() === "input" && String(el.type || "").toLowerCase() === "hidden") {
       continue;
     }
-    const style = getStyle(el) || {};
-    if (style.display === "none" || style.visibility === "hidden") {
+    if (!isEffectivelyVisible(el)) {
       continue;
     }
     const b = boundsOf(el);
@@ -140,15 +194,16 @@
       });
       continue;
     }
-    if (style.opacity !== "0") {
-      visibleInteractive.push({ el, b, sel: selectorOf(el) });
-    }
+    visibleInteractive.push({ el, b, sel: selectorOf(el), layer: overlayLayerOf(el) });
   }
 
   for (let i = 0; i < visibleInteractive.length; i++) {
     const a = visibleInteractive[i];
     for (let j = i + 1; j < visibleInteractive.length; j++) {
       const b = visibleInteractive[j];
+      if (a.layer !== b.layer) {
+        continue;
+      }
       if (
         (typeof a.el.contains === "function" && a.el.contains(b.el)) ||
         (typeof b.el.contains === "function" && b.el.contains(a.el))
@@ -171,8 +226,7 @@
   // 4. Broken images
   const images = Array.from(doc.querySelectorAll("img"));
   for (const img of images) {
-    const style = getStyle(img) || {};
-    if (isHidden(style)) continue;
+    if (!isEffectivelyVisible(img)) continue;
     if (img.complete && img.naturalWidth === 0) {
       violations.push({
         kind: "broken_image",
@@ -189,8 +243,8 @@
   for (const el of allElements) {
     const tag = String(el.tagName || "").toLowerCase();
     if (!tag || skipTags.has(tag)) continue;
+    if (!isEffectivelyVisible(el)) continue;
     const style = getStyle(el) || {};
-    if (isHidden(style)) continue;
     const b = boundsOf(el);
     if (b.width <= 0 || b.height <= 0) continue;
     if (!hasOwnText(el)) continue;

@@ -40,6 +40,7 @@ pub enum Language {
     Python,
     Kotlin,
     Dart,
+    Rust,
     Json,
     Yaml,
     Markdown,

@@ -9,6 +9,10 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::fs_util::{atomic_write, with_file_lock};
+
+const LOCK_TIMEOUT_MS: u64 = 2_000;
+
 /// State of the circuit breaker persisted in `.harness/.state/circuit.json`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -83,6 +87,10 @@ impl CircuitBreaker {
         &self.state_path
     }
 
+    fn lock_path(&self) -> PathBuf {
+        self.state_path.with_extension("json.lock")
+    }
+
     /// Reads current circuit status, returning a clean CLOSED snapshot if missing.
     pub fn status(&self) -> Result<CircuitStatus> {
         if !self.state_path.exists() {
@@ -103,91 +111,125 @@ impl CircuitBreaker {
         raw_error: &str,
         command: &str,
     ) -> Result<CircuitStatus> {
-        let mut status = self.status()?;
-        let normalized = normalize_error(raw_error);
-        let fp = fingerprint_normalized(&normalized);
-        let now = Utc::now();
+        with_file_lock(&self.lock_path(), LOCK_TIMEOUT_MS, || {
+            let mut status = self.status()?;
+            let normalized = normalize_error(raw_error);
+            let fp = fingerprint_normalized(&normalized);
+            let now = Utc::now();
 
-        if status.last_fingerprint.as_deref() == Some(fp.as_str()) {
-            status.consecutive_failures = status.consecutive_failures.saturating_add(1);
-        } else {
-            status.last_fingerprint = Some(fp.clone());
-            status.consecutive_failures = 1;
-            status.recent_samples.clear();
-        }
+            if status.last_fingerprint.as_deref() == Some(fp.as_str()) {
+                status.consecutive_failures = status.consecutive_failures.saturating_add(1);
+            } else {
+                status.last_fingerprint = Some(fp.clone());
+                status.consecutive_failures = 1;
+                status.recent_samples.clear();
+            }
 
-        status.last_tool = Some(tool.to_owned());
-        push_bounded_sample(&mut status.recent_samples, raw_error, 5);
-        status.updated_at = now;
+            status.last_tool = Some(tool.to_owned());
+            push_bounded_sample(&mut status.recent_samples, raw_error, 5);
+            status.updated_at = now;
 
-        if status.consecutive_failures >= status.limit {
-            status.state = CircuitState::Open;
-            status.escalation = Some(EscalationSummary {
-                fingerprint: fp,
-                tool: tool.to_owned(),
-                consecutive_failures: status.consecutive_failures,
-                normalized_error: normalized,
-                last_command: command.to_owned(),
-                opened_at: now,
-                recommended_action:
-                    "Stop automated retries, inspect root cause, and run `anvil circuit reset` after fixing."
-                        .to_owned(),
-            });
-        }
+            if status.consecutive_failures >= status.limit {
+                status.state = CircuitState::Open;
+                status.escalation = Some(EscalationSummary {
+                    fingerprint: fp,
+                    tool: tool.to_owned(),
+                    consecutive_failures: status.consecutive_failures,
+                    normalized_error: normalized,
+                    last_command: command.to_owned(),
+                    opened_at: now,
+                    recommended_action:
+                        "Stop automated retries, inspect root cause, and run `anvil circuit reset` after fixing."
+                            .to_owned(),
+                });
+            }
 
-        self.save(&status)?;
-        Ok(status)
+            self.save(&status)?;
+            Ok(status)
+        })
     }
 
     /// Clears consecutive failure streak if circuit is still `CLOSED`.
     /// An `OPEN` circuit stays blocked until `reset()` is explicitly invoked.
     pub fn record_success(&self) -> Result<CircuitStatus> {
-        let mut status = self.status()?;
-        if status.is_open() {
-            return Ok(status);
-        }
-        status.consecutive_failures = 0;
-        status.last_fingerprint = None;
-        status.recent_samples.clear();
-        status.updated_at = Utc::now();
-        self.save(&status)?;
-        Ok(status)
+        with_file_lock(&self.lock_path(), LOCK_TIMEOUT_MS, || {
+            let mut status = self.status()?;
+            if status.is_open() {
+                return Ok(status);
+            }
+            status.consecutive_failures = 0;
+            status.last_fingerprint = None;
+            status.recent_samples.clear();
+            status.updated_at = Utc::now();
+            self.save(&status)?;
+            Ok(status)
+        })
     }
 
     /// Explicitly resets the circuit breaker back to `CLOSED`.
     pub fn reset(&self) -> Result<CircuitStatus> {
-        let status = CircuitStatus::new(self.limit);
-        self.save(&status)?;
-        Ok(status)
+        with_file_lock(&self.lock_path(), LOCK_TIMEOUT_MS, || {
+            let status = CircuitStatus::new(self.limit);
+            self.save(&status)?;
+            Ok(status)
+        })
     }
 
     fn save(&self, status: &CircuitStatus) -> Result<()> {
-        if let Some(parent) = self.state_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
         let json = serde_json::to_string_pretty(status)?;
-        fs::write(&self.state_path, format!("{json}\n"))
-            .with_context(|| format!("failed to write {}", self.state_path.display()))
+        atomic_write(&self.state_path, format!("{json}\n").as_bytes())
     }
 }
 
-/// Normalizes volatile line/column numbers, timestamps, hex addresses, and paths.
+/// Normalizes volatile timestamps, durations, hex/temp IDs, line/column numbers, and paths.
 pub fn normalize_error(raw: &str) -> String {
+    static RE_ISO_TS: OnceLock<Regex> = OnceLock::new();
+    static RE_UUID: OnceLock<Regex> = OnceLock::new();
+    static RE_TMP: OnceLock<Regex> = OnceLock::new();
+    static RE_HEX_ADDR: OnceLock<Regex> = OnceLock::new();
+    static RE_HEX_LONG: OnceLock<Regex> = OnceLock::new();
     static RE_LINE_COL: OnceLock<Regex> = OnceLock::new();
-    static RE_HEX: OnceLock<Regex> = OnceLock::new();
+    static RE_DURATION: OnceLock<Regex> = OnceLock::new();
     static RE_WS: OnceLock<Regex> = OnceLock::new();
 
+    let re_ts = RE_ISO_TS.get_or_init(|| {
+        Regex::new(r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b")
+            .expect("valid iso timestamp regex")
+    });
+    let re_uuid = RE_UUID.get_or_init(|| {
+        Regex::new(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+            .expect("valid uuid regex")
+    });
+    let re_tmp = RE_TMP.get_or_init(|| {
+        Regex::new(r"(?:/tmp/[A-Za-z0-9._-]+|\.tmp\.[A-Za-z0-9._-]+)")
+            .expect("valid temp id regex")
+    });
+    let re_addr =
+        RE_HEX_ADDR.get_or_init(|| Regex::new(r"0x[0-9a-fA-F]+").expect("valid hex addr regex"));
+    let re_hex_long = RE_HEX_LONG
+        .get_or_init(|| Regex::new(r"\b[0-9a-fA-F]{12,}\b").expect("valid long hex regex"));
     let re_loc = RE_LINE_COL.get_or_init(|| {
         Regex::new(r"(?::|\()\d+(?::|,)\d+\)?:?").expect("valid location regex")
     });
-    let re_hex = RE_HEX.get_or_init(|| Regex::new(r"0x[0-9a-fA-F]+").expect("valid hex regex"));
+    let re_dur = RE_DURATION.get_or_init(|| {
+        Regex::new(r"\b\d+(?:\.\d+)?(?:ms|µs|us|ns|s)\b").expect("valid duration regex")
+    });
     let re_ws = RE_WS.get_or_init(|| Regex::new(r"\s+").expect("valid whitespace regex"));
 
-    let unified_slashes = raw.replace('\\', "/");
-    let no_locs = re_loc.replace_all(&unified_slashes, ":<loc>");
-    let no_hex = re_hex.replace_all(&no_locs, "0x<addr>");
-    re_ws.replace_all(no_hex.trim(), " ").into_owned()
+    let unified = raw.replace('\\', "/");
+    let s1 = re_ts.replace_all(&unified, "<ts>");
+    let s2 = re_uuid.replace_all(&s1, "<id>");
+    let s3 = re_tmp.replace_all(&s2, "<tmp>");
+    let s4 = re_addr.replace_all(&s3, "0x<addr>");
+    let s5 = re_hex_long.replace_all(&s4, "<hex>");
+    let s6 = re_loc.replace_all(&s5, ":<loc>");
+    let s7 = re_dur.replace_all(&s6, "<dur>");
+    re_ws.replace_all(s7.trim(), " ").into_owned()
+}
+
+/// Computes a deterministic `blake3` hex fingerprint directly over raw error text.
+pub fn fingerprint(raw: &str) -> String {
+    fingerprint_normalized(&normalize_error(raw))
 }
 
 /// Computes a deterministic `blake3` hex fingerprint over normalized error text.

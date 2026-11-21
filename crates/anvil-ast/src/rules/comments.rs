@@ -1,4 +1,4 @@
-//! Tier 0 rule: block TODO/FIXME/HACK/XXX and long narrative/changelog comments.
+//! Tier 0 rule: block deferred-work markers and long narrative/changelog comments.
 
 use std::sync::OnceLock;
 
@@ -6,7 +6,7 @@ use anvil_core::traits::{Diagnostic, Severity};
 use regex::Regex;
 use tree_sitter::Node;
 
-use super::RuleState;
+use super::{RuleState, has_anvil_allow};
 
 static MARKER_RE: OnceLock<Option<Regex>> = OnceLock::new();
 static CHANGELOG_RE: OnceLock<Option<Regex>> = OnceLock::new();
@@ -33,6 +33,9 @@ fn check_markers(node: Node<'_>, text: &str, state: &mut RuleState<'_>) {
         let prefix = &text[..mat.start()];
         let rel_line = prefix.bytes().filter(|&b| b == b'\n').count() as u32;
         let line = node.start_position().row as u32 + 1 + rel_line;
+        if has_anvil_allow(state, line, "no-todo-comments") {
+            continue;
+        }
         let col = if rel_line == 0 {
             node.start_position().column as u32 + 1 + prefix.len() as u32
         } else {
@@ -54,11 +57,12 @@ fn check_markers(node: Node<'_>, text: &str, state: &mut RuleState<'_>) {
 }
 
 fn check_narrative(node: Node<'_>, text: &str, state: &mut RuleState<'_>) {
-    let trimmed = text.trim();
-    if trimmed.contains("anvil-allow(") {
+    let line = node.start_position().row as u32 + 1;
+    if has_anvil_allow(state, line, "no-narrative-comments") {
         return;
     }
 
+    let trimmed = text.trim();
     let is_doc_comment = trimmed.starts_with("/**") || trimmed.starts_with("///");
     let has_changelog = CHANGELOG_RE
         .get_or_init(|| {
@@ -74,7 +78,6 @@ fn check_narrative(node: Node<'_>, text: &str, state: &mut RuleState<'_>) {
     let is_long_narrative = !is_doc_comment && (line_count > 6 || trimmed.len() > 420);
 
     if has_changelog || is_long_narrative {
-        let line = node.start_position().row as u32 + 1;
         let col = node.start_position().column as u32 + 1;
         state.diagnostics.push(Diagnostic {
             rule: "no-narrative-comments".to_owned(),

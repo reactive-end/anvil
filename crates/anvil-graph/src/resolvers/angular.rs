@@ -2,7 +2,7 @@
 
 use anvil_core::traits::{EdgeKind, EdgeRef};
 
-use crate::model::CodeGraph;
+use crate::model::{CodeGraph, NodeId};
 use crate::resolvers::{normalize_join_rel, pick_preferred_symbol};
 
 /// Resolves Angular template, selector, property binding, and event call edges.
@@ -10,19 +10,19 @@ pub fn resolve_angular_edge(
     edge: &EdgeRef,
     file_imports: &[String],
     graph: &CodeGraph,
-) -> Option<String> {
+) -> Option<NodeId> {
     match edge.kind {
         EdgeKind::RendersTemplate => resolve_render_target(edge, graph),
         EdgeKind::UsesProp => {
             let selector = edge.target_path_or_symbol.split('.').next().unwrap_or("");
-            graph.angular_selectors.get(selector).cloned()
+            graph.angular_selectors.get(selector).copied()
         }
         EdgeKind::Calls => resolve_html_call(edge, file_imports, graph),
         _ => None,
     }
 }
 
-fn resolve_render_target(edge: &EdgeRef, graph: &CodeGraph) -> Option<String> {
+fn resolve_render_target(edge: &EdgeRef, graph: &CodeGraph) -> Option<NodeId> {
     let target = edge.target_path_or_symbol.trim();
     if target.ends_with(".html") || target.ends_with(".htm") || target.starts_with('.') {
         let base_dir = edge
@@ -32,17 +32,19 @@ fn resolve_render_target(edge: &EdgeRef, graph: &CodeGraph) -> Option<String> {
             .unwrap_or("");
         let resolved = normalize_join_rel(base_dir, target);
         if graph.file_hashes.contains_key(&resolved) {
-            return Some(CodeGraph::file_node_id(&resolved));
+            return graph
+                .node_by_id(&CodeGraph::file_node_id(&resolved))
+                .map(|(id, _)| id);
         }
     }
-    graph.angular_selectors.get(target).cloned()
+    graph.angular_selectors.get(target).copied()
 }
 
 fn resolve_html_call(
     edge: &EdgeRef,
     file_imports: &[String],
     graph: &CodeGraph,
-) -> Option<String> {
+) -> Option<NodeId> {
     let clean = edge
         .target_path_or_symbol
         .strip_prefix("this.")

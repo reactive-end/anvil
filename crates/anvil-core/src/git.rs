@@ -1,6 +1,11 @@
-//! Fast Git CLI helpers for repository root, branch, HEAD commit, and changed diffs.
+//! Fast Git helpers: pure-Rust repo root walk and batched/NUL-safe status & diff queries.
 
-use std::path::{Path, PathBuf};
+mod diff;
+
+pub use diff::batched_working_tree_diffs;
+
+use std::fs;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
@@ -15,10 +20,59 @@ pub enum DiffScope {
     Head,
 }
 
-/// Resolves the top-level Git repository root containing `start_dir`.
+/// Categorized working tree paths from a single `git status --porcelain=v1 -z` call.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorkingTreeStatus {
+    pub added: Vec<String>,
+    pub modified: Vec<String>,
+    pub deleted: Vec<String>,
+    pub untracked: Vec<String>,
+}
+
+/// Resolves the top-level Git repository root containing `start_dir` via pure-Rust upward walk.
 pub fn repo_root(start_dir: &Path) -> Result<PathBuf> {
-    let out = run_git(start_dir, &["rev-parse", "--show-toplevel"])?;
-    Ok(PathBuf::from(out.trim()))
+    let abs = if start_dir.is_absolute() {
+        start_dir.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .context("failed to read current working directory")?
+            .join(start_dir)
+    };
+    let normalized = normalize_lexical(&abs);
+    let start = if normalized.is_file() {
+        normalized.parent().map(Path::to_path_buf).unwrap_or(normalized)
+    } else {
+        normalized
+    };
+
+    for dir in start.ancestors() {
+        let dot_git = dir.join(".git");
+        if dot_git.is_dir() || is_git_worktree_file(&dot_git) {
+            return Ok(dir.to_path_buf());
+        }
+    }
+    bail!("not inside a git repository: {}", start_dir.display())
+}
+
+fn is_git_worktree_file(dot_git: &Path) -> bool {
+    dot_git.is_file()
+        && fs::read_to_string(dot_git)
+            .map(|s| s.trim_start().starts_with("gitdir:"))
+            .unwrap_or(false)
+}
+
+fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Returns the active branch name (or `HEAD` when detached).
@@ -33,31 +87,78 @@ pub fn head_commit(repo_root: &Path) -> Result<String> {
     Ok(out.trim().to_owned())
 }
 
+/// Inspects added, modified, deleted, and untracked files in one NUL-delimited `git status` call.
+pub fn working_tree_status(repo_root: &Path) -> Result<WorkingTreeStatus> {
+    let out = run_git_unquoted(repo_root, &["status", "--porcelain=v1", "-z"])?;
+    let mut status = WorkingTreeStatus::default();
+    let mut entries = out.split('\0');
+
+    while let Some(entry) = entries.next() {
+        if entry.len() < 4 {
+            continue;
+        }
+        let bytes = entry.as_bytes();
+        let (x, y) = (bytes[0], bytes[1]);
+        let path = entry[3..].replace('\\', "/");
+
+        if matches!(x, b'R' | b'C') || matches!(y, b'R' | b'C') {
+            let _orig_path = entries.next();
+        }
+
+        if x == b'?' && y == b'?' {
+            status.untracked.push(path);
+        } else if x == b'!' && y == b'!' {
+            continue;
+        } else if x == b'D' || y == b'D' {
+            status.deleted.push(path);
+        } else if matches!(x, b'A' | b'R' | b'C') {
+            status.added.push(path);
+        } else {
+            status.modified.push(path);
+        }
+    }
+
+    sort_dedup(&mut status.added);
+    sort_dedup(&mut status.modified);
+    sort_dedup(&mut status.deleted);
+    sort_dedup(&mut status.untracked);
+    Ok(status)
+}
+
 /// Lists unique relative paths changed under `scope`, normalized with forward slashes.
 pub fn changed_files(repo_root: &Path, scope: DiffScope) -> Result<Vec<String>> {
+    if scope == DiffScope::WorkingTree {
+        let status = working_tree_status(repo_root)?;
+        let mut unique = FxHashSet::default();
+        unique.extend(status.added);
+        unique.extend(status.modified);
+        unique.extend(status.deleted);
+        unique.extend(status.untracked);
+        let mut files: Vec<String> = unique.into_iter().collect();
+        files.sort();
+        return Ok(files);
+    }
+
     let mut unique = FxHashSet::default();
     match scope {
         DiffScope::Staged => {
-            collect_lines(&run_git(repo_root, &["diff", "--cached", "--name-only"])?, &mut unique);
+            let out = run_git_unquoted(repo_root, &["diff", "--cached", "--name-only", "-z"])?;
+            collect_nul_paths(&out, &mut unique);
         }
         DiffScope::Unstaged => {
-            collect_lines(&run_git(repo_root, &["diff", "--name-only"])?, &mut unique);
-        }
-        DiffScope::WorkingTree => {
-            collect_lines(&run_git(repo_root, &["diff", "--cached", "--name-only"])?, &mut unique);
-            collect_lines(&run_git(repo_root, &["diff", "--name-only"])?, &mut unique);
-            collect_lines(
-                &run_git(repo_root, &["ls-files", "--others", "--exclude-standard"])?,
-                &mut unique,
-            );
+            let out = run_git_unquoted(repo_root, &["diff", "--name-only", "-z"])?;
+            collect_nul_paths(&out, &mut unique);
         }
         DiffScope::Head => {
-            collect_lines(&run_git(repo_root, &["diff", "--name-only", "HEAD"])?, &mut unique);
-            collect_lines(
-                &run_git(repo_root, &["ls-files", "--others", "--exclude-standard"])?,
-                &mut unique,
-            );
+            let diff = run_git_unquoted(repo_root, &["diff", "--name-only", "-z", "HEAD"])?;
+            collect_nul_paths(&diff, &mut unique);
+            let untracked = run_git_unquoted(
+                repo_root,
+                &["ls-files", "--others", "--exclude-standard", "-z"],
+            )?;
+            collect_nul_paths(&untracked, &mut unique);
         }
+        DiffScope::WorkingTree => {}
     }
     let mut files: Vec<String> = unique.into_iter().collect();
     files.sort();
@@ -67,28 +168,40 @@ pub fn changed_files(repo_root: &Path, scope: DiffScope) -> Result<Vec<String>> 
 /// Returns the unified diff for a specific file (`staged` selects `--cached`).
 pub fn file_diff(repo_root: &Path, file_path: &str, staged: bool) -> Result<String> {
     if staged {
-        run_git(repo_root, &["diff", "--cached", "--", file_path])
+        run_git_unquoted(repo_root, &["diff", "--cached", "--", file_path])
     } else {
-        run_git(repo_root, &["diff", "--", file_path])
+        run_git_unquoted(repo_root, &["diff", "--", file_path])
     }
 }
 
 /// Returns the full unified diff across the repository.
 pub fn all_diff(repo_root: &Path, staged: bool) -> Result<String> {
     if staged {
-        run_git(repo_root, &["diff", "--cached"])
+        run_git_unquoted(repo_root, &["diff", "--cached"])
     } else {
-        run_git(repo_root, &["diff"])
+        run_git_unquoted(repo_root, &["diff"])
     }
 }
 
-fn collect_lines(stdout: &str, out: &mut FxHashSet<String>) {
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if !trimmed.is_empty() {
-            out.insert(trimmed.replace('\\', "/"));
+fn sort_dedup(items: &mut Vec<String>) {
+    items.sort();
+    items.dedup();
+}
+
+fn collect_nul_paths(stdout: &str, out: &mut FxHashSet<String>) {
+    for entry in stdout.split('\0') {
+        if !entry.is_empty() {
+            out.insert(entry.replace('\\', "/"));
         }
     }
+}
+
+pub(super) fn run_git_unquoted(cwd: &Path, args: &[&str]) -> Result<String> {
+    let mut full_args = Vec::with_capacity(args.len() + 2);
+    full_args.push("-c");
+    full_args.push("core.quotePath=false");
+    full_args.extend_from_slice(args);
+    run_git(cwd, &full_args)
 }
 
 fn run_git(cwd: &Path, args: &[&str]) -> Result<String> {

@@ -267,7 +267,8 @@ fn cli_hands_free_task_tracking_hooks_e2e() {
         &run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()),
         "claude stop allowed after done",
     );
-    assert_eq!(serde_json::from_str::<Value>(&stop_ok).unwrap(), json!({}));
+    let ok_json: Value = serde_json::from_str(&stop_ok).unwrap();
+    assert!(ok_json["systemMessage"].as_str().unwrap().contains("1 impacted file(s)"));
 
     // Next prompt after Done starts a new task.
     let prompt3 = json!({

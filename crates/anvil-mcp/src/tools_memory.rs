@@ -36,8 +36,9 @@ fn handle_save(server: &mut McpServer, args: &Value) -> Result<Value> {
         ttl_seconds: args.get("ttl_seconds").and_then(Value::as_i64),
     };
 
-    let mem = server.ensure_memory()?;
+    let mem = server.ensure_memory_no_sync()?;
     let saved = mem.save(input)?;
+    server.refresh_chunks_mtime();
     Ok(json!({
         "saved": true,
         "observation": saved,
@@ -56,7 +57,6 @@ fn handle_search(server: &mut McpServer, args: &Value) -> Result<Value> {
         .map_or(10, |l| l.clamp(1, 100) as usize);
 
     let mem = server.ensure_memory()?;
-    mem.sync()?;
     let hits = mem.search(query, kind, limit)?;
     Ok(json!({
         "count": hits.len(),
@@ -76,7 +76,6 @@ fn handle_timeline(server: &mut McpServer, args: &Value) -> Result<Value> {
         .map_or(5, |n| n.min(50) as usize);
 
     let mem = server.ensure_memory()?;
-    mem.sync()?;
     let entries = mem.timeline(id_or_topic, before, after)?;
     Ok(json!({
         "count": entries.len(),
@@ -87,7 +86,6 @@ fn handle_timeline(server: &mut McpServer, args: &Value) -> Result<Value> {
 fn handle_get(server: &mut McpServer, args: &Value) -> Result<Value> {
     let id = required_str(args, "id")?;
     let mem = server.ensure_memory()?;
-    mem.sync()?;
     let obs = match mem.get(id)? {
         Some(found) => Some(found),
         None => mem.get_by_topic(id)?,
@@ -104,7 +102,6 @@ fn handle_context(server: &mut McpServer, args: &Value) -> Result<Value> {
         .and_then(Value::as_u64)
         .map_or(800, |t| t.min(8000) as usize);
     let mem = server.ensure_memory()?;
-    mem.sync()?;
     let hits = mem.session_context(max_tokens)?;
     Ok(json!({
         "count": hits.len(),

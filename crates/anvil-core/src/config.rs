@@ -181,13 +181,8 @@ impl AnvilConfig {
     /// Serializes and writes `.harness/config.json`, creating `.harness/` if needed.
     pub fn save(&self, repo_root: &Path) -> Result<()> {
         let path = Self::path(repo_root);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create directory {}", parent.display()))?;
-        }
         let json = serde_json::to_string_pretty(self).context("failed to serialize config")?;
-        fs::write(&path, format!("{json}\n"))
-            .with_context(|| format!("failed to write config at {}", path.display()))
+        crate::fs_util::atomic_write(&path, format!("{json}\n").as_bytes())
     }
 }
 

@@ -62,7 +62,7 @@ fn cmd_build(
 }
 
 fn cmd_update(root: &Path, config: AnvilConfig) -> Result<()> {
-    let mut engine = CodeGraphEngine::load_or_build(root, config)?;
+    let mut engine = CodeGraphEngine::load_cached(root, config)?;
     let stats = engine.update_incremental()?;
     let bin = engine.save()?;
     println!(
@@ -77,7 +77,7 @@ fn cmd_update(root: &Path, config: AnvilConfig) -> Result<()> {
 }
 
 fn cmd_query(root: &Path, config: AnvilConfig, term: &str, limit: usize) -> Result<()> {
-    let engine = CodeGraphEngine::load_or_build(root, config)?;
+    let engine = CodeGraphEngine::load_cached(root, config)?;
     let hits = engine.query(term, limit);
     if hits.is_empty() {
         println!("no graph hits for `{term}`");
@@ -93,7 +93,7 @@ fn cmd_query(root: &Path, config: AnvilConfig, term: &str, limit: usize) -> Resu
 }
 
 fn cmd_path(root: &Path, config: AnvilConfig, from: &str, to: &str) -> Result<()> {
-    let engine = CodeGraphEngine::load_or_build(root, config)?;
+    let engine = CodeGraphEngine::load_cached(root, config)?;
     let Some(res) = engine.shortest_path(from, to) else {
         println!("no directed path found from `{from}` to `{to}`");
         return Ok(());
@@ -106,7 +106,7 @@ fn cmd_path(root: &Path, config: AnvilConfig, from: &str, to: &str) -> Result<()
 }
 
 fn cmd_explain(root: &Path, config: AnvilConfig, target: &str) -> Result<()> {
-    let engine = CodeGraphEngine::load_or_build(root, config)?;
+    let engine = CodeGraphEngine::load_cached(root, config)?;
     let Some(exp) = engine.explain(target) else {
         println!("node `{target}` not found in graph");
         return Ok(());
@@ -127,7 +127,7 @@ fn cmd_explain(root: &Path, config: AnvilConfig, target: &str) -> Result<()> {
 }
 
 fn cmd_report(root: &Path, config: AnvilConfig, html: Option<&Path>) -> Result<()> {
-    let mut engine = CodeGraphEngine::load_or_build(root, config)?;
+    let mut engine = CodeGraphEngine::load_cached(root, config)?;
     let md = engine.report_markdown();
     println!("{md}");
     if let Some(html_path) = html {

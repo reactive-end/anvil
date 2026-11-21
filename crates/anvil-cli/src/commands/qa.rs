@@ -8,7 +8,7 @@ use anvil_core::config::AnvilConfig;
 use anvil_qa::QaEngine;
 use anvil_qa::onboarding::{parse_mobile_driver, parse_web_driver};
 use anvil_qa::report::ReportBudget;
-use anvil_qa::web::WebEvalInput;
+use anvil_qa::web::{WebEvalInput, run_playwright_capture};
 
 use crate::cli::subcmds::QaSubcmd;
 use crate::commands::ExitCodeError;
@@ -32,23 +32,8 @@ pub fn execute(root: &Path, sub: QaSubcmd) -> Result<()> {
             println!("configured mobile QA driver: {:?}", cfg.qa_driver.mobile);
             Ok(())
         }
-        QaSubcmd::EvalWeb {
-            dom_json,
-            viewport,
-            width,
-            height,
-            console_errors,
-            page_errors,
-        } => cmd_eval_web(
-            root,
-            &engine,
-            &dom_json,
-            &viewport,
-            width,
-            height,
-            console_errors,
-            page_errors,
-        ),
+        eval_sub @ QaSubcmd::EvalWeb { .. } => cmd_eval_web(root, &engine, eval_sub),
+        QaSubcmd::Run { url, out_dir } => cmd_run(root, &engine, &url, &out_dir),
         QaSubcmd::ScanMobile {
             xml,
             logcat,
@@ -78,22 +63,23 @@ fn cmd_onboard(root: &Path, engine: &QaEngine) -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn cmd_eval_web(
-    root: &Path,
-    engine: &QaEngine,
-    dom_json: &Path,
-    viewport: &str,
-    width: u32,
-    height: u32,
-    console_errors: Vec<String>,
-    page_errors: Vec<String>,
-) -> Result<()> {
+fn cmd_eval_web(root: &Path, engine: &QaEngine, sub: QaSubcmd) -> Result<()> {
+    let QaSubcmd::EvalWeb {
+        dom_json,
+        viewport,
+        width,
+        height,
+        console_errors,
+        page_errors,
+    } = sub
+    else {
+        return Ok(());
+    };
     let config = AnvilConfig::load_or_default(root)?;
-    let raw = fs::read_to_string(dom_json)
+    let raw = fs::read_to_string(&dom_json)
         .with_context(|| format!("failed to read {}", dom_json.display()))?;
     let cap = engine.evaluate_web_capture(WebEvalInput {
-        viewport_name: viewport,
+        viewport_name: &viewport,
         width,
         height,
         dom_json: &raw,
@@ -144,6 +130,28 @@ fn cmd_scan_mobile(
         Vec::new(),
         Vec::new(),
         violations,
+        Vec::new(),
+    );
+    println!("{}", engine.format_report(&report, ReportBudget::default()));
+    if !report.passed {
+        return Err(ExitCodeError::silent(1).into());
+    }
+    Ok(())
+}
+
+fn cmd_run(root: &Path, engine: &QaEngine, url: &str, out_dir: &Path) -> Result<()> {
+    let config = AnvilConfig::load_or_default(root)?;
+    let resolved_out = if out_dir.is_absolute() {
+        out_dir.to_path_buf()
+    } else {
+        root.join(out_dir)
+    };
+    let captures = run_playwright_capture(url, "after", &resolved_out)?;
+    let report = engine.finalize_report(
+        engine.detect_platform(&config),
+        Vec::new(),
+        captures,
+        Vec::new(),
         Vec::new(),
     );
     println!("{}", engine.format_report(&report, ReportBudget::default()));

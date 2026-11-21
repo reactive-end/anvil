@@ -133,13 +133,16 @@ fn render_additional_context(
 }
 
 fn render_stop(outcome: &HookOutcome) -> Value {
-    if !outcome.block_stop {
-        return json!({});
-    }
     let mut obj = Map::new();
-    obj.insert("decision".to_owned(), Value::String("block".to_owned()));
-    if let Some(reason) = &outcome.reason {
-        obj.insert("reason".to_owned(), Value::String(reason.clone()));
+    if outcome.block_stop {
+        obj.insert("decision".to_owned(), Value::String("block".to_owned()));
+        if let Some(reason) =
+            inbox::format_stop_reason(outcome.reason.as_deref(), &outcome.messages)
+        {
+            obj.insert("reason".to_owned(), Value::String(reason));
+        }
+    } else if let Some(msg) = inbox::format_context(&outcome.messages) {
+        obj.insert("systemMessage".to_owned(), Value::String(msg));
     }
     Value::Object(obj)
 }

@@ -2,7 +2,7 @@
 
 use anvil_core::traits::{EdgeKind, EdgeRef};
 
-use crate::model::CodeGraph;
+use crate::model::{CodeGraph, NodeId};
 use crate::resolvers::pick_preferred_symbol;
 
 /// Resolves NestJS module composition and dependency-injection symbol edges.
@@ -10,7 +10,7 @@ pub fn resolve_nestjs_edge(
     edge: &EdgeRef,
     file_imports: &[String],
     graph: &CodeGraph,
-) -> Option<String> {
+) -> Option<NodeId> {
     if !matches!(
         edge.kind,
         EdgeKind::Provides | EdgeKind::Injects | EdgeKind::Imports
@@ -32,9 +32,10 @@ pub fn resolve_nestjs_edge(
     }
 
     let ids = graph.symbol_index.get(target)?;
-    let exact: Vec<&String> = ids
+    let exact: Vec<NodeId> = ids
         .iter()
-        .filter(|id| graph.nodes.get(*id).is_some_and(|n| n.label == target))
+        .copied()
+        .filter(|&id| graph.get_node(id).is_some_and(|n| n.label == target))
         .collect();
-    (exact.len() == 1).then(|| exact[0].clone())
+    (exact.len() == 1).then_some(exact[0])
 }

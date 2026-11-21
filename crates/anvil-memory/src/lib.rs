@@ -28,6 +28,7 @@ pub struct MemoryEngine {
     store: MemoryStore,
     chunks_dir: PathBuf,
     author: String,
+    last_sync: SyncStats,
 }
 
 impl MemoryEngine {
@@ -38,23 +39,72 @@ impl MemoryEngine {
         Self::with_paths(&db_path, &chunks_dir, author)
     }
 
-    /// Opens the memory engine using explicit SQLite DB and chunk directory paths.
+    /// Opens the repository memory engine without running initial chunk sync.
+    pub fn open_without_sync(project_root: &Path, author: impl Into<String>) -> Result<Self> {
+        let db_path = project_root.join(".harness/.state/anvil.db");
+        let chunks_dir = project_root.join(".harness/memory/chunks");
+        Self::with_paths_without_sync(&db_path, &chunks_dir, author)
+    }
+
+    /// Opens the memory engine using explicit SQLite DB and chunk directory paths, syncing chunks.
     pub fn with_paths(
         db_path: &Path,
         chunks_dir: &Path,
         author: impl Into<String>,
     ) -> Result<Self> {
-        let mut store = MemoryStore::open(db_path)?;
-        chunks::sync_chunks(chunks_dir, &mut store)?;
+        let mut engine = Self::with_paths_without_sync(db_path, chunks_dir, author)?;
+        engine.sync()?;
+        Ok(engine)
+    }
+
+    /// Opens the memory engine using explicit paths without syncing chunks.
+    pub fn with_paths_without_sync(
+        db_path: &Path,
+        chunks_dir: &Path,
+        author: impl Into<String>,
+    ) -> Result<Self> {
+        let store = MemoryStore::open(db_path)?;
         Ok(Self {
             store,
             chunks_dir: chunks_dir.to_path_buf(),
             author: author.into(),
+            last_sync: SyncStats::default(),
         })
     }
 
-    /// Redacts, appends an immutable Git chunk, and upserts the observation in SQLite.
+    /// Returns the statistics from the most recent chunk sync pass.
+    pub fn last_sync_stats(&self) -> SyncStats {
+        self.last_sync
+    }
+
+    /// Redacts, appends a Git chunk for permanent kinds, and upserts the observation in SQLite.
     pub fn save(&mut self, input: ObservationInput) -> Result<Observation> {
+        let record = self.build_record(input)?;
+        let chunk_meta = if record.kind == MemoryKind::Session {
+            None
+        } else {
+            Some(chunks::append_record(&self.chunks_dir, &self.author, &record)?)
+        };
+
+        let tx = self.store.conn_mut().transaction()?;
+        let obs = MemoryStore::upsert_in_tx(&tx, &record)?;
+        if let Some((chunk_path, hash)) = &chunk_meta
+            && let Some(filename) = chunk_path.file_name().and_then(|n| n.to_str())
+        {
+            MemoryStore::record_ingested_chunk_in_tx(&tx, filename, hash, record.updated_at)?;
+        }
+        tx.commit()?;
+
+        match obs {
+            Some(saved) => Ok(saved),
+            None => self
+                .store
+                .get_by_topic_key(&record.topic_key)?
+                .ok_or_else(|| anyhow::anyhow!("saved observation missing from store")),
+        }
+    }
+
+    fn build_record(&self, input: ObservationInput) -> Result<MemoryChunkRecord> {
         let clean = redactor::redact_input(&input);
         let topic_key = clean
             .topic_key
@@ -79,7 +129,7 @@ impl MemoryEngine {
         };
         let expires_at = ttl_secs.map(|s| updated_at + s.saturating_mul(1000));
 
-        let record = MemoryChunkRecord {
+        Ok(MemoryChunkRecord {
             id,
             topic_key,
             kind: clean.kind,
@@ -99,23 +149,7 @@ impl MemoryEngine {
             created_at,
             updated_at,
             expires_at,
-        };
-
-        let (chunk_path, hash) = chunks::append_record(&self.chunks_dir, &self.author, &record)?;
-        let tx = self.store.conn_mut().transaction()?;
-        let obs = MemoryStore::upsert_in_tx(&tx, &record)?;
-        if let Some(filename) = chunk_path.file_name().and_then(|n| n.to_str()) {
-            MemoryStore::record_ingested_chunk_in_tx(&tx, filename, &hash, updated_at)?;
-        }
-        tx.commit()?;
-
-        match obs {
-            Some(saved) => Ok(saved),
-            None => self
-                .store
-                .get_by_topic_key(&record.topic_key)?
-                .ok_or_else(|| anyhow::anyhow!("saved observation missing from store")),
-        }
+        })
     }
 
     /// Searches memory via FTS5 BM25 returning compact hits for progressive disclosure.
@@ -156,7 +190,9 @@ impl MemoryEngine {
 
     /// Re-syncs any newly arrived Git chunks into SQLite idempotently.
     pub fn sync(&mut self) -> Result<SyncStats> {
-        chunks::sync_chunks(&self.chunks_dir, &mut self.store)
+        let stats = chunks::sync_chunks(&self.chunks_dir, &mut self.store)?;
+        self.last_sync = stats;
+        Ok(stats)
     }
 
     /// Evaluates linked observations against a `SymbolFreshnessProvider` (e.g. `anvil-graph`).

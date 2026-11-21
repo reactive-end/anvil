@@ -7,6 +7,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use anvil_core::traits::FreshnessState;
+use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -116,21 +117,26 @@ impl MemoryStore {
         }))
     }
 
-    /// Fetches a full observation by its ULID `id`.
+    /// Fetches a full non-expired observation by its ULID `id`.
     pub fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {
-        let query = format!("SELECT {} FROM observations WHERE id = ?1", sql::OBS_COLUMNS);
-        let mut stmt = self.conn.prepare_cached(&query)?;
-        Ok(stmt.query_row([id], row_to_observation).optional()?)
+        self.get_by_column("id", id, Utc::now().timestamp_millis())
     }
 
-    /// Fetches a full observation by its unique `topic_key`.
+    /// Fetches a full non-expired observation by its unique `topic_key`.
     pub fn get_by_topic_key(&self, topic_key: &str) -> Result<Option<Observation>> {
+        self.get_by_column("topic_key", topic_key, Utc::now().timestamp_millis())
+    }
+
+    fn get_by_column(&self, column: &str, value: &str, now_ms: i64) -> Result<Option<Observation>> {
         let query = format!(
-            "SELECT {} FROM observations WHERE topic_key = ?1",
+            "SELECT {} FROM observations
+             WHERE {column} = ?1 AND (expires_at IS NULL OR expires_at > ?2)",
             sql::OBS_COLUMNS
         );
         let mut stmt = self.conn.prepare_cached(&query)?;
-        Ok(stmt.query_row([topic_key], row_to_observation).optional()?)
+        Ok(stmt
+            .query_row(params![value, now_ms], row_to_observation)
+            .optional()?)
     }
 
     /// Lists all observations linked to at least one file or symbol.
@@ -198,6 +204,19 @@ impl MemoryStore {
         Ok(stmt.execute([now_ms])?)
     }
 
+    /// Returns the set of already-ingested chunk filenames for O(new_files) sync skipping.
+    pub fn ingested_chunk_filenames(&self) -> Result<FxHashSet<String>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT filename FROM ingested_chunks")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut names = FxHashSet::default();
+        for row in rows {
+            names.insert(row?);
+        }
+        Ok(names)
+    }
+
     /// Returns the map of ingested chunk filenames to their recorded BLAKE3 hashes.
     pub fn ingested_chunk_hashes(&self) -> Result<FxHashMap<String, String>> {
         let mut stmt = self
@@ -221,14 +240,6 @@ impl MemoryStore {
         blake3_hash: &str,
         ingested_at: i64,
     ) -> Result<()> {
-        let mut stmt = tx.prepare_cached(
-            "INSERT INTO ingested_chunks (filename, blake3_hash, ingested_at)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(filename) DO UPDATE SET
-                 blake3_hash = excluded.blake3_hash,
-                 ingested_at = excluded.ingested_at",
-        )?;
-        stmt.execute(params![filename, blake3_hash, ingested_at])?;
-        Ok(())
+        sql::record_ingested_chunk_in_tx(tx, filename, blake3_hash, ingested_at)
     }
 }

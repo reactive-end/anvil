@@ -50,6 +50,6 @@ fn is_supported_source(path: &Path) -> bool {
         anvil_ast::detect_language(path),
         Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx
             | Language::Html | Language::Css | Language::Scss | Language::Python
-            | Language::Kotlin | Language::Dart
+            | Language::Kotlin | Language::Dart | Language::Rust
     )
 }

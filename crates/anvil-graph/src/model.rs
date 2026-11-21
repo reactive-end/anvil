@@ -1,10 +1,20 @@
-//! Core serializable graph structures and fast in-memory adjacency/resolution indexes.
+//! Core serializable graph structures with `u32` `NodeId` interning and compact edges.
 
+mod indexes;
 mod serde_fxmap;
 
 use anvil_core::traits::{EdgeKind, Language, SymbolKind};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
+
+/// Integer node index into `CodeGraph::nodes`.
+pub type NodeId = u32;
+
+/// Sentinel `NodeId` marking a tombstoned or unresolved slot.
+pub const INVALID_NODE_ID: u32 = u32::MAX;
+
+/// High-bit flag in `CompactEdge::target` indicating an index into `CodeGraph::externals`.
+pub const EXTERNAL_TARGET_FLAG: u32 = 0x8000_0000;
 
 /// Category of a node in the `anvil-graph` code graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -63,42 +73,81 @@ pub struct GraphNode {
     pub community: Option<usize>,
 }
 
-/// A directed edge connecting two nodes (or an external unresolved target).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GraphEdge {
-    pub source: String,
-    pub target: String,
-    pub kind: GraphEdgeKind,
-    pub line: u32,
-    pub resolved: bool,
-    pub raw_target: String,
+impl GraphNode {
+    /// Returns `true` when this node slot has been tombstoned by an incremental removal.
+    pub fn is_tombstone(&self) -> bool {
+        self.id.is_empty()
+    }
 }
 
-/// Complete serializable code graph with O(1) in-memory forward and reverse adjacency indexes.
+/// Compact 16-byte directed edge with zero heap allocations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompactEdge {
+    pub source: u32,
+    pub target: u32,
+    pub kind: GraphEdgeKind,
+    pub line: u32,
+}
+
+impl CompactEdge {
+    /// Returns `true` if this edge has been tombstoned by an incremental removal.
+    pub fn is_tombstone(self) -> bool {
+        self.source == INVALID_NODE_ID
+    }
+
+    /// Returns `true` if `target` points to a live internal `GraphNode` index.
+    pub fn is_resolved(self) -> bool {
+        self.source != INVALID_NODE_ID
+            && self.target != INVALID_NODE_ID
+            && (self.target & EXTERNAL_TARGET_FLAG) == 0
+    }
+
+    /// Returns the index into `CodeGraph::externals` if this edge targets an external string.
+    pub fn external_index(self) -> Option<usize> {
+        if self.source == INVALID_NODE_ID
+            || self.target == INVALID_NODE_ID
+            || (self.target & EXTERNAL_TARGET_FLAG) == 0
+        {
+            return None;
+        }
+        Some((self.target & !EXTERNAL_TARGET_FLAG) as usize)
+    }
+}
+
+/// Complete serializable code graph with `u32`-indexed adjacency and O(1) lookup indexes.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CodeGraph {
     pub repo_root: String,
     #[serde(with = "serde_fxmap")]
     pub file_hashes: FxHashMap<String, String>,
-    #[serde(with = "serde_fxmap")]
-    pub nodes: FxHashMap<String, GraphNode>,
-    pub edges: Vec<GraphEdge>,
+    #[serde(with = "serde_fxmap", default)]
+    pub file_stats: FxHashMap<String, (u64, u64)>,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<CompactEdge>,
+    #[serde(default)]
+    pub externals: Vec<String>,
     #[serde(skip)]
-    pub forward_adj: FxHashMap<String, Vec<usize>>,
+    pub semantic_index: FxHashMap<String, u32>,
     #[serde(skip)]
-    pub reverse_adj: FxHashMap<String, Vec<usize>>,
+    pub forward_adj: Vec<Vec<u32>>,
     #[serde(skip)]
-    pub file_nodes: FxHashMap<String, Vec<String>>,
+    pub reverse_adj: Vec<Vec<u32>>,
     #[serde(skip)]
-    pub symbol_index: FxHashMap<String, Vec<String>>,
+    pub file_nodes: FxHashMap<String, Vec<u32>>,
     #[serde(skip)]
-    pub angular_selectors: FxHashMap<String, String>,
+    pub symbol_index: FxHashMap<String, Vec<u32>>,
+    #[serde(skip)]
+    pub angular_selectors: FxHashMap<String, u32>,
     #[serde(skip)]
     pub kotlin_packages: FxHashMap<String, Vec<String>>,
     #[serde(skip)]
     pub file_packages: FxHashMap<String, String>,
     #[serde(skip)]
+    pub external_index: FxHashMap<String, u32>,
+    #[serde(skip)]
     pub tombstone_edges: usize,
+    #[serde(skip)]
+    pub tombstone_nodes: usize,
 }
 
 impl CodeGraph {
@@ -131,110 +180,102 @@ impl CodeGraph {
         slashed.strip_prefix("./").unwrap_or(&slashed).to_owned()
     }
 
-    /// Compacts any tombstoned edges left behind by O(1) incremental updates.
-    pub fn compact_tombstones(&mut self) {
-        if self.tombstone_edges == 0 {
-            return;
-        }
-        self.edges.retain(|e| !e.source.is_empty());
-        self.tombstone_edges = 0;
-        self.rebuild_indexes();
-    }
-
-    /// Rebuilds all in-memory adjacency, file-to-node, and symbol-lookup indexes in O(V + E).
-    pub fn rebuild_indexes(&mut self) {
-        self.forward_adj.clear();
-        self.reverse_adj.clear();
-        self.file_nodes.clear();
-        self.symbol_index.clear();
-        self.angular_selectors.clear();
-        self.kotlin_packages.clear();
-        self.file_packages.clear();
-
-        self.forward_adj.reserve(self.nodes.len());
-        self.reverse_adj.reserve(self.nodes.len());
-
-        for (id, node) in &self.nodes {
-            if !node.file.is_empty() {
-                self.file_nodes
-                    .entry(node.file.clone())
-                    .or_default()
-                    .push(id.clone());
-            }
-            match node.kind {
-                NodeKind::File => {
-                    if let Some(sig) = &node.signature
-                        && let Some(pkg) = sig.strip_prefix("pkg:")
-                    {
-                        self.file_packages.insert(node.file.clone(), pkg.to_owned());
-                        self.kotlin_packages
-                            .entry(pkg.to_owned())
-                            .or_default()
-                            .push(node.file.clone());
-                    }
+    /// Looks up a live `GraphNode` and its `NodeId` by canonical string ID without a global map.
+    pub fn node_by_id(&self, id: &str) -> Option<(NodeId, &GraphNode)> {
+        if let Some(rel) = id.strip_prefix("file:")
+            && let Some(nids) = self.file_nodes.get(rel)
+        {
+            for &nid in nids {
+                if let Some(node) = self.get_node(nid)
+                    && node.id == id
+                {
+                    return Some((nid, node));
                 }
-                NodeKind::Symbol => {
-                    self.symbol_index
-                        .entry(node.label.clone())
-                        .or_default()
-                        .push(id.clone());
-                    let lower = node.label.to_ascii_lowercase();
-                    if lower != node.label {
-                        self.symbol_index.entry(lower).or_default().push(id.clone());
-                    }
-                    if node.signature.as_deref() == Some("angular_selector") {
-                        self.angular_selectors
-                            .insert(node.label.clone(), id.clone());
-                    }
+            }
+        }
+        if let Some(rest) = id.strip_prefix("sym:")
+            && let Some((rel, _)) = rest.split_once("::")
+            && let Some(nids) = self.file_nodes.get(rel)
+        {
+            for &nid in nids {
+                if let Some(node) = self.get_node(nid)
+                    && node.id == id
+                {
+                    return Some((nid, node));
                 }
-                NodeKind::Semantic => {}
             }
         }
+        let &nid = self.semantic_index.get(id)?;
+        let node = self.get_node(nid)?;
+        Some((nid, node))
+    }
 
-        for (idx, edge) in self.edges.iter().enumerate() {
-            if edge.source.is_empty() {
-                continue;
+    /// Looks up a live `GraphNode` by `NodeId`.
+    pub fn get_node(&self, nid: NodeId) -> Option<&GraphNode> {
+        self.nodes.get(nid as usize).filter(|n| !n.is_tombstone())
+    }
+
+    /// Returns `true` if a live node with canonical string ID `id` exists.
+    pub fn contains_node_id(&self, id: &str) -> bool {
+        self.node_by_id(id).is_some()
+    }
+
+    /// Interns an external target string, returning a flagged `CompactEdge::target`.
+    pub fn intern_external(&mut self, raw: &str) -> u32 {
+        if self.external_index.is_empty() && !self.externals.is_empty() {
+            self.external_index.reserve(self.externals.len());
+            for (idx, ext) in self.externals.iter().enumerate() {
+                self.external_index.insert(ext.clone(), idx as u32);
             }
-            self.forward_adj
-                .entry(edge.source.clone())
-                .or_default()
-                .push(idx);
-            self.reverse_adj
-                .entry(edge.target.clone())
-                .or_default()
-                .push(idx);
+        }
+        if let Some(&idx) = self.external_index.get(raw) {
+            return idx | EXTERNAL_TARGET_FLAG;
+        }
+        let idx = u32::try_from(self.externals.len()).unwrap_or(0);
+        self.externals.push(raw.to_owned());
+        self.external_index.insert(raw.to_owned(), idx);
+        idx | EXTERNAL_TARGET_FLAG
+    }
+
+    /// Resolves an external target flag value back to its string slice.
+    pub fn external_str(&self, target: u32) -> Option<&str> {
+        if target == INVALID_NODE_ID || (target & EXTERNAL_TARGET_FLAG) == 0 {
+            return None;
+        }
+        let idx = (target & !EXTERNAL_TARGET_FLAG) as usize;
+        self.externals.get(idx).map(String::as_str)
+    }
+
+    /// Returns a human-readable target name for a `CompactEdge`.
+    pub fn edge_target_label(&self, edge: &CompactEdge) -> &str {
+        if edge.is_resolved() {
+            self.nodes
+                .get(edge.target as usize)
+                .map_or("", |n| n.label.as_str())
+        } else {
+            self.external_str(edge.target).unwrap_or("")
         }
     }
 
-    /// Inserts a node, preserving deterministic IDs on symbol overload collisions.
-    pub fn insert_symbol_node(&mut self, mut node: GraphNode) -> String {
-        if self.nodes.contains_key(&node.id) {
-            node.id = format!("{}@{}", node.id, node.line);
-        }
-        let id = node.id.clone();
-        self.nodes.insert(id.clone(), node);
-        id
-    }
-
-    /// Returns all outgoing edge structs for a given node ID.
-    pub fn outgoing_edges(&self, node_id: &str) -> Vec<&GraphEdge> {
+    /// Returns all live outgoing edges for `nid`.
+    pub fn outgoing_edges(&self, nid: NodeId) -> Vec<&CompactEdge> {
         self.forward_adj
-            .get(node_id)
+            .get(nid as usize)
             .map(|idxs| {
                 idxs.iter()
-                    .filter_map(|&i| self.edges.get(i).filter(|e| !e.source.is_empty()))
+                    .filter_map(|&i| self.edges.get(i as usize).filter(|e| !e.is_tombstone()))
                     .collect()
             })
             .unwrap_or_default()
     }
 
-    /// Returns all incoming edge structs for a given node ID.
-    pub fn incoming_edges(&self, node_id: &str) -> Vec<&GraphEdge> {
+    /// Returns all live incoming edges for `nid`.
+    pub fn incoming_edges(&self, nid: NodeId) -> Vec<&CompactEdge> {
         self.reverse_adj
-            .get(node_id)
+            .get(nid as usize)
             .map(|idxs| {
                 idxs.iter()
-                    .filter_map(|&i| self.edges.get(i).filter(|e| !e.source.is_empty()))
+                    .filter_map(|&i| self.edges.get(i as usize).filter(|e| !e.is_tombstone()))
                     .collect()
             })
             .unwrap_or_default()

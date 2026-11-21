@@ -1,6 +1,7 @@
 //! Reverse-BFS blast radius analysis and test-impact mapping.
 
 mod guard;
+mod tests_runner;
 mod typecheck;
 
 use std::collections::VecDeque;
@@ -9,10 +10,11 @@ use std::time::Instant;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 
-use crate::model::{CodeGraph, GraphEdgeKind, NodeKind};
+use crate::model::{CodeGraph, GraphEdgeKind, NodeId, NodeKind};
 
 pub use guard::{OverengineeringReport, OverengineeringWarning, check_overengineering};
-pub use typecheck::run_impacted_typecheck;
+pub use tests_runner::run_impacted_tests;
+pub use typecheck::{filter_typecheck_output, run_impacted_typecheck};
 
 /// A consumer file impacted by a change, with BFS depth and causal edges.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -46,18 +48,20 @@ pub fn compute_blast_radius(
         .collect();
     let changed_set: FxHashSet<&str> = norm_changed.iter().map(String::as_str).collect();
 
-    let mut visited_nodes: FxHashMap<String, usize> = FxHashMap::default();
-    let mut queue: VecDeque<(String, usize)> = VecDeque::new();
+    let mut visited_nodes: FxHashMap<NodeId, usize> = FxHashMap::default();
+    let mut queue: VecDeque<(NodeId, usize)> = VecDeque::new();
 
     for file in &norm_changed {
         let fid = CodeGraph::file_node_id(file);
-        visited_nodes.insert(fid.clone(), 0);
-        queue.push_back((fid, 0));
+        if let Some((fnid, _)) = graph.node_by_id(&fid)
+            && visited_nodes.insert(fnid, 0).is_none()
+        {
+            queue.push_back((fnid, 0));
+        }
         if let Some(node_ids) = graph.file_nodes.get(file) {
-            for nid in node_ids {
-                if !visited_nodes.contains_key(nid) {
-                    visited_nodes.insert(nid.clone(), 0);
-                    queue.push_back((nid.clone(), 0));
+            for &nid in node_ids {
+                if visited_nodes.insert(nid, 0).is_none() {
+                    queue.push_back((nid, 0));
                 }
             }
         }
@@ -91,19 +95,19 @@ fn run_reverse_bfs(
     graph: &CodeGraph,
     max_depth: usize,
     changed_set: &FxHashSet<&str>,
-    visited_nodes: &mut FxHashMap<String, usize>,
-    queue: &mut VecDeque<(String, usize)>,
+    visited_nodes: &mut FxHashMap<NodeId, usize>,
+    queue: &mut VecDeque<(NodeId, usize)>,
     discovered: &mut FxHashMap<String, (usize, Vec<String>)>,
 ) {
-    while let Some((node_id, depth)) = queue.pop_front() {
-        let Some(edge_idxs) = graph.reverse_adj.get(&node_id) else {
+    while let Some((nid, depth)) = queue.pop_front() {
+        let Some(edge_idxs) = graph.reverse_adj.get(nid as usize) else {
             continue;
         };
         for &idx in edge_idxs {
-            let Some(edge) = graph.edges.get(idx) else {
+            let Some(edge) = graph.edges.get(idx as usize) else {
                 continue;
             };
-            if edge.source.is_empty() || !edge.resolved {
+            if !edge.is_resolved() {
                 continue;
             }
             let next_depth = if edge.kind == GraphEdgeKind::Contains {
@@ -114,7 +118,7 @@ fn run_reverse_bfs(
             if next_depth > max_depth {
                 continue;
             }
-            let Some(src_node) = graph.nodes.get(&edge.source) else {
+            let Some(src_node) = graph.get_node(edge.source) else {
                 continue;
             };
             if edge.kind != GraphEdgeKind::Contains
@@ -125,7 +129,8 @@ fn run_reverse_bfs(
                     .entry(src_node.file.clone())
                     .or_insert_with(|| (next_depth, Vec::new()));
                 entry.0 = entry.0.min(next_depth);
-                let reason = format!("{:?}: {}", edge.kind, edge.raw_target);
+                let target_lbl = graph.edge_target_label(edge);
+                let reason = format!("{:?}: {}", edge.kind, target_lbl);
                 if !entry.1.contains(&reason) {
                     entry.1.push(reason);
                 }
@@ -133,14 +138,17 @@ fn run_reverse_bfs(
 
             let prev_best = visited_nodes.get(&edge.source).copied().unwrap_or(usize::MAX);
             if next_depth < prev_best {
-                visited_nodes.insert(edge.source.clone(), next_depth);
-                queue.push_back((edge.source.clone(), next_depth));
+                visited_nodes.insert(edge.source, next_depth);
+                queue.push_back((edge.source, next_depth));
                 if src_node.kind == NodeKind::Symbol && !src_node.file.is_empty() {
-                    let owner_file_id = CodeGraph::file_node_id(&src_node.file);
-                    let owner_best = visited_nodes.get(&owner_file_id).copied().unwrap_or(usize::MAX);
-                    if next_depth < owner_best {
-                        visited_nodes.insert(owner_file_id.clone(), next_depth);
-                        queue.push_back((owner_file_id, next_depth));
+                    let owner_fid = CodeGraph::file_node_id(&src_node.file);
+                    if let Some((owner_nid, _)) = graph.node_by_id(&owner_fid) {
+                        let owner_best =
+                            visited_nodes.get(&owner_nid).copied().unwrap_or(usize::MAX);
+                        if next_depth < owner_best {
+                            visited_nodes.insert(owner_nid, next_depth);
+                            queue.push_back((owner_nid, next_depth));
+                        }
                     }
                 }
             }
@@ -204,6 +212,9 @@ fn is_test_file(path: &str) -> bool {
         || fname.ends_with("_test.py")
         || fname.ends_with("_test.dart")
         || fname.ends_with("test.kt")
+        || fname.ends_with("_test.rs")
+        || fname.ends_with("_tests.rs")
+        || (lower.ends_with(".rs") && (lower.contains("/tests/") || lower.starts_with("tests/")))
 }
 
 fn is_screen_file(path: &str) -> bool {
@@ -229,7 +240,7 @@ fn test_base_stem(path: &str) -> Option<String> {
     if let Some(rest) = fname.strip_prefix("test_") {
         return rest.split('.').next().map(str::to_owned);
     }
-    for suffix in ["_test.py", "_test.dart", "test.kt"] {
+    for suffix in ["_test.py", "_test.dart", "test.kt", "_test.rs", "_tests.rs"] {
         if let Some(stem) = fname.strip_suffix(suffix) {
             return Some(stem.to_owned());
         }

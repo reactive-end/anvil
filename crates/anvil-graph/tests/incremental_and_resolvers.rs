@@ -53,7 +53,7 @@ fn incremental_single_file_update_skips_untouched_files_and_persists_binary() {
     );
     assert_eq!(engine.graph.file_hashes.get("src/b.ts"), hash_b_before.as_ref());
     assert_eq!(engine.graph.file_hashes.get("src/c.ts"), hash_c_before.as_ref());
-    assert!(engine.graph.nodes.contains_key("sym:src/a.ts::alphaTwo"));
+    assert!(engine.graph.contains_node_id("sym:src/a.ts::alphaTwo"));
 
     // Save binary + reload + export NetworkX JSON.
     let bin_path = engine.save().expect("save binary");

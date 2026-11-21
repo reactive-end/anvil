@@ -65,7 +65,11 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Doctor => doctor::execute(&root),
         Command::Hook { event, adapter } => hook::execute(&root, &event, &adapter),
         Command::Run { cmd } => run::execute(&root, &cmd),
-        Command::Check { full, tier } => check::execute(&root, full, tier),
+        Command::Check {
+            full,
+            tier,
+            no_tests,
+        } => check::execute(&root, full, tier, no_tests),
         Command::Impact {
             files,
             depth,

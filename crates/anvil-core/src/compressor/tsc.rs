@@ -1,10 +1,10 @@
-//! TypeScript compiler (`tsc` / `ngc`) log parser.
+//! TypeScript compiler (`tsc` / `ngc` / `vue-tsc`) log parser.
 
 use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::compressor::{fail_output, pass_output};
+use crate::compressor::{fail_output, pass_output, strip_ansi};
 use crate::traits::{CompressedOutput, OutputParser};
 
 pub struct TscParser;
@@ -15,8 +15,7 @@ impl OutputParser for TscParser {
     }
 
     fn matches(&self, command: &str) -> bool {
-        let lower = command.to_ascii_lowercase();
-        lower.contains("tsc") || lower.contains("ngc") || lower.contains("vue-tsc")
+        command_has_tool_token(command, &["tsc", "ngc", "vue-tsc"])
     }
 
     fn parse(&self, _command: &str, exit_code: i32, raw_output: &str) -> CompressedOutput {
@@ -30,8 +29,9 @@ impl OutputParser for TscParser {
                 .expect("valid tsc regex")
         });
 
+        let cleaned = strip_ansi(raw_output);
         let mut lines = Vec::new();
-        for line in raw_output.lines() {
+        for line in cleaned.lines() {
             let trimmed = line.trim();
             if let Some(caps) = re.captures(trimmed) {
                 let file = caps.get(1).map_or("", |m| m.as_str());
@@ -44,7 +44,7 @@ impl OutputParser for TscParser {
         }
 
         if lines.is_empty() {
-            lines = raw_output
+            lines = cleaned
                 .lines()
                 .map(str::trim)
                 .filter(|l| !l.is_empty())
@@ -60,4 +60,25 @@ impl OutputParser for TscParser {
             total,
         )
     }
+}
+
+fn command_has_tool_token(command: &str, tools: &[&str]) -> bool {
+    for raw_tok in command.split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')')) {
+        let tok = raw_tok.trim_matches(|c| c == '"' || c == '\'');
+        if tok.is_empty() {
+            continue;
+        }
+        let base = tok.rsplit(['/', '\\']).next().unwrap_or(tok);
+        let lower = base.to_ascii_lowercase();
+        let no_ext = lower
+            .strip_suffix(".exe")
+            .or_else(|| lower.strip_suffix(".cmd"))
+            .or_else(|| lower.strip_suffix(".bat"))
+            .unwrap_or(&lower);
+        let tool_name = no_ext.split('@').next().unwrap_or(no_ext);
+        if tools.contains(&tool_name) {
+            return true;
+        }
+    }
+    false
 }

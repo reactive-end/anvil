@@ -147,11 +147,11 @@ fn multi_repo_merge_and_graphify_overlay() {
         front
             .graph
             .nodes
-            .values()
+            .iter()
             .any(|n| n.kind == NodeKind::Semantic && n.label == "Orders Caching Rationale")
     );
 
     let merged = merge_graphs(&[("fliiper-front", &front.graph), ("fliiper-back", &back.graph)]);
-    assert!(merged.nodes.contains_key("file:fliiper-front/src/client.ts"));
-    assert!(merged.nodes.contains_key("file:fliiper-back/src/orders.ts"));
+    assert!(merged.contains_node_id("file:fliiper-front/src/client.ts"));
+    assert!(merged.contains_node_id("file:fliiper-back/src/orders.ts"));
 }

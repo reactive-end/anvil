@@ -6,7 +6,7 @@ use anvil_core::traits::{Diagnostic, Language, Severity};
 use regex::Regex;
 use tree_sitter::Node;
 
-use super::{RuleState, has_structured_anvil_allow};
+use super::{RuleState, has_anvil_allow};
 
 static COMMENT_ESCAPE_RE: OnceLock<Option<Regex>> = OnceLock::new();
 static KOTLIN_SUPPRESS_RE: OnceLock<Option<Regex>> = OnceLock::new();
@@ -19,7 +19,7 @@ pub fn check_comment_escape(node: Node<'_>, state: &mut RuleState<'_>) {
     let Some(re) = COMMENT_ESCAPE_RE
         .get_or_init(|| {
             Regex::new(
-                r"(?i)(@ts-ignore\b|@ts-expect-error\b|eslint-disable(?:-(?:next-)?line)?\b|#\s*noqa\b|//\s*ignore(?:_for_file)?\s*:)",
+                r"(?i)(@ts-ignore\b|@ts-expect-error\b|eslint-disable(?:-(?:next-)?line)?\b|\bbiome-ignore(?:-(?:all|start|end))?\b|#\s*type\s*:\s*ignore\b|#\s*noqa\b|//\s*ignore(?:_for_file)?\s*:)",
             )
             .ok()
         })
@@ -29,10 +29,14 @@ pub fn check_comment_escape(node: Node<'_>, state: &mut RuleState<'_>) {
     };
 
     for mat in re.find_iter(text) {
+        let matched = mat.as_str().trim();
+        let Some(allow_rule) = classify_comment_escape(matched, state.language) else {
+            continue;
+        };
         let prefix = &text[..mat.start()];
         let rel_line = prefix.bytes().filter(|&b| b == b'\n').count() as u32;
         let line = node.start_position().row as u32 + 1 + rel_line;
-        if has_structured_anvil_allow(state, line) {
+        if has_anvil_allow(state, line, allow_rule) {
             continue;
         }
         let col = if rel_line == 0 {
@@ -40,39 +44,104 @@ pub fn check_comment_escape(node: Node<'_>, state: &mut RuleState<'_>) {
         } else {
             1
         };
-        push_escape_diag(state, line, col, mat.as_str().trim());
+        push_escape_diag(state, line, col, matched);
     }
 }
 
-/// Checks non-comment AST nodes for language-specific escape hatches (`!important`, `@Suppress`).
+fn classify_comment_escape(matched: &str, lang: Language) -> Option<&'static str> {
+    let lower = matched.to_ascii_lowercase();
+    if lower.starts_with("@ts-ignore") {
+        Some("no-ts-ignore")
+    } else if lower.starts_with("@ts-expect-error") {
+        Some("no-ts-expect-error")
+    } else if lower.starts_with("eslint-disable") {
+        Some("no-eslint-disable")
+    } else if lower.starts_with("biome-ignore") {
+        Some("no-biome-ignore")
+    } else if lower.starts_with('#') {
+        if lang != Language::Python {
+            return None;
+        }
+        if lower.contains("noqa") {
+            Some("no-noqa")
+        } else {
+            Some("no-type-ignore")
+        }
+    } else if lower.starts_with("//") {
+        (lang == Language::Dart).then_some("no-dart-ignore")
+    } else {
+        None
+    }
+}
+
+/// Checks non-comment AST nodes for language-specific escape hatches (`!important`, `@Suppress`,
+/// Rust `#[allow(...)]` and `unsafe`).
 pub fn check_ast_escape(node: Node<'_>, state: &mut RuleState<'_>) {
     let kind = node.kind();
-    if matches!(state.language, Language::Css | Language::Scss) && kind == "important" {
-        let line = node.start_position().row as u32 + 1;
-        if !has_structured_anvil_allow(state, line) {
-            let col = node.start_position().column as u32 + 1;
-            push_escape_diag(state, line, col, "!important");
+    match state.language {
+        Language::Css | Language::Scss if kind == "important" => {
+            report_if_disallowed(node, state, "no-important", "!important");
         }
-        return;
+        Language::Kotlin if matches!(kind, "annotation" | "file_annotation") => {
+            check_kotlin_suppress(node, state);
+        }
+        Language::Rust => check_rust_escape(node, state),
+        _ => {}
     }
+}
 
-    if state.language == Language::Kotlin && matches!(kind, "annotation" | "file_annotation") {
-        let Ok(text) = node.utf8_text(state.source.as_bytes()) else {
-            return;
-        };
-        let Some(re) = KOTLIN_SUPPRESS_RE
-            .get_or_init(|| Regex::new(r"^@(?:file:)?Suppress(?:Warnings)?\b").ok())
-            .as_ref()
-        else {
-            return;
-        };
-        if re.is_match(text.trim()) {
-            let line = node.start_position().row as u32 + 1;
-            if !has_structured_anvil_allow(state, line) {
-                let col = node.start_position().column as u32 + 1;
-                push_escape_diag(state, line, col, "@Suppress");
+fn check_kotlin_suppress(node: Node<'_>, state: &mut RuleState<'_>) {
+    let Ok(text) = node.utf8_text(state.source.as_bytes()) else {
+        return;
+    };
+    let Some(re) = KOTLIN_SUPPRESS_RE
+        .get_or_init(|| Regex::new(r"^@(?:file:)?Suppress(?:Warnings)?\b").ok())
+        .as_ref()
+    else {
+        return;
+    };
+    if re.is_match(text.trim()) {
+        report_if_disallowed(node, state, "no-suppress", "@Suppress");
+    }
+}
+
+fn check_rust_escape(node: Node<'_>, state: &mut RuleState<'_>) {
+    match node.kind() {
+        "attribute_item" | "inner_attribute_item" => {
+            let mut cursor = node.walk();
+            for child in node.named_children(&mut cursor) {
+                if child.kind() == "attribute"
+                    && let Some(attr_name) = child.named_child(0)
+                    && attr_name.utf8_text(state.source.as_bytes()).ok() == Some("allow")
+                {
+                    report_if_disallowed(node, state, "no-rust-allow", "#[allow(...)]");
+                    return;
+                }
             }
         }
+        "unsafe_block" => {
+            report_if_disallowed(node, state, "no-unsafe", "unsafe");
+        }
+        "function_modifiers" | "impl_item" | "trait_item" => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if !child.is_named()
+                    && child.utf8_text(state.source.as_bytes()).ok() == Some("unsafe")
+                {
+                    report_if_disallowed(child, state, "no-unsafe", "unsafe");
+                    return;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn report_if_disallowed(node: Node<'_>, state: &mut RuleState<'_>, rule_id: &str, hatch: &str) {
+    let line = node.start_position().row as u32 + 1;
+    if !has_anvil_allow(state, line, rule_id) {
+        let col = node.start_position().column as u32 + 1;
+        push_escape_diag(state, line, col, hatch);
     }
 }
 

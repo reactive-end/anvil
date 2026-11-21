@@ -17,7 +17,7 @@ pub fn execute(
     typecheck: bool,
 ) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
-    let engine = CodeGraphEngine::load_or_build(root, config)?;
+    let engine = CodeGraphEngine::load_cached(root, config)?;
 
     if let Some(sym) = origin {
         print_origin(&engine, sym);

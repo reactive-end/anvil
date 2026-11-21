@@ -1,12 +1,14 @@
 //! Lightweight synchronous HTTP and timestamp utilities shared across ecosystems.
 
+use std::io::Read;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 
 const HTTP_TIMEOUT_SECS: u64 = 5;
+const MAX_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
 
 fn shared_agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
@@ -21,14 +23,26 @@ fn shared_agent() -> &'static ureq::Agent {
 
 /// Fetches a JSON payload synchronously via `ureq` with short timeouts.
 pub(crate) fn fetch_json_text(url: &str) -> Result<String> {
+    fetch_text_with_accept(url, "application/json")
+}
+
+/// Fetches a text/JSON/XML payload synchronously with a custom `Accept` header and bounded body read.
+pub(crate) fn fetch_text_with_accept(url: &str, accept: &str) -> Result<String> {
     let response = shared_agent()
         .get(url)
-        .set("Accept", "application/json")
+        .set("Accept", accept)
         .call()
         .with_context(|| format!("HTTP GET failed for {url}"))?;
-    response
-        .into_string()
-        .with_context(|| format!("failed to read HTTP response body from {url}"))
+
+    let mut buf = Vec::new();
+    let mut reader = response.into_reader().take(MAX_RESPONSE_BYTES + 1);
+    reader
+        .read_to_end(&mut buf)
+        .with_context(|| format!("failed to read HTTP response body from {url}"))?;
+    if buf.len() as u64 > MAX_RESPONSE_BYTES {
+        bail!("HTTP response from {url} exceeded {MAX_RESPONSE_BYTES} byte safety cap");
+    }
+    String::from_utf8(buf).with_context(|| format!("HTTP response from {url} was not valid UTF-8"))
 }
 
 /// Percent-encodes a URL path/query component (RFC 3986 unreserved characters preserved).

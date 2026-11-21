@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use anvil_core::fs_util::atomic_write;
 use chrono::{DateTime, Utc};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -100,29 +101,8 @@ impl DepsCache {
         if !self.dirty {
             return Ok(());
         }
-        let parent = self
-            .path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."));
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
-
-        let tmp = parent.join(format!(
-            ".deps-cache.json.tmp-{}-{}",
-            std::process::id(),
-            Utc::now().timestamp_nanos_opt().unwrap_or_default()
-        ));
         let json = serde_json::to_string(&self.data).context("failed to serialize deps cache")?;
-        if let Err(err) = fs::write(&tmp, json.as_bytes()) {
-            let _ = fs::remove_file(&tmp);
-            return Err(err).with_context(|| format!("failed to write {}", tmp.display()));
-        }
-        if let Err(err) = fs::rename(&tmp, &self.path) {
-            let _ = fs::remove_file(&tmp);
-            return Err(err).with_context(|| format!("failed to replace {}", self.path.display()));
-        }
-        Ok(())
+        atomic_write(&self.path, json.as_bytes())
     }
 }
 

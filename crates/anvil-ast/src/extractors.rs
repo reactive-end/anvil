@@ -5,6 +5,7 @@ pub mod css;
 pub mod dart;
 pub mod kotlin;
 pub mod python;
+pub mod rust;
 pub mod typescript;
 
 use std::path::Path;
@@ -57,6 +58,19 @@ impl<'a> ExtractState<'a> {
             return &trimmed[1..trimmed.len() - 1];
         }
         trimmed
+    }
+
+    /// Ensures a call or import target is single-line, whitespace-free, and <= 80 chars.
+    pub fn sanitize_call_target(target: String) -> Option<String> {
+        if target.is_empty()
+            || target.len() > 80
+            || target.contains('\n')
+            || target.contains('\r')
+            || target.contains(char::is_whitespace)
+        {
+            return None;
+        }
+        Some(target)
     }
 
     /// Records a symbol definition.
@@ -115,10 +129,10 @@ pub fn collect_file_facts(
     config: &AnvilConfig,
 ) -> FileAstFacts {
     let mut extract_state = ExtractState::new(normalized_file, source, language);
-    let mut rule_state = RuleState::new(normalized_file, path, source, language, config);
+    let root_node = tree.map(|t| t.root_node());
+    let mut rule_state = RuleState::new(normalized_file, path, source, language, config, root_node);
 
-    if let Some(parsed) = tree {
-        let root = parsed.root_node();
+    if let Some(root) = root_node {
         walk_single_pass(root, &mut extract_state, &mut rule_state);
         rules::check_file_level(Some(root), &mut rule_state);
     } else {
@@ -167,6 +181,7 @@ fn dispatch_extractor(node: Node<'_>, state: &mut ExtractState<'_>) {
         Language::Python => python::visit_node(node, state),
         Language::Kotlin => kotlin::visit_node(node, state),
         Language::Dart => dart::visit_node(node, state),
+        Language::Rust => rust::visit_node(node, state),
         Language::Json | Language::Yaml | Language::Markdown | Language::Other => {}
     }
 }

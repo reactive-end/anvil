@@ -1,10 +1,14 @@
+use std::fs;
+
 use anyhow::Result;
 use tempfile::TempDir;
 
 use anvil_core::ratchet::{
-    CandidateInput, evaluate_candidate, list_candidates, list_rules, log_candidate,
-    promote_candidate,
+    CandidateInput, PromotedRule, RuleCandidate, evaluate_candidate, evaluate_promoted_rules,
+    list_candidates, list_rules, load_promoted_rules, log_candidate, promote_candidate,
+    test_candidate,
 };
+use anvil_core::traits::Severity;
 
 fn sample_input(name: &str) -> CandidateInput {
     CandidateInput {
@@ -63,5 +67,52 @@ fn ratchet_promotes_once_triple_filter_passes() -> Result<()> {
     assert_eq!(rule.recurrence_at_promotion, 2);
     assert!(list_candidates(root)?.is_empty());
     assert_eq!(list_rules(root)?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn promoted_rules_evaluate_with_globs_and_anvil_allow_and_test_candidate() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    fs::create_dir_all(root.join("src"))?;
+    fs::create_dir_all(root.join("node_modules/pkg"))?;
+    fs::write(
+        root.join("src/app.ts"),
+        "console.log('hit1');\n// anvil-allow(no-console-log): debug CLI\nconsole.log('allowed');\n",
+    )?;
+    fs::write(root.join("node_modules/pkg/index.ts"), "console.log('ignored');\n")?;
+
+    let c1 = log_candidate(root, sample_input("no-console-log"))?;
+    let c2 = log_candidate(root, sample_input("no-console-log"))?;
+    assert_eq!(c1.id, c2.id);
+
+    let report = test_candidate(root, &c2.id)?;
+    assert_eq!(report.files_scanned, 1);
+    assert_eq!(report.match_count, 2);
+    assert!(report.under_budget);
+
+    evaluate_candidate(root, &c2.id, Some(&["logger.info('ok')"]))?;
+    let mut rule = promote_candidate(root, &c2.id)?;
+    rule.file_globs = vec!["src/**/*.ts".to_owned()];
+    rule.severity = Some(Severity::Error);
+    let rule_path = root.join(".harness/rules").join(format!("{}.json", rule.id));
+    fs::write(&rule_path, serde_json::to_string_pretty(&rule)?)?;
+
+    let loaded = load_promoted_rules(root)?;
+    assert_eq!(loaded.len(), 1);
+    let diags = evaluate_promoted_rules(&loaded, "src/app.ts", &fs::read_to_string(root.join("src/app.ts"))?);
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].line, 1);
+    assert_eq!(diags[0].severity, Severity::Error);
+    assert!(evaluate_promoted_rules(&loaded, "other/app.ts", "console.log('x');").is_empty());
+
+    let legacy_json = r#"{"id":"1","rule_name":"r","description":"d","languages":[],"recurrence":1,"high_impact":false,"deterministic":true,"estimated_runtime_ms":1,"fp_checked":false,"false_positives_found":0,"examples":[],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}"#;
+    let parsed_cand: RuleCandidate = serde_json::from_str(legacy_json)?;
+    assert!(parsed_cand.pattern.is_none());
+    assert!(parsed_cand.file_globs.is_empty());
+    let legacy_rule = r#"{"id":"1","rule_name":"r","description":"d","languages":[],"recurrence_at_promotion":2,"promoted_at":"2026-01-01T00:00:00Z"}"#;
+    let parsed_rule: PromotedRule = serde_json::from_str(legacy_rule)?;
+    assert!(parsed_rule.pattern.is_none());
     Ok(())
 }

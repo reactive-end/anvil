@@ -3,7 +3,7 @@
 use rustc_hash::FxHashSet;
 use serde::Serialize;
 
-use crate::model::{CodeGraph, GraphEdgeKind, NodeKind};
+use crate::model::{CodeGraph, GraphEdgeKind, NodeId, NodeKind};
 
 /// Warning emitted when a small fix introduces a new abstraction with <= 1 consumer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -52,8 +52,8 @@ pub fn check_overengineering(
             let Some(nids) = graph.file_nodes.get(&norm) else {
                 continue;
             };
-            for nid in nids {
-                let Some(node) = graph.nodes.get(nid) else {
+            for &nid in nids {
+                let Some(node) = graph.get_node(nid) else {
                     continue;
                 };
                 if node.kind != NodeKind::Symbol || !node.exported {
@@ -82,11 +82,11 @@ pub fn check_overengineering(
 fn count_external_consumers(graph: &CodeGraph, file: &str) -> usize {
     let mut callers = FxHashSet::default();
     if let Some(nids) = graph.file_nodes.get(file) {
-        for nid in nids {
+        for &nid in nids {
             for edge in graph.incoming_edges(nid) {
-                if edge.resolved
+                if edge.is_resolved()
                     && edge.kind != GraphEdgeKind::Contains
-                    && let Some(src) = graph.nodes.get(&edge.source)
+                    && let Some(src) = graph.get_node(edge.source)
                     && src.file != file
                 {
                     callers.insert(src.file.as_str());
@@ -97,16 +97,15 @@ fn count_external_consumers(graph: &CodeGraph, file: &str) -> usize {
     callers.len()
 }
 
-fn count_symbol_external_consumers(graph: &CodeGraph, sym_id: &str, owner_file: &str) -> usize {
+fn count_symbol_external_consumers(graph: &CodeGraph, sym_id: NodeId, owner_file: &str) -> usize {
     graph
         .incoming_edges(sym_id)
         .into_iter()
         .filter(|e| {
-            e.resolved
+            e.is_resolved()
                 && e.kind != GraphEdgeKind::Contains
                 && graph
-                    .nodes
-                    .get(&e.source)
+                    .get_node(e.source)
                     .is_some_and(|n| n.file != owner_file)
         })
         .count()

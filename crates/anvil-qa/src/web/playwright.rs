@@ -40,7 +40,7 @@ pub fn build_playwright_runner_script(url: &str, phase: &str, out_dir: &Path) ->
     let url_json = serde_json::to_string(url)?;
     let phase_json = serde_json::to_string(phase)?;
     let out_json = serde_json::to_string(&out_dir.to_string_lossy().into_owned())?;
-    let audit_json = serde_json::to_string(DOM_AUDIT_SCRIPT)?;
+    let audit_iife = DOM_AUDIT_SCRIPT.trim().trim_end_matches(';');
 
     Ok(format!(
         r#"import {{ chromium }} from "playwright";
@@ -50,7 +50,7 @@ import path from "node:path";
 const url = {url_json};
 const phase = {phase_json};
 const outDir = {out_json};
-const auditScript = {audit_json};
+const runDomAudit = () => ({audit_iife});
 const viewports = [
   {{ name: "desktop", width: 1440, height: 900 }},
   {{ name: "mobile", width: 390, height: 844 }},
@@ -67,7 +67,7 @@ try {{
     page.on("console", (msg) => {{ if (msg.type() === "error") console_errors.push(msg.text()); }});
     page.on("pageerror", (err) => page_errors.push(String(err)));
     await page.goto(url, {{ waitUntil: "networkidle" }});
-    const audit = await page.evaluate((s) => (0, eval)(s), auditScript);
+    const audit = await page.evaluate(runDomAudit);
     const shot = path.join(outDir, `${{phase}}-${{vp.name}}.png`);
     await page.screenshot({{ path: shot, fullPage: true }});
     captures.push({{ name: vp.name, width: vp.width, height: vp.height, screenshot_path: shot, audit, console_errors, page_errors }});

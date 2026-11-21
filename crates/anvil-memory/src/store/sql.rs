@@ -103,6 +103,23 @@ pub(crate) fn sync_observation_files(
     Ok(())
 }
 
+pub(crate) fn record_ingested_chunk_in_tx(
+    tx: &Transaction<'_>,
+    filename: &str,
+    blake3_hash: &str,
+    ingested_at: i64,
+) -> Result<()> {
+    let mut stmt = tx.prepare_cached(
+        "INSERT INTO ingested_chunks (filename, blake3_hash, ingested_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(filename) DO UPDATE SET
+             blake3_hash = excluded.blake3_hash,
+             ingested_at = excluded.ingested_at",
+    )?;
+    stmt.execute(params![filename, blake3_hash, ingested_at])?;
+    Ok(())
+}
+
 pub(crate) fn freshness_to_str(state: FreshnessState) -> &'static str {
     match state {
         FreshnessState::Fresh => "fresh",

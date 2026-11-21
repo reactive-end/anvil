@@ -14,6 +14,7 @@ pub enum Ecosystem {
     Pypi,
     PubDev,
     Maven,
+    Cargo,
 }
 
 impl Ecosystem {
@@ -24,6 +25,7 @@ impl Ecosystem {
             Self::Pypi => "pypi",
             Self::PubDev => "pubdev",
             Self::Maven => "maven",
+            Self::Cargo => "cargo",
         }
     }
 }

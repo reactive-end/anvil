@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::fs_util::{atomic_write_json, read_json_file};
 use crate::ledger::tasks_root;
 use crate::model::{ConsolidatedTask, ConsolidatedTasksFile, TaskEntry, TaskMeta, TaskStatus};
+use crate::{atomic_write_json, read_json_file};
 
 const TASKS_SCHEMA_VERSION: u32 = 1;
 const MAX_SUMMARY_CHARS: usize = 480;

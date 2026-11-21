@@ -1,72 +1,30 @@
 //! Governed linter ratchet: candidate logging, triple-filter evaluation, and rule promotion.
 
+pub mod eval;
+mod matcher;
+pub mod types;
+
+pub use eval::{
+    CandidateTestMatch, CandidateTestReport, evaluate_promoted_rules, load_promoted_rules,
+    test_candidate,
+};
+pub use types::{
+    CandidateInput, PromotedRule, RatchetCandidate, RatchetEvaluation, RuleCandidate,
+};
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use ulid::Ulid;
 
-const MAX_RUNTIME_MS: u64 = 200;
+use crate::fs_util::atomic_write;
 
-/// Input payload when logging a new recurring agent mistake for ratchet review.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CandidateInput {
-    pub rule_name: String,
-    pub description: String,
-    pub pattern: String,
-    pub languages: Vec<String>,
-    pub high_impact: bool,
-    pub deterministic: bool,
-    pub estimated_runtime_ms: u64,
-    pub example: Option<String>,
-}
-
-/// Candidate rule stored in `.harness/candidates/<id>.json` before promotion.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RatchetCandidate {
-    pub id: String,
-    pub rule_name: String,
-    pub description: String,
-    pub pattern: String,
-    pub languages: Vec<String>,
-    pub recurrence: u32,
-    pub high_impact: bool,
-    pub deterministic: bool,
-    pub estimated_runtime_ms: u64,
-    pub fp_checked: bool,
-    pub false_positives_found: usize,
-    pub examples: Vec<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-/// Result of evaluating a candidate against the 3 mandatory ratchet filters.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RatchetEvaluation {
-    pub id: String,
-    pub eligible: bool,
-    pub filter_recurrence_or_impact: bool,
-    pub filter_deterministic_fast: bool,
-    pub filter_zero_false_positives: bool,
-    pub measured_runtime_ms: u64,
-    pub reasons: Vec<String>,
-}
-
-/// Graduated deterministic rule stored in `.harness/rules/<id>.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PromotedRule {
-    pub id: String,
-    pub rule_name: String,
-    pub description: String,
-    pub pattern: String,
-    pub languages: Vec<String>,
-    pub recurrence_at_promotion: u32,
-    pub promoted_at: DateTime<Utc>,
-}
+pub(crate) const MAX_RUNTIME_MS: u64 = 200;
 
 pub fn candidates_dir(repo_root: &Path) -> PathBuf {
     repo_root.join(".harness").join("candidates")
@@ -97,12 +55,15 @@ pub fn log_candidate(repo_root: &Path, input: CandidateInput) -> Result<RatchetC
         return Ok(found);
     }
 
+    let pat_trimmed = input.pattern.trim();
     let candidate = RatchetCandidate {
         id: Ulid::new().to_string(),
         rule_name: input.rule_name,
         description: input.description,
-        pattern: input.pattern,
+        pattern: (!pat_trimmed.is_empty()).then(|| pat_trimmed.to_owned()),
         languages: input.languages,
+        file_globs: Vec::new(),
+        severity: None,
         recurrence: 1,
         high_impact: input.high_impact,
         deterministic: input.deterministic,
@@ -138,7 +99,13 @@ pub fn evaluate_candidate(
     let mut reasons = Vec::new();
 
     if let Some(samples) = clean_samples {
-        let re = Regex::new(&candidate.pattern)
+        let pat = candidate
+            .pattern
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .with_context(|| format!("candidate `{}` has no regex pattern", candidate.id))?;
+        let re = Regex::new(pat)
             .with_context(|| format!("invalid candidate regex pattern for `{}`", candidate.id))?;
         let start = Instant::now();
         let fps = samples.iter().filter(|s| re.is_match(s)).count();
@@ -185,23 +152,21 @@ pub fn promote_candidate(repo_root: &Path, id: &str) -> Result<PromotedRule> {
     }
 
     let candidate = load_candidate(repo_root, id)?;
-    let rdir = rules_dir(repo_root);
-    fs::create_dir_all(&rdir).with_context(|| format!("failed to create {}", rdir.display()))?;
-
     let rule = PromotedRule {
         id: candidate.id.clone(),
         rule_name: candidate.rule_name,
         description: candidate.description,
         pattern: candidate.pattern,
         languages: candidate.languages,
+        file_globs: candidate.file_globs,
+        severity: candidate.severity,
         recurrence_at_promotion: candidate.recurrence,
         promoted_at: Utc::now(),
     };
 
-    let rule_path = rdir.join(format!("{}.json", rule.id));
+    let rule_path = rules_dir(repo_root).join(format!("{}.json", rule.id));
     let json = serde_json::to_string_pretty(&rule)?;
-    fs::write(&rule_path, format!("{json}\n"))
-        .with_context(|| format!("failed to write {}", rule_path.display()))?;
+    atomic_write(&rule_path, format!("{json}\n").as_bytes())?;
 
     let cand_path = candidates_dir(repo_root).join(format!("{id}.json"));
     if cand_path.exists() {
@@ -211,7 +176,7 @@ pub fn promote_candidate(repo_root: &Path, id: &str) -> Result<PromotedRule> {
     Ok(rule)
 }
 
-fn load_candidate(repo_root: &Path, id: &str) -> Result<RatchetCandidate> {
+pub(crate) fn load_candidate(repo_root: &Path, id: &str) -> Result<RatchetCandidate> {
     let path = candidates_dir(repo_root).join(format!("{id}.json"));
     let raw = fs::read_to_string(&path)
         .with_context(|| format!("candidate `{id}` not found at {}", path.display()))?;
@@ -221,8 +186,7 @@ fn load_candidate(repo_root: &Path, id: &str) -> Result<RatchetCandidate> {
 fn save_candidate(dir: &Path, candidate: &RatchetCandidate) -> Result<()> {
     let path = dir.join(format!("{}.json", candidate.id));
     let json = serde_json::to_string_pretty(candidate)?;
-    fs::write(&path, format!("{json}\n"))
-        .with_context(|| format!("failed to write {}", path.display()))
+    atomic_write(&path, format!("{json}\n").as_bytes())
 }
 
 fn read_json_dir<T: for<'de> Deserialize<'de>>(dir: &Path) -> Result<Vec<T>> {

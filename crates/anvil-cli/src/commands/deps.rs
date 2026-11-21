@@ -58,7 +58,7 @@ pub fn execute(root: &Path, all: bool, manifests: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-fn discover_manifests(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn discover_manifests(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect_recursive(root, root, 0, &mut out);
     out.sort();

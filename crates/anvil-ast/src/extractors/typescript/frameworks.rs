@@ -5,139 +5,189 @@ use tree_sitter::Node;
 
 use crate::extractors::ExtractState;
 
-/// Collects decorator strings on a `class_declaration` or its parent `export_statement`.
-pub fn collect_decorators<'a>(node: Node<'_>, state: &ExtractState<'a>) -> Vec<&'a str> {
+/// Collects decorator AST nodes on a `class_declaration` or its parent `export_statement`.
+pub fn collect_decorators<'a>(node: Node<'a>) -> Vec<Node<'a>> {
     let mut result = Vec::new();
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "decorator" {
-            result.push(state.node_text(child));
-        }
-    }
+    collect_child_decorators(node, &mut result);
     if let Some(parent) = node.parent()
         && parent.kind() == "export_statement"
     {
-        let mut p_cursor = parent.walk();
-        for child in parent.children(&mut p_cursor) {
-            if child.kind() == "decorator" {
-                result.push(state.node_text(child));
-            }
-        }
+        collect_child_decorators(parent, &mut result);
     }
     result
+}
+
+fn collect_child_decorators<'a>(parent: Node<'a>, out: &mut Vec<Node<'a>>) {
+    let mut cursor = parent.walk();
+    for child in parent.children(&mut cursor) {
+        if child.kind() == "decorator" {
+            out.push(child);
+        }
+    }
 }
 
 /// Inspects Angular/NestJS decorators on a class and emits framework symbols/edges.
 pub fn classify_class_decorators(
     class_name: &str,
-    decorators: &[&str],
+    decorators: &[Node<'_>],
     line: u32,
     state: &mut ExtractState<'_>,
 ) -> (SymbolKind, Option<String>) {
-    for dec in decorators {
-        if dec.starts_with("@Component") {
-            return handle_angular_component(class_name, dec, line, state);
-        }
-        if dec.starts_with("@Module") {
-            return handle_nest_module(class_name, dec, line, state);
-        }
-        if dec.starts_with("@Injectable") {
-            return (SymbolKind::Class, Some("@Injectable".to_owned()));
+    for &dec in decorators {
+        let Some((name, arg_obj)) = parse_decorator(dec, state) else {
+            continue;
+        };
+        match name {
+            "Component" => return handle_angular_component(class_name, arg_obj, line, state),
+            "Module" => return handle_nest_module(class_name, arg_obj, line, state),
+            "Injectable" => return (SymbolKind::Class, Some("@Injectable".to_owned())),
+            _ => {}
         }
     }
     (SymbolKind::Class, None)
 }
 
+fn parse_decorator<'a>(
+    dec: Node<'a>,
+    state: &ExtractState<'a>,
+) -> Option<(&'a str, Option<Node<'a>>)> {
+    let expr = dec.named_child(0)?;
+    match expr.kind() {
+        "identifier" => Some((state.node_text(expr).trim(), None)),
+        "member_expression" => {
+            let prop = expr.child_by_field_name("property")?;
+            Some((state.node_text(prop).trim(), None))
+        }
+        "call_expression" => {
+            let fn_node = expr.child_by_field_name("function")?;
+            let name = match fn_node.kind() {
+                "identifier" => state.node_text(fn_node).trim(),
+                "member_expression" => {
+                    let prop = fn_node.child_by_field_name("property")?;
+                    state.node_text(prop).trim()
+                }
+                _ => return None,
+            };
+            let arg_obj = expr
+                .child_by_field_name("arguments")
+                .and_then(|args| {
+                    let mut cursor = args.walk();
+                    args.named_children(&mut cursor)
+                        .find(|n| n.kind() == "object")
+                });
+            Some((name, arg_obj))
+        }
+        _ => None,
+    }
+}
+
 fn handle_angular_component(
     class_name: &str,
-    dec: &str,
+    arg_obj: Option<Node<'_>>,
     line: u32,
     state: &mut ExtractState<'_>,
 ) -> (SymbolKind, Option<String>) {
-    if let Some(selector) = extract_prop_string(dec, "selector") {
-        state.push_symbol(
-            selector.clone(),
-            format!("{class_name}::{selector}"),
-            SymbolKind::Component,
-            line,
-            Some("angular_selector".to_owned()),
-            true,
-        );
-    }
-    if let Some(tpl) = extract_prop_string(dec, "templateUrl") {
-        state.push_edge(
-            Some(class_name.to_owned()),
-            tpl,
-            EdgeKind::RendersTemplate,
-            line,
-        );
+    if let Some(obj) = arg_obj {
+        if let Some(selector) = find_object_string(obj, "selector", state) {
+            state.push_symbol(
+                selector.clone(),
+                format!("{class_name}::{selector}"),
+                SymbolKind::Component,
+                line,
+                Some("angular_selector".to_owned()),
+                true,
+            );
+        }
+        if let Some(tpl) = find_object_string(obj, "templateUrl", state) {
+            state.push_edge(
+                Some(class_name.to_owned()),
+                tpl,
+                EdgeKind::RendersTemplate,
+                line,
+            );
+        }
     }
     (SymbolKind::Component, Some("@Component".to_owned()))
 }
 
 fn handle_nest_module(
     class_name: &str,
-    dec: &str,
+    arg_obj: Option<Node<'_>>,
     line: u32,
     state: &mut ExtractState<'_>,
 ) -> (SymbolKind, Option<String>) {
-    extract_nest_array(dec, "imports", class_name, EdgeKind::Imports, line, state);
-    extract_nest_array(
-        dec,
-        "providers",
-        class_name,
-        EdgeKind::Provides,
-        line,
-        state,
-    );
-    extract_nest_array(
-        dec,
-        "controllers",
-        class_name,
-        EdgeKind::Provides,
-        line,
-        state,
-    );
+    if let Some(obj) = arg_obj {
+        emit_nest_array(obj, "imports", class_name, EdgeKind::Imports, line, state);
+        emit_nest_array(obj, "providers", class_name, EdgeKind::Provides, line, state);
+        emit_nest_array(obj, "controllers", class_name, EdgeKind::Provides, line, state);
+    }
     (SymbolKind::Module, Some("@Module".to_owned()))
 }
 
-fn extract_prop_string(decorator: &str, key: &str) -> Option<String> {
-    let idx = decorator.find(key)?;
-    let rest = &decorator[idx + key.len()..];
-    let colon = rest.find(':')?;
-    let after_colon = rest[colon + 1..].trim_start();
-    let quote = after_colon.chars().next()?;
-    if !matches!(quote, '\'' | '"' | '`') {
-        return None;
+fn find_object_pair_value<'a>(
+    obj: Node<'a>,
+    target_key: &str,
+    state: &ExtractState<'a>,
+) -> Option<Node<'a>> {
+    let mut cursor = obj.walk();
+    for child in obj.named_children(&mut cursor) {
+        if child.kind() != "pair" {
+            continue;
+        }
+        let Some(key_node) = child.child_by_field_name("key") else {
+            continue;
+        };
+        let key = ExtractState::unquote(state.node_text(key_node));
+        if key == target_key {
+            return child.child_by_field_name("value");
+        }
     }
-    let body = &after_colon[quote.len_utf8()..];
-    let end = body.find(quote)?;
-    Some(body[..end].to_owned())
+    None
 }
 
-fn extract_nest_array(
-    decorator: &str,
+fn find_object_string(obj: Node<'_>, key: &str, state: &ExtractState<'_>) -> Option<String> {
+    let val = find_object_pair_value(obj, key, state)?;
+    if !matches!(val.kind(), "string" | "template_string") {
+        return None;
+    }
+    let raw = state.node_text(val);
+    if val.kind() == "template_string" && raw.contains("${") {
+        return None;
+    }
+    let unquoted = ExtractState::unquote(raw).trim();
+    if unquoted.is_empty() {
+        None
+    } else {
+        Some(unquoted.to_owned())
+    }
+}
+
+fn emit_nest_array(
+    obj: Node<'_>,
     key: &str,
     class_name: &str,
     kind: EdgeKind,
     line: u32,
     state: &mut ExtractState<'_>,
 ) {
-    let Some(idx) = decorator.find(key) else {
+    let Some(arr) = find_object_pair_value(obj, key, state) else {
         return;
     };
-    let rest = &decorator[idx + key.len()..];
-    let Some(open) = rest.find('[') else {
+    if arr.kind() != "array" {
         return;
-    };
-    let after_open = &rest[open + 1..];
-    let Some(close) = after_open.find(']') else {
-        return;
-    };
-    for item in after_open[..close].split(',') {
-        let token = item.trim();
-        if !token.is_empty() && token.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            state.push_edge(Some(class_name.to_owned()), token.to_owned(), kind, line);
+    }
+    let mut cursor = arr.walk();
+    for item in arr.named_children(&mut cursor) {
+        let target = match item.kind() {
+            "identifier" => Some(state.node_text(item).trim().to_owned()),
+            "member_expression" => {
+                let text = state.node_text(item).trim();
+                (!text.contains('\n') && text.len() <= 80).then(|| text.to_owned())
+            }
+            _ => None,
+        };
+        if let Some(target_name) = target {
+            state.push_edge(Some(class_name.to_owned()), target_name, kind, line);
         }
     }
 }

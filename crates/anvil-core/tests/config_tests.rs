@@ -4,6 +4,7 @@ use tempfile::TempDir;
 use anvil_core::config::{
     AnvilConfig, MobileQaDriver, QaDriverConfig, StackKind, ToolKind, WebQaDriver,
 };
+use anvil_core::traits::Language;
 
 #[test]
 fn config_defaults_match_spec() {
@@ -52,5 +53,14 @@ fn config_load_or_default_handles_missing_and_invalid() -> Result<()> {
     }
     std::fs::write(&cfg_path, "{ not valid json")?;
     assert!(AnvilConfig::load_or_default(tmp.path()).is_err());
+    Ok(())
+}
+
+#[test]
+fn language_rust_serializes_as_snake_case() -> Result<()> {
+    let json = serde_json::to_string(&Language::Rust)?;
+    assert_eq!(json, "\"rust\"");
+    let decoded: Language = serde_json::from_str(&json)?;
+    assert_eq!(decoded, Language::Rust);
     Ok(())
 }

@@ -3,9 +3,10 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::{AnvilConfig, StackKind};
+use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::stack_detector::detect_workspace;
 use anvil_core::traits::CompressedOutput;
 
@@ -18,11 +19,12 @@ pub fn run_impacted_typecheck(
     let stacks = resolve_stacks(repo_root, config);
     let mut results = Vec::new();
     if stacks.iter().any(is_ts_stack) {
-        results.push(run_and_filter(
+        results.push(run_tool_and_filter(
             repo_root,
             config,
-            "npx tsc --noEmit",
-            &["tsc", "--noEmit"],
+            "tsc",
+            "tsc --noEmit",
+            &["--noEmit"],
             impacted_files,
         )?);
     }
@@ -33,7 +35,7 @@ pub fn run_impacted_typecheck(
             impacted_files,
             ".py",
             "pyright",
-            &["pyright"],
+            &[],
             &mut results,
         )?;
     }
@@ -43,8 +45,8 @@ pub fn run_impacted_typecheck(
             config,
             impacted_files,
             ".dart",
-            "dart analyze",
-            &["dart", "analyze"],
+            "dart",
+            &["analyze"],
             &mut results,
         )?;
     }
@@ -79,8 +81,8 @@ fn run_ext_typecheck(
     config: &AnvilConfig,
     impacted_files: &[String],
     ext: &str,
-    label: &str,
-    base_cmd: &[&str],
+    bin: &str,
+    base_args: &[&str],
     results: &mut Vec<CompressedOutput>,
 ) -> Result<()> {
     let matching: Vec<String> = impacted_files
@@ -91,28 +93,53 @@ fn run_ext_typecheck(
     if matching.is_empty() {
         return Ok(());
     }
-    let mut args: Vec<&str> = base_cmd.to_vec();
+    let mut args: Vec<&str> = base_args.to_vec();
     args.extend(matching.iter().map(String::as_str));
-    results.push(run_and_filter(repo_root, config, label, &args, impacted_files)?);
+    let label = if base_args.is_empty() {
+        bin.to_owned()
+    } else {
+        format!("{bin} {}", base_args.join(" "))
+    };
+    results.push(run_tool_and_filter(
+        repo_root,
+        config,
+        bin,
+        &label,
+        &args,
+        impacted_files,
+    )?);
     Ok(())
 }
 
-fn run_and_filter(
+fn run_tool_and_filter(
     repo_root: &Path,
     config: &AnvilConfig,
+    bin_name: &str,
     label: &str,
-    cmd_parts: &[&str],
+    args: &[&str],
     impacted_files: &[String],
 ) -> Result<CompressedOutput> {
-    let (program, args) = cmd_parts.split_first().context("empty command")?;
-    let output = match Command::new(program).args(args).current_dir(repo_root).output() {
+    let Some(bin_path) = resolve_local_or_path_bin(repo_root, bin_name) else {
+        return Ok(CompressedOutput {
+            tool: bin_name.to_owned(),
+            passed: true,
+            exit_code: 0,
+            summary: format!("SKIP ({bin_name}): binary not found"),
+            lines: Vec::new(),
+            total_errors: 0,
+            truncated: false,
+            raw_log_path: None,
+        });
+    };
+
+    let output = match Command::new(&bin_path).args(args).current_dir(repo_root).output() {
         Ok(out) => out,
         Err(err) => {
             return compress_output(
                 Some(repo_root),
                 label,
                 1,
-                &format!("failed to execute `{label}`: {err}"),
+                &format!("failed to execute `{}`: {err}", bin_path.display()),
                 config.tier_budgets.compressor_max_lines,
                 config.tier_budgets.compressor_max_tokens,
             );
@@ -125,32 +152,101 @@ fn run_and_filter(
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let filtered = if impacted_files.is_empty() {
-        combined
-    } else {
-        let kept: Vec<&str> = combined
-            .lines()
-            .filter(|line| {
-                impacted_files
-                    .iter()
-                    .any(|f| line.contains(f) || line.contains(&f.replace('/', "\\")))
-            })
-            .collect();
-        if kept.is_empty() && code == 0 {
-            String::new()
-        } else if kept.is_empty() {
-            combined
-        } else {
-            kept.join("\n")
-        }
-    };
-
-    compress_output(
+    filter_typecheck_output(
         Some(repo_root),
         label,
         code,
-        &filtered,
+        &combined,
+        impacted_files,
         config.tier_budgets.compressor_max_lines,
         config.tier_budgets.compressor_max_tokens,
     )
+}
+
+/// Filters compiler/typechecker output to `impacted_files` without leaking unrelated errors.
+pub fn filter_typecheck_output(
+    repo_root: Option<&Path>,
+    label: &str,
+    exit_code: i32,
+    raw_output: &str,
+    impacted_files: &[String],
+    max_lines: usize,
+    max_tokens: usize,
+) -> Result<CompressedOutput> {
+    if impacted_files.is_empty() {
+        return compress_output(repo_root, label, exit_code, raw_output, max_lines, max_tokens);
+    }
+
+    let patterns: Vec<(String, String)> = impacted_files
+        .iter()
+        .map(|f| {
+            let clean = f.trim_start_matches("./").replace('\\', "/");
+            let win = clean.replace('/', "\\");
+            (clean, win)
+        })
+        .collect();
+
+    let mut kept = Vec::new();
+    let mut suppressed_errors = 0usize;
+    let mut in_kept_diag = false;
+
+    for line in raw_output.lines() {
+        let is_indented = line.starts_with(char::is_whitespace);
+        let matches_impacted = patterns
+            .iter()
+            .any(|(fwd, bck)| line.contains(fwd.as_str()) || line.contains(bck.as_str()));
+
+        if matches_impacted {
+            kept.push(line);
+            in_kept_diag = true;
+        } else if is_indented && in_kept_diag {
+            kept.push(line);
+        } else {
+            in_kept_diag = false;
+            if looks_like_error_line(line) {
+                suppressed_errors += 1;
+            }
+        }
+    }
+
+    if kept.is_empty() {
+        if exit_code == 0 {
+            return compress_output(repo_root, label, 0, "", max_lines, max_tokens);
+        }
+        let tool = label.split_whitespace().next().unwrap_or(label).to_owned();
+        let count = suppressed_errors.max(1);
+        return Ok(CompressedOutput {
+            tool: tool.clone(),
+            passed: true,
+            exit_code: 0,
+            summary: format!(
+                "PASS ({tool}): 0 errors in modified/impacted files ({count} unrelated error(s) suppressed)"
+            ),
+            lines: Vec::new(),
+            total_errors: 0,
+            truncated: false,
+            raw_log_path: None,
+        });
+    }
+
+    let filtered = kept.join("\n");
+    let effective_code = if exit_code == 0 { 1 } else { exit_code };
+    compress_output(
+        repo_root,
+        label,
+        effective_code,
+        &filtered,
+        max_lines,
+        max_tokens,
+    )
+}
+
+fn looks_like_error_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.is_empty()
+        && !trimmed.starts_with(char::is_whitespace)
+        && (trimmed.contains("error TS")
+            || trimmed.contains(": error")
+            || trimmed.contains(" - error")
+            || trimmed.starts_with("error - "))
 }

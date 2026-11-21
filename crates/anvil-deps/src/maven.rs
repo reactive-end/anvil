@@ -1,4 +1,6 @@
-//! Maven Central (`build.gradle.kts` / `libs.versions.toml`) parser and fetcher.
+//! Maven Central & Google Maven (`build.gradle*` / `libs.versions.toml`) parser & fetcher.
+
+pub mod google;
 
 use std::sync::OnceLock;
 
@@ -9,7 +11,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 
+pub use google::{is_google_maven_group, parse_google_maven_metadata_xml};
+
 use crate::http::{fetch_json_text, percent_encode_component};
+use crate::maven::google::fetch_google_maven;
 use crate::model::{DependencySpec, Ecosystem, PackageHealthInfo};
 
 /// Parses Maven coordinates (`group:artifact`) from Gradle's `libs.versions.toml`.
@@ -46,6 +51,15 @@ pub fn parse_libs_versions_toml(
 
 /// Parses Maven coordinates (`group:artifact`) from a Kotlin Gradle script (`build.gradle.kts`).
 pub fn parse_build_gradle_kts(manifest_path: &str, content: &str) -> Result<Vec<DependencySpec>> {
+    parse_gradle_script(manifest_path, content)
+}
+
+/// Parses Maven coordinates (`group:artifact`) from a Groovy Gradle script (`build.gradle`).
+pub fn parse_build_gradle(manifest_path: &str, content: &str) -> Result<Vec<DependencySpec>> {
+    parse_gradle_script(manifest_path, content)
+}
+
+fn parse_gradle_script(manifest_path: &str, content: &str) -> Result<Vec<DependencySpec>> {
     static RE_COORD: OnceLock<Regex> = OnceLock::new();
     let re = RE_COORD.get_or_init(|| {
         Regex::new(r#"["']([a-zA-Z0-9_.\-]+:[a-zA-Z0-9_.\-]+)(?::([^"']+))?["']"#)
@@ -79,7 +93,7 @@ pub fn parse_build_gradle_kts(manifest_path: &str, content: &str) -> Result<Vec<
     Ok(specs)
 }
 
-/// Fetches package metadata from Maven Central Solr search API for `"group:artifact"`.
+/// Fetches package metadata from Maven Central Solr, falling back to Google Maven for Android groups.
 pub fn fetch_maven(package: &str) -> Result<PackageHealthInfo> {
     let Some((group, artifact)) = package.split_once(':') else {
         bail!("invalid Maven coordinate `{package}`, expected `group:artifact`");
@@ -89,8 +103,19 @@ pub fn fetch_maven(package: &str) -> Result<PackageHealthInfo> {
     let url = format!(
         "https://search.maven.org/solrsearch/select?q=g:%22{g_enc}%22+AND+a:%22{a_enc}%22&rows=1&wt=json"
     );
-    let body = fetch_json_text(&url)?;
-    parse_maven_search_json(package, &body)
+
+    let central_res = fetch_json_text(&url).and_then(|body| parse_maven_search_json(package, &body));
+    match central_res {
+        Ok(info) if info.latest_version.is_some() => Ok(info),
+        fallback_trigger => {
+            if is_google_maven_group(group)
+                && let Ok(google_info) = fetch_google_maven(package, group, artifact)
+            {
+                return Ok(google_info);
+            }
+            fallback_trigger
+        }
+    }
 }
 
 /// Parses a Maven Central Solr JSON response into [`PackageHealthInfo`].
@@ -177,11 +202,14 @@ fn looks_like_gradle_dep_line(trimmed: &str) -> bool {
         "androidTestImplementation",
         "compileOnly",
         "runtimeOnly",
+        "testRuntimeOnly",
+        "testCompileOnly",
         "ksp",
         "kapt",
         "annotationProcessor",
         "debugImplementation",
         "releaseImplementation",
+        "classpath",
     ];
     PREFIXES.iter().any(|p| trimmed.contains(p))
 }

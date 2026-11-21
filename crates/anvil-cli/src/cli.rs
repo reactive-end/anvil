@@ -56,6 +56,9 @@ pub enum Command {
         /// Force a specific tier (`0`, `1`, or `2`).
         #[arg(long, value_parser = clap::value_parser!(u8).range(0..=2))]
         tier: Option<u8>,
+        /// Skip Tier 1 targeted test execution.
+        #[arg(long)]
+        no_tests: bool,
     },
     /// Analyze reverse-BFS blast radius and upstream origin via `anvil-graph`.
     Impact {

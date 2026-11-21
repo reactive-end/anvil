@@ -3,7 +3,7 @@
 use anvil_core::traits::{Diagnostic, Language, Severity};
 use tree_sitter::Node;
 
-use super::{RuleState, has_structured_anvil_allow, is_comment_kind};
+use super::{RuleState, has_anvil_allow, is_comment_kind};
 
 /// Flags `index.{ts,tsx,js,jsx}` files that contain only `export ... from ...` re-exports.
 pub fn check_barrel(root: Node<'_>, state: &mut RuleState<'_>) {
@@ -45,7 +45,7 @@ pub fn check_barrel(root: Node<'_>, state: &mut RuleState<'_>) {
         }
     }
 
-    if reexport_count > 0 && !has_local_logic && !has_structured_anvil_allow(state, 1) {
+    if reexport_count > 0 && !has_local_logic && !has_anvil_allow(state, 1, "no-barrel-files") {
         state.diagnostics.push(Diagnostic {
             rule: "no-barrel-files".to_owned(),
             severity: Severity::Error,

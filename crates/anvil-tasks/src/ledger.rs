@@ -8,9 +8,11 @@ use chrono::Utc;
 use rustc_hash::FxHashSet;
 use ulid::Ulid;
 
-use crate::fs_util::{atomic_write_bytes, atomic_write_json, read_json_file};
-use crate::identity::{resolve_author, sanitize_author};
+use anvil_core::fs_util::{atomic_write, sanitize_author};
+
+use crate::identity::resolve_author;
 use crate::model::{TaskEntry, TaskMeta, TaskStatus};
+use crate::{atomic_write_json, read_json_file};
 
 /// Returns `.harness/tasks`.
 pub fn tasks_root(repo: &Path) -> PathBuf {
@@ -127,7 +129,7 @@ pub fn write_task_plan(
     }
     let clean_author = sanitize_author(author);
     let plan_path = dir.join(format!("plan-{clean_author}.md"));
-    atomic_write_bytes(&plan_path, markdown.as_bytes())?;
+    atomic_write(&plan_path, markdown.as_bytes())?;
     Ok(plan_path)
 }
 

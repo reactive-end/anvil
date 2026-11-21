@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 
 const PRAGMAS_SQL: &str = "
+PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 PRAGMA temp_store = MEMORY;
@@ -73,7 +74,8 @@ CREATE TRIGGER IF NOT EXISTS observations_ad AFTER DELETE ON observations BEGIN
     VALUES ('delete', old.rowid, old.title, old.topic_key, old.what, old.why, old.location, old.learned);
 END;
 
-CREATE TRIGGER IF NOT EXISTS observations_au AFTER UPDATE ON observations BEGIN
+DROP TRIGGER IF EXISTS observations_au;
+CREATE TRIGGER observations_au AFTER UPDATE OF topic_key, title, what, why, location, learned ON observations BEGIN
     INSERT INTO observations_fts(observations_fts, rowid, title, topic_key, what, why, location, learned)
     VALUES ('delete', old.rowid, old.title, old.topic_key, old.what, old.why, old.location, old.learned);
     INSERT INTO observations_fts(rowid, title, topic_key, what, why, location, learned)

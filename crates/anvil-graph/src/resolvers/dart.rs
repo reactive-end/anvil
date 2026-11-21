@@ -6,7 +6,7 @@ use std::path::Path;
 use anvil_core::traits::{EdgeKind, EdgeRef};
 use rustc_hash::FxHashMap;
 
-use crate::model::CodeGraph;
+use crate::model::{CodeGraph, NodeId};
 use crate::resolvers::{join_normalized, normalize_join_rel, pick_preferred_symbol};
 
 /// Discovers `pubspec.yaml` package names and maps them to their `lib` directory paths.
@@ -55,11 +55,11 @@ pub fn resolve_dart_edge(
     file_imports: &[String],
     graph: &CodeGraph,
     packages: &FxHashMap<String, String>,
-) -> Option<String> {
+) -> Option<NodeId> {
     match edge.kind {
         EdgeKind::Imports | EdgeKind::ReExports => {
             resolve_dart_uri(&edge.source_file, &edge.target_path_or_symbol, graph, packages)
-                .map(|rel| CodeGraph::file_node_id(&rel))
+                .and_then(|rel| graph.node_by_id(&CodeGraph::file_node_id(&rel)).map(|(id, _)| id))
         }
         EdgeKind::Calls | EdgeKind::Extends | EdgeKind::Implements => {
             let sym = edge

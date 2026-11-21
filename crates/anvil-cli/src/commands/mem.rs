@@ -13,40 +13,26 @@ use crate::cli::subcmds::MemSubcmd;
 /// Executes `anvil mem <subcommand>`.
 pub fn execute(root: &Path, sub: MemSubcmd) -> Result<()> {
     let author = resolve_author(root).unwrap_or_else(|_| "cli".to_owned());
-    let mut mem = MemoryEngine::open(root, author)?;
+    let mut mem = MemoryEngine::open_without_sync(root, author)?;
 
     match sub {
-        MemSubcmd::Save {
-            kind,
-            title,
-            what,
-            why,
-            location,
-            learned,
-            topic_key,
-            files,
-            symbols,
-            ttl,
-        } => {
-            let input = ObservationInput {
-                topic_key,
-                kind: kind.parse()?,
-                title,
-                what,
-                why,
-                location,
-                learned,
-                related_files: files,
-                related_symbols: symbols,
-                ttl_seconds: ttl,
-            };
-            let obs = mem.save(input)?;
-            println!("saved memory id={} topic_key={} kind={}", obs.id, obs.topic_key, obs.kind);
+        save_sub @ MemSubcmd::Save { .. } => cmd_save(&mut mem, save_sub)?,
+        MemSubcmd::Search { query, kind, limit } => {
+            let _ = mem.sync();
+            cmd_search(&mem, &query, kind.as_deref(), limit)?;
         }
-        MemSubcmd::Search { query, kind, limit } => cmd_search(&mem, &query, kind.as_deref(), limit)?,
-        MemSubcmd::Timeline { id_or_topic, before, after } => cmd_timeline(&mem, &id_or_topic, before, after)?,
-        MemSubcmd::Get { id } => cmd_get(&mem, &id)?,
-        MemSubcmd::Context { max_tokens } => cmd_context(&mem, max_tokens)?,
+        MemSubcmd::Timeline { id_or_topic, before, after } => {
+            let _ = mem.sync();
+            cmd_timeline(&mem, &id_or_topic, before, after)?;
+        }
+        MemSubcmd::Get { id } => {
+            let _ = mem.sync();
+            cmd_get(&mem, &id)?;
+        }
+        MemSubcmd::Context { max_tokens } => {
+            let _ = mem.sync();
+            cmd_context(&mem, max_tokens)?;
+        }
         MemSubcmd::Sync => {
             let stats = mem.sync()?;
             println!(
@@ -54,12 +40,47 @@ pub fn execute(root: &Path, sub: MemSubcmd) -> Result<()> {
                 stats.files_scanned, stats.files_ingested, stats.records_applied
             );
         }
-        MemSubcmd::CheckStale => cmd_check_stale(root, &mut mem)?,
+        MemSubcmd::CheckStale => {
+            let _ = mem.sync();
+            cmd_check_stale(root, &mut mem)?;
+        }
         MemSubcmd::Cleanup => {
             let deleted = mem.cleanup_expired_sessions()?;
             println!("cleaned up {deleted} expired session observation(s)");
         }
     }
+    Ok(())
+}
+
+fn cmd_save(mem: &mut MemoryEngine, sub: MemSubcmd) -> Result<()> {
+    let MemSubcmd::Save {
+        kind,
+        title,
+        what,
+        why,
+        location,
+        learned,
+        topic_key,
+        files,
+        symbols,
+        ttl,
+    } = sub
+    else {
+        return Ok(());
+    };
+    let obs = mem.save(ObservationInput {
+        topic_key,
+        kind: kind.parse()?,
+        title,
+        what,
+        why,
+        location,
+        learned,
+        related_files: files,
+        related_symbols: symbols,
+        ttl_seconds: ttl,
+    })?;
+    println!("saved memory id={} topic_key={} kind={}", obs.id, obs.topic_key, obs.kind);
     Ok(())
 }
 
