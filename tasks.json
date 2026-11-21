@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "task_count": 1,
-  "updated_at": "2026-11-21T06:21:03.025359300Z",
+  "task_count": 2,
+  "updated_at": "2026-11-21T13:14:51.119987900Z",
   "tasks": [
     {
       "task_id": "T-20261121-01M7YC7MM5WX2CGP",
@@ -51,6 +51,57 @@
             "scripts/install.sh"
           ],
           "timestamp": "2026-11-21T06:21:03.025359300Z"
+        }
+      ]
+    },
+    {
+      "task_id": "T-20261121-01M7Z3WF8FE23ZDM",
+      "request": "Si me gustaría, así evitamos estar recordando comandos, simplemente le vas pidiendo cosas y el harness se encarga",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "files_touched": [
+        "crates/anvil-cli/src/commands/hook.rs",
+        "crates/anvil-cli/src/commands/hook/task_auto.rs",
+        "crates/anvil-tasks/src/active.rs",
+        "templates/AGENTS.md",
+        "templates/CLAUDE.md"
+      ],
+      "summary": "Implemented 100% hands-free automatic task tracking via Antigravity PreInvocation and Claude Code UserPromptSubmit hooks, Stop summary enforcement, active-task.json local pointer, and updated thin adapters.",
+      "entry_count": 2,
+      "created_at": "2026-11-21T13:14:14.159699800Z",
+      "updated_at": "2026-11-21T13:14:51.119987900Z",
+      "entries": [
+        {
+          "entry_id": "01M7Z3WF8GXDYA92TNYAWJNMGC",
+          "task_id": "T-20261121-01M7Z3WF8FE23ZDM",
+          "author": "reactive-end",
+          "status": "in_progress",
+          "branch": "main",
+          "summary": "Started task: Si me gustaría, así evitamos estar recordando comandos, simplemente le vas pidiendo cosas y el harness se encarga",
+          "files_touched": [],
+          "timestamp": "2026-11-21T13:14:14.204011600Z"
+        },
+        {
+          "entry_id": "01M7Z3XKAF0R7MNH0WCYJ5H2V4",
+          "task_id": "T-20261121-01M7Z3WF8FE23ZDM",
+          "author": "reactive-end",
+          "status": "done",
+          "branch": "main",
+          "summary": "Implemented 100% hands-free automatic task tracking via Antigravity PreInvocation and Claude Code UserPromptSubmit hooks, Stop summary enforcement, active-task.json local pointer, and updated thin adapters.",
+          "files_touched": [
+            "crates/anvil-cli/src/commands/hook.rs",
+            "crates/anvil-cli/src/commands/hook/task_auto.rs",
+            "crates/anvil-tasks/src/active.rs",
+            "templates/AGENTS.md",
+            "templates/CLAUDE.md"
+          ],
+          "timestamp": "2026-11-21T13:14:51.119987900Z"
         }
       ]
     }
