@@ -232,3 +232,26 @@ fn active_task_auto_lifecycle_creates_reuses_and_advances_after_done() {
     assert_ne!(second.task_id, first.task_id);
     assert!(second.summary_recorded_at.is_none());
 }
+
+#[test]
+fn same_prompt_after_done_does_not_create_duplicate_task() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    let prompt = "Implement automatic task tracking for Antigravity";
+    let (first, created) = ensure_task_for_prompt(tmp.path(), prompt)
+        .expect("initial prompt")
+        .expect("should create task");
+    assert!(created);
+
+    mark_summary_recorded(tmp.path(), &first.task_id, TaskStatus::Done).expect("mark done");
+
+    let (reused, created_again) = ensure_task_for_prompt(tmp.path(), prompt)
+        .expect("repeated PreInvocation prompt")
+        .expect("should return existing done task");
+    assert!(!created_again);
+    assert_eq!(reused.task_id, first.task_id);
+    assert_eq!(reused.status, TaskStatus::Done);
+    assert_eq!(list_tasks(tmp.path()).expect("list tasks").len(), 1);
+}

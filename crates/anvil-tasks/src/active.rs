@@ -63,9 +63,10 @@ pub fn ensure_task_for_prompt(
         return Ok(None);
     }
 
+    let prompt_hash = hash_prompt(trimmed);
     if let Some(existing) = load_active_task(repo)?
-        && existing.status == TaskStatus::InProgress
         && task_dir(repo, &existing.task_id).join("meta.json").exists()
+        && (existing.prompt_hash == prompt_hash || existing.status == TaskStatus::InProgress)
     {
         return Ok(Some((existing, false)));
     }
@@ -74,7 +75,7 @@ pub fn ensure_task_for_prompt(
     build_root_tasks_json(repo)?;
     let state = ActiveTaskState {
         task_id: meta.task_id,
-        prompt_hash: hash_prompt(trimmed),
+        prompt_hash,
         status: TaskStatus::InProgress,
         summary_recorded_at: None,
         started_at: meta.created_at,
