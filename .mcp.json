@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "anvil": {
+      "args": [
+        "mcp"
+      ],
+      "command": "anvil"
+    }
+  }
+}

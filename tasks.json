@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "task_count": 1,
+  "updated_at": "2026-11-21T06:21:03.025359300Z",
+  "tasks": [
+    {
+      "task_id": "T-20261121-01M7YC7MM5WX2CGP",
+      "request": "Implement anvil engineering harness Phases 1-5 (core, AST, graph, memory, MCP, tasks, adapters, deps, QA, release)",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "files_touched": [
+        ".github/workflows/ci.yml",
+        "Cargo.toml",
+        "README.md",
+        "scripts/install.ps1",
+        "scripts/install.sh"
+      ],
+      "summary": "Completed Phases 1-5: 10 SRP Rust crates, embedded tree-sitter + anvil-graph, SQLite FTS5 anvil-memory, unified stdio anvil-mcp, conflict-free task ledger, Antigravity/Claude Code adapters, hybrid Web/Mobile QA, cross-platform installers, CI/Release workflow, README, and self-dogfooding.",
+      "entry_count": 2,
+      "created_at": "2026-11-21T06:20:54.277367Z",
+      "updated_at": "2026-11-21T06:21:03.025359300Z",
+      "entries": [
+        {
+          "entry_id": "01M7YC7MM6JRWGFZ832PA0Z7RY",
+          "task_id": "T-20261121-01M7YC7MM5WX2CGP",
+          "author": "reactive-end",
+          "status": "in_progress",
+          "branch": "main",
+          "summary": "Started task: Implement anvil engineering harness Phases 1-5 (core, AST, graph, memory, MCP, tasks, adapters, deps, QA, release)",
+          "files_touched": [],
+          "timestamp": "2026-11-21T06:20:54.312161600Z"
+        },
+        {
+          "entry_id": "01M7YC7X4GKHGPT858RAV470SK",
+          "task_id": "T-20261121-01M7YC7MM5WX2CGP",
+          "author": "reactive-end",
+          "status": "done",
+          "branch": "main",
+          "summary": "Completed Phases 1-5: 10 SRP Rust crates, embedded tree-sitter + anvil-graph, SQLite FTS5 anvil-memory, unified stdio anvil-mcp, conflict-free task ledger, Antigravity/Claude Code adapters, hybrid Web/Mobile QA, cross-platform installers, CI/Release workflow, README, and self-dogfooding.",
+          "files_touched": [
+            ".github/workflows/ci.yml",
+            "Cargo.toml",
+            "README.md",
+            "scripts/install.ps1",
+            "scripts/install.sh"
+          ],
+          "timestamp": "2026-11-21T06:21:03.025359300Z"
+        }
+      ]
+    }
+  ]
+}

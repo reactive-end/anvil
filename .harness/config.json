@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "stacks": [
+    "rust"
+  ],
+  "tools": [],
+  "subrepos": [],
+  "tier_budgets": {
+    "tier0_ms": 500,
+    "tier1_secs": 15,
+    "compressor_max_lines": 50,
+    "compressor_max_tokens": 1200
+  },
+  "root_allowlist": [
+    ".agents",
+    ".claude",
+    ".gitattributes",
+    ".github",
+    ".gitignore",
+    ".harness",
+    ".mcp.json",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "clippy.toml",
+    "crates",
+    "package.json",
+    "scripts",
+    "tasks.json",
+    "templates",
+    "tsconfig.json"
+  ],
+  "circuit_breaker_limit": 3,
+  "deps_max_age_months": 24,
+  "qa_driver": {
+    "web": "unconfigured",
+    "mobile": "unconfigured"
+  },
+  "allowed_escapes": [
+    "anvil-allow"
+  ]
+}

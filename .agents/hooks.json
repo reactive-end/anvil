@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "command": "anvil hook PostToolUse --adapter antigravity"
+      }
+    ],
+    "PreInvocation": [
+      {
+        "command": "anvil hook PreInvocation --adapter antigravity"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "command": "anvil hook PreToolUse --adapter antigravity"
+      }
+    ],
+    "SessionStart": [
+      {
+        "command": "anvil hook SessionStart --adapter antigravity"
+      }
+    ],
+    "Stop": [
+      {
+        "command": "anvil hook Stop --adapter antigravity"
+      }
+    ]
+  }
+}
