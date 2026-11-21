@@ -11,6 +11,7 @@ use crate::contract::HookEvent;
 
 const CLAUDE_EVENTS: &[HookEvent] = &[
     HookEvent::SessionStart,
+    HookEvent::UserPromptSubmit,
     HookEvent::PreToolUse,
     HookEvent::PostToolUse,
     HookEvent::Stop,
@@ -34,7 +35,11 @@ pub fn merge_settings_config(repo_root: &Path) -> Result<bool> {
     let hooks_obj = ensure_object_field(&mut root, "hooks")?;
     for event in CLAUDE_EVENTS {
         let key = event.as_pascal_case();
-        let command = format!("anvil hook {key} --adapter claude");
+        let cli_event = match event {
+            HookEvent::UserPromptSubmit => "user-prompt-submit",
+            _ => key,
+        };
+        let command = format!("anvil hook {cli_event} --adapter claude");
         let use_matcher = matches!(event, HookEvent::PreToolUse | HookEvent::PostToolUse);
         let list = ensure_array_field(hooks_obj, key)?;
         upsert_claude_hook_entry(list, &command, use_matcher);

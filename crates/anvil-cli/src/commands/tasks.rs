@@ -5,8 +5,9 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 use anvil_tasks::{
-    TaskStatus, append_entry, append_entry_as, build_root_tasks_json, list_tasks, resolve_author,
-    resolve_merge, start_task, start_task_as, write_task_plan,
+    TaskStatus, activate_task_from_meta, append_entry, append_entry_as, build_root_tasks_json,
+    list_tasks, mark_summary_recorded, resolve_author, resolve_merge, start_task, start_task_as,
+    write_task_plan,
 };
 
 use crate::cli::subcmds::TasksSubcmd;
@@ -44,6 +45,7 @@ fn cmd_start(root: &Path, request: &str, author: Option<&str>) -> Result<()> {
         None => start_task(root, request)?,
     };
     let consolidated = build_root_tasks_json(root)?;
+    activate_task_from_meta(root, &meta)?;
     println!(
         "started task {} by {} (tasks.json total={})",
         meta.task_id, meta.created_by, consolidated.task_count
@@ -64,6 +66,7 @@ fn cmd_append(
         None => append_entry(root, task_id, status, summary, files)?,
     };
     let consolidated = build_root_tasks_json(root)?;
+    mark_summary_recorded(root, task_id, status)?;
     println!(
         "updated {} [{}] entry={} (tasks.json total={})",
         task_id, entry.status, entry.entry_id, consolidated.task_count

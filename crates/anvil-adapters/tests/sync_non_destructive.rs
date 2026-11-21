@@ -129,6 +129,10 @@ fn init_merges_hooks_and_mcp_configs_without_clobbering_user_entries() {
         pre_hooks[1]["hooks"][0]["command"],
         "anvil hook PreToolUse --adapter claude"
     );
+    assert_eq!(
+        claude_settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"],
+        "anvil hook user-prompt-submit --adapter claude"
+    );
 
     let agy_hooks: Value = serde_json::from_str(
         &fs::read_to_string(root.join(".agents/hooks.json")).expect("read agy hooks"),

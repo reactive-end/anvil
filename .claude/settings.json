@@ -41,6 +41,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "anvil hook user-prompt-submit --adapter claude",
+            "type": "command"
+          }
+        ]
+      }
     ]
   }
 }

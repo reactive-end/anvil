@@ -1,8 +1,11 @@
 //! `anvil hook`: unified Antigravity & Claude Code hook dispatcher.
 
+mod payload;
+mod task_auto;
+
 use std::fs;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Result;
 use anvil_adapters::contract::{
@@ -17,11 +20,15 @@ use anvil_core::git::{self, DiffScope};
 use anvil_core::traits::Severity;
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
-use anvil_graph::model::CodeGraph;
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
 use anvil_tasks::{list_tasks, resolve_author};
 use serde_json::Value;
+
+use payload::{
+    extract_command_field, extract_rel_file, is_continuation_active, resolve_hook_root,
+    should_wrap_with_anvil_run,
+};
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
 pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
@@ -39,9 +46,11 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
 
     let outcome = match event {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
+        HookEvent::UserPromptSubmit | HookEvent::PreInvocation => {
+            task_auto::handle_prompt_hook(&effective_root, &input)
+        }
         HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input),
         HookEvent::PostToolUse => handle_post_tool_use(&effective_root, &config, &input),
-        HookEvent::PreInvocation => HookOutcome::allow(),
         HookEvent::Stop => handle_stop(&effective_root, &config, is_continuation_active(&raw_stdin)),
     };
 
@@ -51,21 +60,6 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     };
     println!("{}", serde_json::to_string(&rendered)?);
     Ok(())
-}
-
-fn resolve_hook_root(default_root: &Path, cwd: Option<&str>) -> PathBuf {
-    let Some(raw) = cwd.map(str::trim).filter(|s| !s.is_empty()) else {
-        return default_root.to_path_buf();
-    };
-    let path = PathBuf::from(raw);
-    if path.is_dir() { git::repo_root(&path).unwrap_or(path) } else { default_root.to_path_buf() }
-}
-
-fn is_continuation_active(raw_json: &str) -> bool {
-    let Ok(val) = serde_json::from_str::<Value>(raw_json) else { return false; };
-    ["continuationActive", "continuation_active", "stop_hook_active"]
-        .iter()
-        .any(|k| val.get(*k).and_then(Value::as_bool) == Some(true))
 }
 
 fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
@@ -135,8 +129,7 @@ fn handle_post_tool_use(root: &Path, config: &AnvilConfig, input: &NormalizedHoo
 }
 
 fn collect_tier0_messages(root: &Path, rel: &str, config: &AnvilConfig, messages: &mut Vec<InboxMessage>) {
-    let abs = root.join(rel);
-    let Ok(source) = fs::read_to_string(&abs) else { return; };
+    let Ok(source) = fs::read_to_string(root.join(rel)) else { return; };
     let Ok(facts) = analyze_file(Path::new(rel), &source, config) else { return; };
     for d in facts.diagnostics {
         let lvl = match d.severity {
@@ -144,26 +137,19 @@ fn collect_tier0_messages(root: &Path, rel: &str, config: &AnvilConfig, messages
             Severity::Warning => MessageLevel::Warning,
             Severity::Info => MessageLevel::Info,
         };
-        messages.push(InboxMessage::new(
-            format!("tier0:{}", d.rule),
-            lvl,
-            format!("L{}: {}", d.line, d.message),
-            Some(rel.to_owned()),
-        ));
+        let msg = format!("L{}: {}", d.line, d.message);
+        messages.push(InboxMessage::new(format!("tier0:{}", d.rule), lvl, msg, Some(rel.to_owned())));
     }
 }
 
 fn handle_stop(root: &Path, config: &AnvilConfig, continuation_active: bool) -> HookOutcome {
+    task_auto::refresh_tasks_json_if_present(root);
     if continuation_active {
         return HookOutcome::allow();
     }
     if let Ok(st) = CircuitBreaker::new(root, config.circuit_breaker_limit).status() && st.is_open() {
-        return HookOutcome::with_messages(vec![InboxMessage::new(
-            "circuit-breaker",
-            MessageLevel::Error,
-            "Circuit Breaker OPEN — stopping for human escalation.".to_owned(),
-            None,
-        )]);
+        let msg = "Circuit Breaker OPEN — stopping for human escalation.".to_owned();
+        return HookOutcome::with_messages(vec![InboxMessage::new("circuit-breaker", MessageLevel::Error, msg, None)]);
     }
     let changed = git::changed_files(root, DiffScope::WorkingTree).unwrap_or_default();
     if changed.is_empty() {
@@ -172,6 +158,9 @@ fn handle_stop(root: &Path, config: &AnvilConfig, continuation_active: bool) -> 
     let errs = collect_changed_tier0_errors(root, &changed, config);
     if !errs.is_empty() {
         return HookOutcome::block_stop(format!("Tier 0 AST gate failed ({} error(s)): {}", errs.len(), errs.join("; ")));
+    }
+    if let Some(block) = task_auto::check_pending_task_summary(root, &changed) {
+        return block;
     }
     let mut messages = Vec::new();
     if let Ok(engine) = CodeGraphEngine::load_or_build(root, config.clone()) {
@@ -215,45 +204,10 @@ fn update_circuit_from_output(root: &Path, config: &AnvilConfig, input: &Normali
             let snippet = out.get("stderr").or_else(|| out.get("output")).and_then(Value::as_str).unwrap_or("non-zero exit");
             let cmd = extract_command_field(input.tool_input.as_ref()).map(|(_, s)| s).unwrap_or(tool);
             if let Ok(st) = cb.record_failure(tool, &format!("exit {c}: {snippet}"), cmd) && st.is_open() {
-                messages.push(InboxMessage::new(
-                    "circuit-breaker",
-                    MessageLevel::Error,
-                    "Circuit Breaker tripped OPEN after 3 identical failures; run `anvil circuit reset`.".to_owned(),
-                    None,
-                ));
+                let msg = "Circuit Breaker tripped OPEN after 3 identical failures; run `anvil circuit reset`.".to_owned();
+                messages.push(InboxMessage::new("circuit-breaker", MessageLevel::Error, msg, None));
             }
         }
         None => {}
     }
-}
-
-fn extract_command_field(tool_input: Option<&Value>) -> Option<(&'static str, &str)> {
-    let obj = tool_input?.as_object()?;
-    ["CommandLine", "command", "cmd"]
-        .into_iter()
-        .find_map(|k| obj.get(k).and_then(Value::as_str).map(|s| (k, s.trim())))
-}
-
-fn should_wrap_with_anvil_run(cmd: &str) -> bool {
-    if cmd.starts_with("anvil ") || cmd.contains("anvil run") {
-        return false;
-    }
-    ["tsc", "npx tsc", "eslint", "npx eslint", "biome", "vitest", "npx vitest", "jest", "npx jest", "pytest", "ruff", "dart analyze", "flutter test", "./gradlew", "gradlew"]
-        .iter()
-        .any(|p| cmd.starts_with(p))
-}
-
-fn extract_rel_file(root: &Path, tool_input: Option<&Value>) -> Option<String> {
-    let obj = tool_input?.as_object()?;
-    let raw = ["TargetFile", "file_path", "path", "AbsolutePath", "target_file"]
-        .iter()
-        .find_map(|k| obj.get(*k).and_then(Value::as_str))?;
-    let p = Path::new(raw);
-    let rel = if p.is_absolute() {
-        p.strip_prefix(root).ok().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| raw.to_owned())
-    } else {
-        raw.to_owned()
-    };
-    let norm = CodeGraph::normalize_rel_path(&rel);
-    (!norm.is_empty()).then_some(norm)
 }

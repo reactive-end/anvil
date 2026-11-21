@@ -25,6 +25,8 @@ struct RawClaudeInput {
     #[serde(alias = "tool_output", alias = "toolOutput", alias = "toolResponse")]
     tool_response: Option<Value>,
     prompt: Option<String>,
+    #[serde(alias = "userPrompt")]
+    user_prompt: Option<String>,
 }
 
 /// Parses Claude Code hook stdin JSON into a normalized hook input.
@@ -41,6 +43,11 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         (None, None) => anyhow::bail!("missing hook_event_name in Claude Code hook input"),
     };
 
+    let user_prompt = raw
+        .user_prompt
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| raw.prompt.clone().filter(|s| !s.trim().is_empty()));
+
     Ok(NormalizedHookInput {
         adapter: AdapterKind::ClaudeCode,
         event,
@@ -50,6 +57,7 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         tool_input: raw.tool_input,
         tool_output: raw.tool_response,
         prompt: raw.prompt,
+        user_prompt,
     })
 }
 
@@ -69,6 +77,9 @@ pub fn render_output(
             Ok(render_additional_context("PostToolUse", &combined))
         }
         HookEvent::SessionStart => Ok(render_additional_context("SessionStart", &outcome.messages)),
+        HookEvent::UserPromptSubmit => {
+            Ok(render_additional_context("UserPromptSubmit", &outcome.messages))
+        }
         HookEvent::PreInvocation => Ok(json!({})),
         HookEvent::Stop => Ok(render_stop(outcome)),
     }

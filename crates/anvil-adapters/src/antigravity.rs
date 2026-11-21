@@ -20,6 +20,8 @@ struct RawAntigravityInput {
     #[serde(alias = "session_id")]
     session_id: Option<String>,
     prompt: Option<String>,
+    #[serde(alias = "last_user_input", alias = "userPrompt", alias = "user_prompt")]
+    last_user_input: Option<String>,
     #[serde(alias = "tool_call")]
     tool_call: Option<RawToolCall>,
 }
@@ -50,6 +52,10 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
     };
 
     let tool_call = raw.tool_call.unwrap_or_default();
+    let user_prompt = raw
+        .last_user_input
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| raw.prompt.clone().filter(|s| !s.trim().is_empty()));
     Ok(NormalizedHookInput {
         adapter: AdapterKind::Antigravity,
         event,
@@ -59,6 +65,7 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         tool_input: tool_call.tool_input,
         tool_output: tool_call.tool_output,
         prompt: raw.prompt,
+        user_prompt,
     })
 }
 
@@ -77,7 +84,9 @@ pub fn render_output(
             inbox::push_messages(repo_root, &outcome.messages)?;
             Ok(json!({}))
         }
-        HookEvent::SessionStart => Ok(render_inject_steps(&outcome.messages)),
+        HookEvent::SessionStart | HookEvent::UserPromptSubmit => {
+            Ok(render_inject_steps(&outcome.messages))
+        }
         HookEvent::PreInvocation => {
             let mut combined = inbox::drain_inbox(repo_root)?;
             combined.extend(outcome.messages.iter().cloned());

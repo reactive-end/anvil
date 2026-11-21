@@ -286,3 +286,42 @@ fn claude_code_post_tool_use_returns_additional_context_and_clears_inbox() {
     assert!(ctx.contains("Avoid narrative comment"));
     assert!(inbox::load_inbox(root).expect("inbox cleared").is_empty());
 }
+
+#[test]
+fn user_prompt_and_last_user_input_roundtrip() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+
+    let agy_in = r#"{"hookEventName":"PreInvocation","cwd":"/repo","lastUserInput":"Add dark mode toggle"}"#;
+    let parsed_agy = antigravity::parse_input(agy_in, None).expect("parse agy PreInvocation");
+    assert_eq!(parsed_agy.user_prompt.as_deref(), Some("Add dark mode toggle"));
+
+    let claude_in = r#"{"hook_event_name":"UserPromptSubmit","cwd":"/repo","prompt":"Add user profile page"}"#;
+    let parsed_claude = claude_code::parse_input(claude_in, None).expect("parse UserPromptSubmit");
+    assert_eq!(parsed_claude.event, HookEvent::UserPromptSubmit);
+    assert_eq!(parsed_claude.user_prompt.as_deref(), Some("Add user profile page"));
+
+    let rendered = claude_code::render_output(
+        root,
+        HookEvent::UserPromptSubmit,
+        &HookOutcome::with_messages(vec![InboxMessage::new(
+            "anvil-tasks",
+            MessageLevel::Info,
+            "Auto-registered task T-1",
+            None,
+        )]),
+    )
+    .expect("render UserPromptSubmit");
+    assert_eq!(rendered["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit");
+    assert!(
+        rendered["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .expect("additionalContext")
+            .contains("Auto-registered task T-1")
+    );
+    assert_eq!(
+        claude_code::render_output(root, HookEvent::UserPromptSubmit, &HookOutcome::allow())
+            .expect("empty UserPromptSubmit"),
+        json!({})
+    );
+}

@@ -28,6 +28,7 @@ impl AdapterKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HookEvent {
     SessionStart,
+    UserPromptSubmit,
     PreToolUse,
     PostToolUse,
     PreInvocation,
@@ -45,6 +46,7 @@ impl HookEvent {
             .collect();
         match normalized.as_str() {
             "sessionstart" => Ok(Self::SessionStart),
+            "userpromptsubmit" => Ok(Self::UserPromptSubmit),
             "pretooluse" => Ok(Self::PreToolUse),
             "posttooluse" => Ok(Self::PostToolUse),
             "preinvocation" => Ok(Self::PreInvocation),
@@ -57,6 +59,7 @@ impl HookEvent {
     pub fn as_pascal_case(self) -> &'static str {
         match self {
             Self::SessionStart => "SessionStart",
+            Self::UserPromptSubmit => "UserPromptSubmit",
             Self::PreToolUse => "PreToolUse",
             Self::PostToolUse => "PostToolUse",
             Self::PreInvocation => "PreInvocation",
@@ -76,6 +79,7 @@ pub struct NormalizedHookInput {
     pub tool_input: Option<Value>,
     pub tool_output: Option<Value>,
     pub prompt: Option<String>,
+    pub user_prompt: Option<String>,
 }
 
 /// Severity level for messages queued in `.harness/.state/inbox.json` or injected into context.

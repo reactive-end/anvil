@@ -9,7 +9,10 @@ use anvil_tasks::ledger::{
     append_entry, append_entry_as, list_tasks, start_task, start_task_as, write_task_plan,
 };
 use anvil_tasks::merge_driver::{install_git_merge_driver, resolve_merge};
-use anvil_tasks::{ConsolidatedTasksFile, TaskStatus, build_root_tasks_json};
+use anvil_tasks::{
+    ConsolidatedTasksFile, TaskStatus, build_root_tasks_json, ensure_task_for_prompt,
+    load_active_task, mark_summary_recorded,
+};
 use tempfile::TempDir;
 
 fn init_git_repo(dir: &Path, user_name: &str) {
@@ -184,4 +187,48 @@ fn install_merge_driver_and_resolve_merge_work() {
     assert_eq!(merged, parsed);
     assert_eq!(parsed.tasks[0].entries.len(), 3);
     assert_eq!(parsed.tasks[0].contributors, vec!["alice", "dev-a", "dev-b"]);
+}
+
+#[test]
+fn active_task_auto_lifecycle_creates_reuses_and_advances_after_done() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    for ignored in ["", "   ", "/compact", "/plan auth", "ok", "si", "gracias", "yes"] {
+        assert!(
+            ensure_task_for_prompt(tmp.path(), ignored)
+                .expect("ignored check")
+                .is_none(),
+            "expected prompt `{ignored}` to be ignored"
+        );
+    }
+
+    let (first, created) = ensure_task_for_prompt(tmp.path(), "Implement automatic task tracking")
+        .expect("first prompt")
+        .expect("should create");
+    assert!(created);
+    assert_eq!(first.status, TaskStatus::InProgress);
+    assert!(first.summary_recorded_at.is_none());
+    assert!(tmp.path().join("tasks.json").exists());
+
+    let (reused, created_again) =
+        ensure_task_for_prompt(tmp.path(), "Also handle follow-up refinements")
+            .expect("follow-up prompt")
+            .expect("should reuse");
+    assert!(!created_again);
+    assert_eq!(reused.task_id, first.task_id);
+
+    mark_summary_recorded(tmp.path(), &first.task_id, TaskStatus::Done).expect("mark done");
+    let loaded = load_active_task(tmp.path()).expect("load").expect("present");
+    assert_eq!(loaded.status, TaskStatus::Done);
+    assert!(loaded.summary_recorded_at.is_some());
+
+    let (second, created_second) =
+        ensure_task_for_prompt(tmp.path(), "Refactor parser error diagnostics")
+            .expect("next task prompt")
+            .expect("should create new");
+    assert!(created_second);
+    assert_ne!(second.task_id, first.task_id);
+    assert!(second.summary_recorded_at.is_none());
 }
