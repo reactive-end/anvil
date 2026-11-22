@@ -8,6 +8,7 @@ use anvil_ast::analyze_file;
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
+use anvil_core::stats::{StatsEvent, record_event};
 use anvil_core::traits::{Diagnostic, Severity};
 use serde_json::Value;
 
@@ -24,7 +25,7 @@ pub fn collect_post_tool_messages(
         return;
     };
     if let Ok(facts) = analyze_file(Path::new(rel), &source, config) {
-        push_diagnostics("tier0", rel, facts.diagnostics, messages);
+        push_diagnostics(root, "tier0", rel, facts.diagnostics, messages);
     }
     if let Ok(rules) = load_promoted_rules(root)
         && !rules.is_empty()
@@ -32,7 +33,7 @@ pub fn collect_post_tool_messages(
         let compiled = compile_promoted_rules(&rules);
         if !compiled.is_empty() {
             let diags = evaluate_compiled(&compiled, rel, &source);
-            push_diagnostics("ratchet", rel, diags, messages);
+            push_diagnostics(root, "ratchet", rel, diags, messages);
         }
     }
 }
@@ -108,12 +109,14 @@ pub fn update_circuit_from_output(
 }
 
 fn push_diagnostics(
+    root: &Path,
     prefix: &str,
     rel: &str,
     diagnostics: Vec<Diagnostic>,
     messages: &mut Vec<InboxMessage>,
 ) {
     for d in diagnostics {
+        let _ = record_event(root, StatsEvent::RuleHit { rule: d.rule.clone() });
         let lvl = match d.severity {
             Severity::Error => MessageLevel::Error,
             Severity::Warning => MessageLevel::Warning,

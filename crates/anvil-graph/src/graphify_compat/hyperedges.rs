@@ -40,6 +40,7 @@ pub(crate) fn ingest_hyperedges(
                     },
                     file: norm_file.clone(),
                     line: 1,
+                    end_line: 0,
                     language: None,
                     symbol_kind: None,
                     signature: Some("graphify:hyperedge".to_owned()),

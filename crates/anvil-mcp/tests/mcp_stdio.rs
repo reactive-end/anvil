@@ -76,7 +76,9 @@ fn mcp_initialize_and_tools_list() {
     let tools = resps[2].result.as_ref().unwrap()["tools"]
         .as_array()
         .unwrap();
-    assert_eq!(tools.len(), 10);
+    assert_eq!(tools.len(), 12);
+    assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
+    assert!(tools.iter().any(|t| t["name"] == "graph_outline"));
     assert!(tools.iter().all(|t| t["inputSchema"].is_object()));
 }
 
@@ -180,6 +182,38 @@ fn mcp_graph_tools_roundtrip() {
     assert_eq!(parse_tool_json(&resps[2])["origin"]["origin_file"], json!("src/math.ts"));
     assert_eq!(parse_tool_json(&resps[3])["found"], json!(true));
     assert_eq!(parse_tool_json(&resps[4])["found"], json!(true));
+}
+
+#[test]
+fn mcp_read_symbol_and_outline_roundtrip() {
+    let repo = setup_sample_repo();
+    fs::write(
+        repo.path().join("src/math.ts"),
+        "import { something } from './other';\nexport function add(a: number, b: number): number {\n  return a + b;\n}\nexport function multiply(a: number, b: number): number {\n  return a * b;\n}\n",
+    )
+    .unwrap();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(
+        &mut server,
+        &[
+            call_req(1, "graph_read_symbol", json!({ "symbol": "add", "include_imports": true })),
+            call_req(2, "graph_outline", json!({ "target": "src/math.ts", "max_tokens": 1000 })),
+        ],
+    );
+
+    let sym = parse_tool_json(&resps[0]);
+    assert_eq!(sym["found"], json!(true));
+    assert_eq!(sym["slice"]["symbol"], json!("add"));
+    assert!(sym["slice"]["body"].as_str().unwrap().contains("return a + b"));
+    assert!(!sym["slice"]["body"].as_str().unwrap().contains("multiply"));
+    assert_eq!(sym["slice"]["imports"][0], json!("import { something } from './other';"));
+
+    let out = parse_tool_json(&resps[1]);
+    assert_eq!(out["outline"]["files_total"], json!(1));
+    assert_eq!(out["outline"]["files"][0]["file"], json!("src/math.ts"));
+    let syms = out["outline"]["files"][0]["symbols"].as_array().unwrap();
+    assert!(syms.iter().any(|s| s["name"] == "add"));
+    assert!(syms.iter().any(|s| s["name"] == "multiply"));
 }
 
 #[test]

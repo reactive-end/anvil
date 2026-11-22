@@ -20,6 +20,20 @@ pub enum GraphSubcmd {
     },
     /// Incremental graph update via `blake3` hashes.
     Update,
+    /// Read only the AST line span of a symbol (plus optional imports).
+    ReadSymbol {
+        symbol: String,
+        /// Omit file-level import lines from output.
+        #[arg(long)]
+        no_imports: bool,
+    },
+    /// Print compact signature-only outline for a file, directory, or repository.
+    Outline {
+        /// Optional repo-relative file or directory prefix.
+        target: Option<String>,
+        #[arg(long, default_value_t = 1500)]
+        max_tokens: usize,
+    },
     /// BM25/token-scored symbol and file search.
     Query {
         term: String,
@@ -246,4 +260,21 @@ pub enum ContextSubcmd {
         #[arg(long, default_value_t = 1200)]
         max_tokens: usize,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DaemonSubcmd {
+    /// Start the resident local `anvil-graph` daemon.
+    Start {
+        /// Run in the background (default).
+        #[arg(long)]
+        background: bool,
+        /// Internal blocking foreground server mode.
+        #[arg(long, hide = true)]
+        foreground: bool,
+    },
+    /// Stop the running daemon for this repository.
+    Stop,
+    /// Show current daemon status, PID, port, and loaded graph counts.
+    Status,
 }

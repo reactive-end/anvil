@@ -9,6 +9,7 @@ use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::compressor;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_local_or_path_bin;
+use anvil_core::stats::{StatsEvent, record_event};
 
 use crate::commands::ExitCodeError;
 
@@ -34,6 +35,9 @@ pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
         config.tier_budgets.compressor_max_lines,
         config.tier_budgets.compressor_max_tokens,
     )?;
+
+    let raw_bytes = combined.len();
+    record_compressor_stats(root, raw_bytes, &compressed);
 
     let cb = CircuitBreaker::new(root, config.circuit_breaker_limit);
     if compressed.passed {
@@ -67,6 +71,32 @@ pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
     }
 
     Err(ExitCodeError::silent(exit_code).into())
+}
+
+fn record_compressor_stats(
+    root: &Path,
+    raw_bytes: usize,
+    compressed: &anvil_core::traits::CompressedOutput,
+) {
+    let compact_bytes = if compressed.passed {
+        compressed.tool.len() + compressed.summary.len() + 9
+    } else {
+        compressed.summary.len()
+            + compressed
+                .lines
+                .iter()
+                .map(|l| l.len() + 1)
+                .sum::<usize>()
+    };
+    if raw_bytes > compact_bytes {
+        let _ = record_event(
+            root,
+            StatsEvent::CompressorSaved {
+                raw_bytes,
+                compact_bytes,
+            },
+        );
+    }
 }
 
 fn run_process(root: &Path, program: &str, args: &[String], full_cmd: &[String]) -> Result<Output> {

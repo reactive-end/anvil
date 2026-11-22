@@ -17,7 +17,7 @@ pub use export::export_networkx_json;
 use wire::{GraphWire, build_wire_nodes, unpack_wire_nodes};
 
 const GRAPH_MAGIC: &[u8; 8] = b"ANVLGRPH";
-const GRAPH_VERSION: u32 = 2;
+const GRAPH_VERSION: u32 = 3;
 const HEADER_LEN: usize = 24;
 
 /// Fixed 24-byte header prepended to `graph.bin` for sub-0.1ms stats reading.

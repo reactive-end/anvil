@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 use subcmds::{
-    CircuitSubcmd, ContextSubcmd, GraphSubcmd, MemSubcmd, QaSubcmd, RatchetSubcmd, TasksSubcmd,
+    CircuitSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd, MemSubcmd, QaSubcmd, RatchetSubcmd,
+    TasksSubcmd,
 };
 
 /// `anvil` — Native AI Engineering Harness CLI.
@@ -59,6 +60,9 @@ pub enum Command {
         /// Skip Tier 1 targeted test execution.
         #[arg(long)]
         no_tests: bool,
+        /// Bypass the Tier 1 content-addressed check cache.
+        #[arg(long)]
+        no_cache: bool,
     },
     /// Analyze reverse-BFS blast radius and upstream origin via `anvil-graph`.
     Impact {
@@ -118,5 +122,31 @@ pub enum Command {
     Context {
         #[command(subcommand)]
         sub: ContextSubcmd,
+    },
+    /// Compress `git diff HEAD`, drop noisy files, and annotate affected symbols.
+    Diff {
+        #[arg(long, default_value_t = 200)]
+        max_lines: usize,
+        #[arg(long, default_value_t = 2000)]
+        max_tokens: usize,
+    },
+    /// Noise-filtered, binary-safe, token-bounded repository grep.
+    Grep {
+        pattern: String,
+        #[arg(long, default_value_t = 50)]
+        max_matches: usize,
+        #[arg(long, default_value_t = 1500)]
+        max_tokens: usize,
+    },
+    /// Manage the resident local `anvil-graph` TCP daemon.
+    Daemon {
+        #[command(subcommand)]
+        sub: DaemonSubcmd,
+    },
+    /// View or reset local telemetry, cache hits, and token-savings stats.
+    Stats {
+        /// Reset `.harness/.state/stats.json` to zeroed defaults.
+        #[arg(long)]
+        reset: bool,
     },
 }

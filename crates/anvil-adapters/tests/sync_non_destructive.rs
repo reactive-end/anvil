@@ -46,10 +46,24 @@ fn seed_existing_repo_fixtures(root: &Path) {
 
 #[test]
 fn embedded_templates_meet_size_and_content_constraints() {
-    assert!(templates::AGENTS_MD.lines().count() < 120);
-    assert!(templates::CLAUDE_MD.lines().count() < 120);
-    assert!(templates::AGENTS_MD.contains("<!-- anvil:managed:start -->"));
-    assert!(templates::CLAUDE_MD.contains("<!-- anvil:managed:start -->"));
+    assert!(templates::AGENTS_MD.lines().count() <= 34);
+    assert!(templates::CLAUDE_MD.lines().count() <= 34);
+    let required_tokens = [
+        "<!-- anvil:managed:start -->",
+        "<!-- anvil:managed:end -->",
+        "graph_outline",
+        "graph_read_symbol",
+        "anvil diff",
+        "anvil grep",
+        "anvil daemon start|stop|status",
+        "anvil stats",
+        "PreToolUse",
+    ];
+    for doc in [templates::AGENTS_MD, templates::CLAUDE_MD] {
+        for token in required_tokens {
+            assert!(doc.contains(token), "missing token: {token}");
+        }
+    }
     assert_eq!(templates::EMBEDDED_SKILLS.len(), 4);
 
     for skill in templates::EMBEDDED_SKILLS {

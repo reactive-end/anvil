@@ -2,6 +2,8 @@
 
 mod calls;
 mod frameworks;
+mod http_calls;
+mod nest_routes;
 
 use anvil_core::traits::{EdgeKind, Language, SymbolKind};
 use tree_sitter::Node;
@@ -30,13 +32,11 @@ fn is_exported(node: Node<'_>) -> bool {
         .is_some_and(|p| p.kind() == "export_statement")
 }
 
-fn enclosing_class_name(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
+fn enclosing_class_node(node: Node<'_>) -> Option<Node<'_>> {
     let mut cur = node.parent();
     while let Some(parent) = cur {
         if parent.kind() == "class_declaration" {
-            return parent
-                .child_by_field_name("name")
-                .map(|n| state.node_text(n).to_owned());
+            return Some(parent);
         }
         cur = parent.parent();
     }
@@ -58,9 +58,7 @@ fn extract_reexport(node: Node<'_>, state: &mut ExtractState<'_>) {
 }
 
 fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else {
-        return;
-    };
+    let Some(name_node) = node.child_by_field_name("name") else { return };
     let name = state.node_text(name_node).to_owned();
     let is_tsx = matches!(state.language, Language::Tsx | Language::Jsx);
     let kind = if is_tsx && name.starts_with(char::is_uppercase) {
@@ -68,30 +66,14 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
     } else {
         SymbolKind::Function
     };
-    state.push_symbol(
-        name.clone(),
-        name,
-        kind,
-        ExtractState::line_of(node),
-        None,
-        is_exported(node),
-    );
+    state.push_symbol(name.clone(), name, kind, ExtractState::span_of(node), None, is_exported(node));
 }
 
 fn extract_interface(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else {
-        return;
-    };
+    let Some(name_node) = node.child_by_field_name("name") else { return };
     let name = state.node_text(name_node).to_owned();
-    let line = ExtractState::line_of(node);
-    state.push_symbol(
-        name.clone(),
-        name.clone(),
-        SymbolKind::Interface,
-        line,
-        None,
-        is_exported(node),
-    );
+    let span = ExtractState::span_of(node);
+    state.push_symbol(name.clone(), name.clone(), SymbolKind::Interface, span, None, is_exported(node));
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -99,52 +81,40 @@ fn extract_interface(node: Node<'_>, state: &mut ExtractState<'_>) {
             let mut inner = child.walk();
             for item in child.named_children(&mut inner) {
                 let target = state.node_text(item).trim().to_owned();
-                state.push_edge(Some(name.clone()), target, EdgeKind::Extends, line);
+                state.push_edge(Some(name.clone()), target, EdgeKind::Extends, span.0);
             }
         }
     }
 }
 
 fn extract_type_alias(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else {
-        return;
-    };
+    let Some(name_node) = node.child_by_field_name("name") else { return };
     let name = state.node_text(name_node).to_owned();
-    let line = ExtractState::line_of(node);
-    state.push_symbol(name.clone(), name, SymbolKind::TypeAlias, line, None, is_exported(node));
+    state.push_symbol(name.clone(), name, SymbolKind::TypeAlias, ExtractState::span_of(node), None, is_exported(node));
 }
 
 fn extract_class(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else {
-        return;
-    };
+    let Some(name_node) = node.child_by_field_name("name") else { return };
     let class_name = state.node_text(name_node).to_owned();
-    let line = ExtractState::line_of(node);
+    let span = ExtractState::span_of(node);
     let decorators = frameworks::collect_decorators(node);
     let (kind, signature) =
-        frameworks::classify_class_decorators(&class_name, &decorators, line, state);
-
-    state.push_symbol(
-        class_name.clone(),
-        class_name.clone(),
-        kind,
-        line,
-        signature,
-        is_exported(node),
-    );
-    frameworks::extract_class_heritage(node, &class_name, line, state);
+        frameworks::classify_class_decorators(&class_name, &decorators, span, state);
+    state.push_symbol(class_name.clone(), class_name.clone(), kind, span, signature, is_exported(node));
+    frameworks::extract_class_heritage(node, &class_name, span.0, state);
 }
 
 fn extract_method(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else {
-        return;
-    };
+    let Some(name_node) = node.child_by_field_name("name") else { return };
     let method_name = state.node_text(name_node).to_owned();
-    let class_name = enclosing_class_name(node, state);
-    let line = ExtractState::line_of(node);
+    let class_node = enclosing_class_node(node);
+    let class_name = class_node
+        .and_then(|c| c.child_by_field_name("name"))
+        .map(|n| state.node_text(n).to_owned());
+    let span = ExtractState::span_of(node);
 
     if method_name == "constructor" {
-        frameworks::extract_di_params(node, class_name.as_deref(), line, state);
+        frameworks::extract_di_params(node, class_name.as_deref(), span.0, state);
         return;
     }
 
@@ -152,7 +122,8 @@ fn extract_method(node: Node<'_>, state: &mut ExtractState<'_>) {
         Some(cls) => format!("{cls}.{method_name}"),
         None => method_name.clone(),
     };
-    state.push_symbol(method_name, qualified, SymbolKind::Method, line, None, false);
+    nest_routes::extract_method_routes(node, class_node, &qualified, state);
+    state.push_symbol(method_name, qualified, SymbolKind::Method, span, None, false);
 }
 
 fn extract_variable(node: Node<'_>, state: &mut ExtractState<'_>) {
@@ -191,7 +162,7 @@ fn extract_variable(node: Node<'_>, state: &mut ExtractState<'_>) {
         name.clone(),
         name,
         kind,
-        ExtractState::line_of(node),
+        ExtractState::span_of(node),
         None,
         parent_stmt.kind() == "export_statement",
     );
@@ -213,6 +184,7 @@ fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {
         return;
     }
     if let Some(callee) = calls::clean_callee(fn_node, state) {
+        http_calls::extract_http_call(node, &callee, state);
         state.push_edge(None, callee, EdgeKind::Calls, line);
     }
 }

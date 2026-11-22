@@ -1,5 +1,6 @@
 //! `anvil check`: diff-classified Tier 0 / Tier 1 / Tier 2 verification.
 
+mod tier1;
 mod tier2;
 
 use std::fs;
@@ -7,21 +8,26 @@ use std::path::Path;
 
 use anyhow::Result;
 use anvil_ast::analyze_files_parallel;
-use anvil_core::config::{AnvilConfig, StackKind};
+use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, DiffClassification, classify_files};
-use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::git;
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
-use anvil_core::traits::{CompressedOutput, Diagnostic, Severity, Tier};
-use anvil_graph::CodeGraphEngine;
+use anvil_core::traits::{Diagnostic, Severity, Tier};
 use anvil_graph::builder::collect_source_files;
 use anvil_graph::model::CodeGraph;
 use rustc_hash::FxHashSet;
 
 use crate::commands::ExitCodeError;
+use tier1::{Tier1Options, run_tier1};
 
-/// Executes `anvil check [--full] [--tier 0|1|2] [--no-tests]`.
-pub fn execute(root: &Path, full: bool, tier_override: Option<u8>, no_tests: bool) -> Result<()> {
+/// Executes `anvil check [--full] [--tier 0|1|2] [--no-tests] [--no-cache]`.
+pub fn execute(
+    root: &Path,
+    full: bool,
+    tier_override: Option<u8>,
+    no_tests: bool,
+    no_cache: bool,
+) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
     let (changed_paths, added_paths, classification) = classify_repo_diff(root);
     let effective_tier = resolve_tier(full, tier_override, classification.minimum_tier);
@@ -44,8 +50,12 @@ pub fn execute(root: &Path, full: bool, tier_override: Option<u8>, no_tests: boo
             &changed_paths,
             &added_paths,
             &classification,
-            full,
-            no_tests,
+            Tier1Options {
+                full,
+                no_tests,
+                no_cache,
+                tier0_passed: tier0_errors == 0,
+            },
         )?;
     }
     let mut tier2_failed = false;
@@ -167,120 +177,4 @@ fn print_diagnostics(diagnostics: &[Diagnostic], errors: &mut usize) {
             diag.file, diag.line, diag.column, diag.rule, diag.message
         );
     }
-}
-
-fn run_tier1(
-    root: &Path,
-    config: &AnvilConfig,
-    changed: &[String],
-    added_paths: &[String],
-    classification: &DiffClassification,
-    full: bool,
-    no_tests: bool,
-) -> Result<bool> {
-    let engine = CodeGraphEngine::load_or_build(root, config.clone())?;
-    let blast = engine.blast_radius(changed, 2);
-    println!(
-        "  [Tier 1] blast_radius: {} impacted, {} related test(s) ({:.2}ms)",
-        blast.impacted_files.len(),
-        blast.related_tests.len(),
-        blast.elapsed_ms
-    );
-
-    if !changed.is_empty() {
-        let over = engine.check_overengineering(changed, added_paths, changed.len() <= 3);
-        for w in over.warnings {
-            println!(
-                "  [WARN] overengineering: {} (consumers={}): {}",
-                w.file, w.consumer_count, w.reason
-            );
-        }
-    }
-
-    if !full && classification.skip_logic_tests {
-        println!("  [Tier 1] style/docs-only diff: skipping logic typecheck/test suites");
-        return Ok(false);
-    }
-
-    let mut failed = false;
-    if has_installed_typechecker(root, config) {
-        let mut scope = blast.changed_files;
-        for item in blast.impacted_files {
-            if !scope.contains(&item.file) {
-                scope.push(item.file);
-            }
-        }
-        failed |= report_compressed("typecheck", &engine.run_impacted_typecheck(&scope)?);
-    }
-
-    if !no_tests && !blast.related_tests.is_empty() {
-        failed |= report_compressed("test", &engine.run_impacted_tests(&blast.related_tests)?);
-    }
-    Ok(failed)
-}
-
-fn report_compressed(kind: &str, outputs: &[CompressedOutput]) -> bool {
-    let mut failed = false;
-    for out in outputs {
-        println!("  [{kind}:{}] {}", out.tool, out.summary);
-        if !out.passed {
-            failed = true;
-            for line in &out.lines {
-                println!("    {line}");
-            }
-        }
-    }
-    failed
-}
-
-fn has_installed_typechecker(root: &Path, config: &AnvilConfig) -> bool {
-    if has_typechecker_in_dir(root, &config.stacks) {
-        return true;
-    }
-    config.subrepos.iter().any(|sub| {
-        let sub_dir = root.join(&sub.path);
-        let stacks = if sub.stacks.is_empty() {
-            &config.stacks
-        } else {
-            &sub.stacks
-        };
-        sub_dir.is_dir() && has_typechecker_in_dir(&sub_dir, stacks)
-    })
-}
-
-fn has_typechecker_in_dir(dir: &Path, stacks: &[StackKind]) -> bool {
-    let needs_tsc = stacks.iter().any(|s| {
-        matches!(
-            s,
-            StackKind::TypeScript
-                | StackKind::React
-                | StackKind::Vite
-                | StackKind::NextJs
-                | StackKind::Astro
-                | StackKind::Angular
-                | StackKind::NestJs
-                | StackKind::ExpoReactNative
-        )
-    });
-    if needs_tsc && resolve_local_or_path_bin(dir, "tsc").is_some() {
-        return true;
-    }
-    if stacks.contains(&StackKind::Python) && resolve_local_or_path_bin(dir, "pyright").is_some() {
-        return true;
-    }
-    if stacks.contains(&StackKind::FlutterDart)
-        && resolve_local_or_path_bin(dir, "dart").is_some()
-    {
-        return true;
-    }
-    if stacks.contains(&StackKind::Rust) && resolve_local_or_path_bin(dir, "cargo").is_some() {
-        return true;
-    }
-    stacks.contains(&StackKind::KotlinAndroid) && has_gradle_bin(dir)
-}
-
-fn has_gradle_bin(dir: &Path) -> bool {
-    (cfg!(windows) && dir.join("gradlew.bat").is_file())
-        || dir.join("gradlew").is_file()
-        || resolve_local_or_path_bin(dir, "gradle").is_some()
 }

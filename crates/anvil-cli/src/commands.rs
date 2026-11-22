@@ -3,9 +3,12 @@
 pub mod check;
 pub mod circuit;
 pub mod context;
+pub mod daemon;
 pub mod deps;
+pub mod diff;
 pub mod doctor;
 pub mod graph;
+pub mod grep;
 pub mod hook;
 pub mod impact;
 pub mod init;
@@ -14,6 +17,7 @@ pub mod mem;
 pub mod qa;
 pub mod ratchet;
 pub mod run;
+pub mod stats;
 pub mod sync;
 pub mod tasks;
 
@@ -69,7 +73,8 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             full,
             tier,
             no_tests,
-        } => check::execute(&root, full, tier, no_tests),
+            no_cache,
+        } => check::execute(&root, full, tier, no_tests, no_cache),
         Command::Impact {
             files,
             depth,
@@ -85,6 +90,17 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Deps { all, manifests } => deps::execute(&root, all, &manifests),
         Command::Qa { sub } => qa::execute(&root, sub),
         Command::Context { sub } => context::execute(&root, sub),
+        Command::Diff {
+            max_lines,
+            max_tokens,
+        } => diff::execute(&root, max_lines, max_tokens),
+        Command::Grep {
+            pattern,
+            max_matches,
+            max_tokens,
+        } => grep::execute(&root, &pattern, max_matches, max_tokens),
+        Command::Daemon { sub } => daemon::execute(&root, sub),
+        Command::Stats { reset } => stats::execute(&root, reset),
     }
 }
 

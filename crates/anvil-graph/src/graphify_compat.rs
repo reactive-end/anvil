@@ -99,6 +99,7 @@ fn ingest_semantic_nodes(
                         },
                         file: norm_file.clone(),
                         line: 1,
+                        end_line: 0,
                         language: None,
                         symbol_kind: None,
                         signature: Some(format!("graphify:{}", node.file_type)),

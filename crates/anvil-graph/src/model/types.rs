@@ -35,6 +35,8 @@ pub enum GraphEdgeKind {
     Extends,
     Implements,
     ReExports,
+    ExposesRoute,
+    CallsRoute,
     SemanticLink,
 }
 
@@ -50,6 +52,8 @@ impl From<EdgeKind> for GraphEdgeKind {
             EdgeKind::Extends => Self::Extends,
             EdgeKind::Implements => Self::Implements,
             EdgeKind::ReExports => Self::ReExports,
+            EdgeKind::ExposesRoute => Self::ExposesRoute,
+            EdgeKind::CallsRoute => Self::CallsRoute,
         }
     }
 }
@@ -62,6 +66,7 @@ pub struct GraphNode {
     pub label: String,
     pub file: String,
     pub line: u32,
+    pub end_line: u32,
     pub language: Option<Language>,
     pub symbol_kind: Option<SymbolKind>,
     pub signature: Option<String>,

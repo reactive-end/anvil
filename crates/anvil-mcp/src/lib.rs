@@ -1,6 +1,7 @@
 //! Unified stdio MCP server exposing `graph_*` and `mem_*` tools.
 
 pub mod router;
+mod schemas;
 pub mod tools_graph;
 pub mod tools_memory;
 pub mod transport;

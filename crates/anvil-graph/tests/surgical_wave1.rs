@@ -36,7 +36,7 @@ fn store_read_header_returns_exact_counts_and_rejects_corrupt() {
 
     let budget_ms = if cfg!(debug_assertions) { 5.0 } else { 1.0 };
     assert!(elapsed_ms < budget_ms, "read_header took {elapsed_ms:.3}ms (budget {budget_ms}ms)");
-    assert_eq!(hdr.version, 2);
+    assert_eq!(hdr.version, 3);
     assert_eq!(hdr.file_count, 2);
     assert_eq!(hdr.live_nodes as usize, engine.graph.nodes.len());
     assert_eq!(hdr.live_edges as usize, engine.graph.edges.len());
@@ -275,4 +275,32 @@ fn sibling_tests_are_directory_scoped_and_rust_barrels_trace_origin() {
         .expect("origin through Rust lib.rs/mod.rs barrels");
     assert_eq!(origin.origin_file, "src/core/engine.rs");
     assert_eq!(origin.origin_label, "run_engine");
+}
+
+#[test]
+fn load_cached_rebuilds_cleanly_on_legacy_v2_header() {
+    let dir = TempDir::new().expect("tempdir");
+    let root = dir.path();
+    write_repo_file(
+        root,
+        "src/lib.ts",
+        "export function greet(name: string) {\n  return `hi ${name}`;\n}\n",
+    );
+
+    let bin_path = store::default_bin_path(root);
+    fs::create_dir_all(bin_path.parent().expect("parent")).expect("mkdir");
+    fs::write(
+        &bin_path,
+        b"ANVLGRPH\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+    )
+    .expect("write v2 header");
+    assert!(store::read_header(&bin_path).is_err());
+
+    let engine = CodeGraphEngine::load_cached(root, AnvilConfig::default()).expect("rebuild v3");
+    let slice = engine
+        .read_symbol("greet", false)
+        .expect("read_symbol")
+        .expect("greet found");
+    assert_eq!(slice.start_line, 1);
+    assert_eq!(slice.end_line, 3);
 }

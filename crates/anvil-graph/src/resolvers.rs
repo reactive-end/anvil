@@ -3,12 +3,16 @@
 pub mod angular;
 pub mod css;
 pub mod dart;
+pub mod http_routes;
 pub mod kotlin;
 pub mod nestjs;
+mod path;
 pub mod python;
 pub mod rust;
 pub(crate) mod rust_cargo;
 pub mod tsconfig;
+
+pub use path::{join_normalized, normalize_join_rel};
 
 use std::path::Path;
 
@@ -80,9 +84,16 @@ pub fn resolve_file_edges(
     }
 
     for (edge, pass1) in raw_edges.iter().zip(pass1_targets) {
+        if edge.kind == EdgeKind::ExposesRoute {
+            continue;
+        }
         let Some(source) = resolve_source_node_id(edge, graph) else {
             continue;
         };
+        if edge.kind == EdgeKind::CallsRoute {
+            push_route_call_edges(edge, source, graph, &mut resolved_edges);
+            continue;
+        }
         let resolved_id =
             pass1.or_else(|| resolve_single_edge(edge, language, &file_imports, graph, ctx));
         let target = match resolved_id {
@@ -104,6 +115,32 @@ pub fn resolve_file_edges(
     resolved_edges
 }
 
+fn push_route_call_edges(
+    edge: &EdgeRef,
+    source: NodeId,
+    graph: &CodeGraph,
+    out: &mut Vec<ResolvedEdge>,
+) {
+    let targets = http_routes::resolve_calls_route_targets(&edge.target_path_or_symbol, graph);
+    if targets.is_empty() {
+        out.push(ResolvedEdge {
+            source,
+            target: EdgeTarget::External(edge.target_path_or_symbol.clone()),
+            kind: GraphEdgeKind::CallsRoute,
+            line: edge.line,
+        });
+        return;
+    }
+    for tid in targets {
+        out.push(ResolvedEdge {
+            source,
+            target: EdgeTarget::Node(tid),
+            kind: GraphEdgeKind::CallsRoute,
+            line: edge.line,
+        });
+    }
+}
+
 fn should_keep_unresolved(edge: &EdgeRef) -> bool {
     match edge.kind {
         EdgeKind::Imports
@@ -112,7 +149,8 @@ fn should_keep_unresolved(edge: &EdgeRef) -> bool {
         | EdgeKind::Extends
         | EdgeKind::Implements
         | EdgeKind::Provides
-        | EdgeKind::Injects => true,
+        | EdgeKind::Injects
+        | EdgeKind::CallsRoute => true,
         EdgeKind::Calls => {
             let t = edge.target_path_or_symbol.trim();
             !t.is_empty()
@@ -120,7 +158,7 @@ fn should_keep_unresolved(edge: &EdgeRef) -> bool {
                 && !t.contains("::")
                 && t.starts_with(|c: char| c.is_ascii_uppercase())
         }
-        EdgeKind::UsesProp => false,
+        EdgeKind::UsesProp | EdgeKind::ExposesRoute => false,
     }
 }
 
@@ -197,42 +235,4 @@ pub fn pick_preferred_symbol(
         }
     }
     None
-}
-
-/// Joins a base directory and a relative specifier, resolving `.` and `..` segments cleanly.
-pub fn normalize_join_rel(base_dir: &str, rel: &str) -> String {
-    let clean_rel = rel.replace('\\', "/");
-    let combined = if base_dir.is_empty() || base_dir == "." {
-        clean_rel
-    } else {
-        format!("{base_dir}/{clean_rel}")
-    };
-    normalize_segments(&combined)
-}
-
-/// Joins two normalized relative paths without parent-directory traversal unless present.
-pub fn join_normalized(base: &str, sub: &str) -> String {
-    let clean_base = base.trim_matches('/');
-    let clean_sub = sub.trim_start_matches('/');
-    if clean_base.is_empty() || clean_base == "." {
-        normalize_segments(clean_sub)
-    } else if clean_sub.is_empty() {
-        normalize_segments(clean_base)
-    } else {
-        normalize_segments(&format!("{clean_base}/{clean_sub}"))
-    }
-}
-
-fn normalize_segments(path: &str) -> String {
-    let mut stack: Vec<&str> = Vec::new();
-    for seg in path.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                stack.pop();
-            }
-            other => stack.push(other),
-        }
-    }
-    stack.join("/")
 }

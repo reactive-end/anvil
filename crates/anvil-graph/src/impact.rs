@@ -6,21 +6,22 @@ mod tests_native;
 mod tests_runner;
 mod typecheck;
 mod typecheck_filter;
+mod typecheck_ts;
 
 use std::collections::VecDeque;
 use std::time::Instant;
 
 use rustc_hash::{FxHashMap, FxHashSet};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{CodeGraph, GraphEdgeKind, NodeId, NodeKind};
 
 pub use guard::{OverengineeringReport, OverengineeringWarning, check_overengineering};
 pub use tests_runner::run_impacted_tests;
-pub use typecheck::{filter_typecheck_output, run_impacted_typecheck};
+pub use typecheck::{build_ts_typecheck_command, filter_typecheck_output, run_impacted_typecheck};
 
 /// A consumer file impacted by a change, with BFS depth and causal edges.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImpactedItem {
     pub file: String,
     pub depth: usize,
@@ -29,7 +30,7 @@ pub struct ImpactedItem {
 }
 
 /// Result of reverse-BFS blast-radius computation.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlastRadiusReport {
     pub changed_files: Vec<String>,
     pub max_depth: usize,

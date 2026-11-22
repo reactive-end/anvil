@@ -71,6 +71,8 @@ pub struct SymbolDef {
     pub kind: SymbolKind,
     pub file: String,
     pub line: u32,
+    #[serde(default)]
+    pub end_line: u32,
     pub signature: Option<String>,
     pub exported: bool,
 }
@@ -88,6 +90,8 @@ pub enum EdgeKind {
     Extends,
     Implements,
     ReExports,
+    ExposesRoute,
+    CallsRoute,
 }
 
 /// Directed dependency or usage edge extracted from an AST.

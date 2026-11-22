@@ -1,17 +1,22 @@
 //! Token-scored BM25 graph query and structural tracing re-exports.
 
 mod origin;
+mod outline;
+mod symbol_read;
 mod trace;
 
-use serde::Serialize;
+use anvil_core::traits::SymbolKind;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{CodeGraph, NodeId, NodeKind};
 
 pub use origin::{OriginResult, find_origin};
+pub use outline::{FileOutline, OutlineSymbol, RepoOutline, outline};
+pub use symbol_read::{SymbolSlice, read_symbol};
 pub use trace::{ExplainResult, NeighborEdge, PathResult, PathStep, explain, shortest_path};
 
 /// Ranked node hit returned by `query`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QueryHit {
     pub id: String,
     pub kind: NodeKind,
@@ -214,5 +219,20 @@ fn for_each_token(input: &str, buf: &mut String, mut on_tok: impl FnMut(&str)) {
     if !buf.is_empty() {
         on_tok(buf);
         buf.clear();
+    }
+}
+
+pub(crate) fn symbol_kind_str(kind: Option<SymbolKind>) -> &'static str {
+    match kind {
+        Some(SymbolKind::Function) => "function",
+        Some(SymbolKind::Class) => "class",
+        Some(SymbolKind::Interface) => "interface",
+        Some(SymbolKind::TypeAlias) => "type_alias",
+        Some(SymbolKind::Component) => "component",
+        Some(SymbolKind::Module) => "module",
+        Some(SymbolKind::Method) => "method",
+        Some(SymbolKind::Variable) => "variable",
+        Some(SymbolKind::Constant) => "constant",
+        Some(SymbolKind::Unknown) | None => "unknown",
     }
 }

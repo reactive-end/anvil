@@ -86,7 +86,14 @@ fn extract_class(node: Node<'_>, state: &mut ExtractState<'_>) {
     } else {
         SymbolKind::Class
     };
-    state.push_symbol(class_name.clone(), class_name, kind, line, None, exported);
+    state.push_symbol(
+        class_name.clone(),
+        class_name,
+        kind,
+        ExtractState::span_of(node),
+        None,
+        exported,
+    );
 }
 
 fn extract_simple_type(node: Node<'_>, state: &mut ExtractState<'_>) {
@@ -99,7 +106,7 @@ fn extract_simple_type(node: Node<'_>, state: &mut ExtractState<'_>) {
         name.clone(),
         name,
         SymbolKind::Class,
-        ExtractState::line_of(node),
+        ExtractState::span_of(node),
         None,
         exported,
     );
@@ -111,12 +118,27 @@ fn extract_function_sig(node: Node<'_>, state: &mut ExtractState<'_>) {
     };
     let name = state.node_text(name_node).to_owned();
     let exported = !name.starts_with('_');
-    let line = ExtractState::line_of(node);
+    let span = dart_function_span(node);
     let (kind, qualified) = match enclosing_class(node, state) {
         Some(cls) => (SymbolKind::Method, format!("{cls}.{name}")),
         None => (SymbolKind::Function, name.clone()),
     };
-    state.push_symbol(name, qualified, kind, line, None, exported);
+    state.push_symbol(name, qualified, kind, span, None, exported);
+}
+
+fn dart_function_span(sig_node: Node<'_>) -> (u32, u32) {
+    if let Some(parent) = sig_node.parent() {
+        if parent.kind() == "function_declaration" {
+            return ExtractState::span_of(parent);
+        }
+        if parent.kind() == "method_signature"
+            && let Some(grand) = parent.parent()
+            && matches!(grand.kind(), "method_declaration" | "declaration")
+        {
+            return ExtractState::span_of(grand);
+        }
+    }
+    ExtractState::span_of(sig_node)
 }
 
 fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {

@@ -256,7 +256,13 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
     }
     let missing: Vec<&str> = bins
         .into_iter()
-        .filter(|b| resolve_local_or_path_bin(root, b).is_none())
+        .filter(|b| match *b {
+            "tsc" => {
+                resolve_local_or_path_bin(root, "tsgo").is_none()
+                    && resolve_local_or_path_bin(root, "tsc").is_none()
+            }
+            other => resolve_local_or_path_bin(root, other).is_none(),
+        })
         .collect();
     if missing.is_empty() {
         println!("[OK]   tools: all detected CLI tools found in local/PATH");

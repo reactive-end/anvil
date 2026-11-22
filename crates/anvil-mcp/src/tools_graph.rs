@@ -1,7 +1,8 @@
-//! MCP tool handlers for `anvil-graph`: impact, origin, query, path, and explain.
+//! MCP tool handlers for `anvil-graph`: impact, origin, query, path, explain, read_symbol, outline.
 
 use anyhow::{Context, Result, bail};
 use anvil_core::git::{self, DiffScope};
+use anvil_core::stats::{StatsEvent, record_event};
 use serde_json::{Value, json};
 
 use crate::McpServer;
@@ -14,6 +15,8 @@ pub fn call_graph_tool(server: &mut McpServer, name: &str, args: &Value) -> Resu
         "graph_query" => handle_query(server, args),
         "graph_path" => handle_path(server, args),
         "graph_explain" => handle_explain(server, args),
+        "graph_read_symbol" => handle_read_symbol(server, args),
+        "graph_outline" => handle_outline(server, args),
         _ => bail!("unknown graph tool: {name}"),
     }
 }
@@ -93,6 +96,54 @@ fn handle_explain(server: &mut McpServer, args: &Value) -> Result<Value> {
         Some(explain) => Ok(json!({ "found": true, "explain": explain })),
         None => Ok(json!({ "found": false, "target": target })),
     }
+}
+
+fn handle_read_symbol(server: &mut McpServer, args: &Value) -> Result<Value> {
+    let symbol = required_str(args, "symbol")?;
+    let include_imports = args
+        .get("include_imports")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let repo_root = server.repo_root().to_path_buf();
+    let engine = server.ensure_graph()?;
+    match engine.read_symbol(symbol, include_imports)? {
+        Some(slice) => {
+            if slice.estimated_tokens_saved > 0 {
+                let _ = record_event(
+                    &repo_root,
+                    StatsEvent::SymbolReadSaved {
+                        tokens_saved: slice.estimated_tokens_saved,
+                    },
+                );
+            }
+            Ok(json!({ "found": true, "slice": slice }))
+        }
+        None => Ok(json!({ "found": false, "symbol": symbol })),
+    }
+}
+
+fn handle_outline(server: &mut McpServer, args: &Value) -> Result<Value> {
+    let target = args
+        .get("target")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let max_tokens = args
+        .get("max_tokens")
+        .and_then(Value::as_u64)
+        .map_or(1500, |m| m.clamp(1, 16_000) as usize);
+    let repo_root = server.repo_root().to_path_buf();
+    let engine = server.ensure_graph()?;
+    let outline = engine.outline(target, max_tokens);
+    if outline.estimated_tokens_saved > 0 {
+        let _ = record_event(
+            &repo_root,
+            StatsEvent::OutlineSaved {
+                tokens_saved: outline.estimated_tokens_saved,
+            },
+        );
+    }
+    Ok(json!({ "outline": outline }))
 }
 
 fn required_str<'a>(args: &'a Value, key: &str) -> Result<&'a str> {

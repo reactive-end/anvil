@@ -50,7 +50,7 @@ fn extract_class_selector(node: Node<'_>, state: &mut ExtractState<'_>) {
                     full.clone(),
                     full,
                     SymbolKind::Variable,
-                    ExtractState::line_of(child),
+                    ExtractState::span_of(child),
                     Some("css_class".to_owned()),
                     true,
                 );
@@ -67,7 +67,7 @@ fn extract_css_var(node: Node<'_>, state: &mut ExtractState<'_>) {
             name.to_owned(),
             name.to_owned(),
             SymbolKind::Constant,
-            ExtractState::line_of(node),
+            ExtractState::span_of(node),
             Some("css_var".to_owned()),
             true,
         );

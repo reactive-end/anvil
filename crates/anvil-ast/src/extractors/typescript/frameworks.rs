@@ -30,15 +30,16 @@ fn collect_child_decorators<'a>(parent: Node<'a>, out: &mut Vec<Node<'a>>) {
 pub fn classify_class_decorators(
     class_name: &str,
     decorators: &[Node<'_>],
-    line: u32,
+    span: (u32, u32),
     state: &mut ExtractState<'_>,
 ) -> (SymbolKind, Option<String>) {
+    let line = span.0;
     for &dec in decorators {
         let Some((name, arg_obj)) = parse_decorator(dec, state) else {
             continue;
         };
         match name {
-            "Component" => return handle_angular_component(class_name, arg_obj, line, state),
+            "Component" => return handle_angular_component(class_name, arg_obj, span, state),
             "Module" => return handle_nest_module(class_name, arg_obj, line, state),
             "Injectable" => return (SymbolKind::Class, Some("@Injectable".to_owned())),
             _ => {}
@@ -84,27 +85,23 @@ fn parse_decorator<'a>(
 fn handle_angular_component(
     class_name: &str,
     arg_obj: Option<Node<'_>>,
-    line: u32,
+    span: (u32, u32),
     state: &mut ExtractState<'_>,
 ) -> (SymbolKind, Option<String>) {
+    let line = span.0;
     if let Some(obj) = arg_obj {
         if let Some(selector) = find_object_string(obj, "selector", state) {
             state.push_symbol(
                 selector.clone(),
                 format!("{class_name}::{selector}"),
                 SymbolKind::Component,
-                line,
+                span,
                 Some("angular_selector".to_owned()),
                 true,
             );
         }
         if let Some(tpl) = find_object_string(obj, "templateUrl", state) {
-            state.push_edge(
-                Some(class_name.to_owned()),
-                tpl,
-                EdgeKind::RendersTemplate,
-                line,
-            );
+            state.push_edge(Some(class_name.to_owned()), tpl, EdgeKind::RendersTemplate, line);
         }
     }
     (SymbolKind::Component, Some("@Component".to_owned()))
@@ -145,7 +142,11 @@ fn find_object_pair_value<'a>(
     None
 }
 
-fn find_object_string(obj: Node<'_>, key: &str, state: &ExtractState<'_>) -> Option<String> {
+pub(super) fn find_object_string(
+    obj: Node<'_>,
+    key: &str,
+    state: &ExtractState<'_>,
+) -> Option<String> {
     let val = find_object_pair_value(obj, key, state)?;
     if !matches!(val.kind(), "string" | "template_string") {
         return None;
@@ -155,11 +156,7 @@ fn find_object_string(obj: Node<'_>, key: &str, state: &ExtractState<'_>) -> Opt
         return None;
     }
     let unquoted = ExtractState::unquote(raw).trim();
-    if unquoted.is_empty() {
-        None
-    } else {
-        Some(unquoted.to_owned())
-    }
+    (!unquoted.is_empty()).then(|| unquoted.to_owned())
 }
 
 fn emit_nest_array(
@@ -237,12 +234,7 @@ pub fn extract_di_params(
             for child in type_ann.named_children(&mut t_cursor) {
                 let text = state.node_text(child).trim();
                 if text.starts_with(char::is_uppercase) {
-                    state.push_edge(
-                        class_name.map(str::to_owned),
-                        text.to_owned(),
-                        EdgeKind::Injects,
-                        line,
-                    );
+                    state.push_edge(class_name.map(str::to_owned), text.to_owned(), EdgeKind::Injects, line);
                 }
             }
         }

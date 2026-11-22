@@ -1,4 +1,6 @@
-//! `anvil graph`: build, incremental update, query, path, explain, report, and multi-repo merge.
+//! `anvil graph`: build, incremental update, read-symbol, outline, query, path, explain, report, merge.
+
+mod inspect;
 
 use std::path::{Path, PathBuf};
 
@@ -8,6 +10,8 @@ use anvil_graph::merge::merge_graphs;
 use anvil_graph::{CodeGraphEngine, store};
 
 use crate::cli::subcmds::GraphSubcmd;
+use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
+use crate::daemon::try_request;
 
 /// Executes `anvil graph <subcommand>`.
 pub fn execute(root: &Path, sub: GraphSubcmd) -> Result<()> {
@@ -19,6 +23,12 @@ pub fn execute(root: &Path, sub: GraphSubcmd) -> Result<()> {
             overlay,
         } => cmd_build(root, config, json, html.as_deref(), overlay.as_deref()),
         GraphSubcmd::Update => cmd_update(root, config),
+        GraphSubcmd::ReadSymbol { symbol, no_imports } => {
+            inspect::cmd_read_symbol(root, config, &symbol, !no_imports)
+        }
+        GraphSubcmd::Outline { target, max_tokens } => {
+            inspect::cmd_outline(root, config, target.as_deref(), max_tokens)
+        }
         GraphSubcmd::Query { term, limit } => cmd_query(root, config, &term, limit),
         GraphSubcmd::Path { from, to } => cmd_path(root, config, &from, &to),
         GraphSubcmd::Explain { target } => cmd_explain(root, config, &target),
@@ -76,8 +86,19 @@ fn cmd_update(root: &Path, config: AnvilConfig) -> Result<()> {
 }
 
 fn cmd_query(root: &Path, config: AnvilConfig, term: &str, limit: usize) -> Result<()> {
-    let engine = CodeGraphEngine::load_cached(root, config)?;
-    let hits = engine.query(term, limit);
+    let hits = match try_request(
+        root,
+        DaemonRequest::Query {
+            term: term.to_owned(),
+            limit,
+        },
+    ) {
+        Some(DaemonResponse::QueryHits { hits }) => hits,
+        _ => {
+            let engine = CodeGraphEngine::load_cached(root, config)?;
+            engine.query(term, limit)
+        }
+    };
     if hits.is_empty() {
         println!("no graph hits for `{term}`");
         return Ok(());

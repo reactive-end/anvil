@@ -49,17 +49,17 @@ fn enclosing_owner(node: Node<'_>, state: &ExtractState<'_>) -> Option<(String, 
 fn extract_named_item(node: Node<'_>, kind: SymbolKind, sig: Option<&str>, state: &mut ExtractState<'_>) {
     if let Some(name_node) = node.child_by_field_name("name") {
         let name = state.node_text(name_node).trim().to_owned();
-        state.push_symbol(name.clone(), name, kind, ExtractState::line_of(node), sig.map(str::to_owned), is_public(node));
+        state.push_symbol(name.clone(), name, kind, ExtractState::span_of(node), sig.map(str::to_owned), is_public(node));
     }
 }
 
 fn extract_mod(node: Node<'_>, state: &mut ExtractState<'_>) {
     let Some(name_node) = node.child_by_field_name("name") else { return };
     let name = state.node_text(name_node).trim().to_owned();
-    let line = ExtractState::line_of(node);
-    state.push_symbol(name.clone(), name.clone(), SymbolKind::Module, line, None, is_public(node));
+    let span = ExtractState::span_of(node);
+    state.push_symbol(name.clone(), name.clone(), SymbolKind::Module, span, None, is_public(node));
     if node.child_by_field_name("body").is_none() {
-        state.push_edge(None, name, EdgeKind::Imports, line);
+        state.push_edge(None, name, EdgeKind::Imports, span.0);
     }
 }
 
@@ -72,20 +72,21 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
         Some((owner_name, _)) => (SymbolKind::Method, format!("{owner_name}::{name}")),
         None => (SymbolKind::Function, name.clone()),
     };
-    state.push_symbol(name, qualified, kind, ExtractState::line_of(node), None, exported);
+    state.push_symbol(name, qualified, kind, ExtractState::span_of(node), None, exported);
 }
 
 fn extract_impl(node: Node<'_>, state: &mut ExtractState<'_>) {
     let Some(type_name) = node.child_by_field_name("type").and_then(|n| clean_type_name(n, state)) else {
         return;
     };
-    let line = ExtractState::line_of(node);
+    let span = ExtractState::span_of(node);
+    let line = span.0;
     let trait_name = node.child_by_field_name("trait").and_then(|n| clean_type_name(n, state));
     let label = match &trait_name {
         Some(tr) => format!("impl {tr} for {type_name}"),
         None => format!("impl {type_name}"),
     };
-    state.push_symbol(label.clone(), label, SymbolKind::Unknown, line, Some("impl".to_owned()), false);
+    state.push_symbol(label.clone(), label, SymbolKind::Unknown, span, Some("impl".to_owned()), false);
     if let Some(tr) = trait_name {
         state.push_edge(Some(type_name), tr, EdgeKind::Implements, line);
     }

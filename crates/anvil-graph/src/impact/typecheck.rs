@@ -13,6 +13,7 @@ use anvil_core::traits::CompressedOutput;
 use crate::model::CodeGraph;
 
 pub use super::typecheck_filter::filter_typecheck_output;
+pub use super::typecheck_ts::build_ts_typecheck_command;
 
 struct TypecheckCtx<'a> {
     log_root: &'a Path,
@@ -77,8 +78,12 @@ fn run_stacks_in_dir(
     results: &mut Vec<CompressedOutput>,
 ) -> Result<()> {
     if stacks.iter().any(is_ts_stack) {
-        let bin = resolve_local_or_path_bin(ctx.work_dir, "tsc");
-        results.push(run_resolved_and_filter(ctx, bin, "tsc", "tsc --noEmit", &["--noEmit"])?);
+        results.push(super::typecheck_ts::run_ts_typecheck(
+            ctx.log_root,
+            ctx.work_dir,
+            ctx.config,
+            ctx.impacted_files,
+        )?);
     }
     if stacks.contains(&StackKind::Python) {
         run_ext_typecheck(ctx, ".py", "pyright", &[], results)?;

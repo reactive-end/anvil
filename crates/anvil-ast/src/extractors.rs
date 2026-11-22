@@ -3,6 +3,7 @@
 pub mod angular_html;
 pub mod css;
 pub mod dart;
+pub mod http_route;
 pub mod kotlin;
 pub mod python;
 pub mod rust;
@@ -47,6 +48,18 @@ impl<'a> ExtractState<'a> {
         node.start_position().row as u32 + 1
     }
 
+    /// Returns the 1-based inclusive end line of `node`.
+    pub fn end_line_of(node: Node<'_>) -> u32 {
+        let start = Self::line_of(node);
+        let end = node.end_position().row as u32 + 1;
+        end.max(start)
+    }
+
+    /// Returns `(start_line, end_line)` 1-based inclusive span of `node`.
+    pub fn span_of(node: Node<'_>) -> (u32, u32) {
+        (Self::line_of(node), Self::end_line_of(node))
+    }
+
     /// Trims matching surrounding single/double/backtick quotes.
     pub fn unquote(raw: &str) -> &str {
         let trimmed = raw.trim();
@@ -73,25 +86,27 @@ impl<'a> ExtractState<'a> {
         Some(target)
     }
 
-    /// Records a symbol definition.
+    /// Records a symbol definition with `(line, end_line)` 1-based inclusive span.
     pub fn push_symbol(
         &mut self,
         name: String,
         qualified_name: String,
         kind: SymbolKind,
-        line: u32,
+        span: (u32, u32),
         signature: Option<String>,
         exported: bool,
     ) {
         if name.is_empty() {
             return;
         }
+        let (line, end_line) = span;
         self.symbols.push(SymbolDef {
             name,
             qualified_name,
             kind,
             file: self.file.to_owned(),
             line,
+            end_line: end_line.max(line),
             signature,
             exported,
         });

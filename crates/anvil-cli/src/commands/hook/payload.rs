@@ -85,7 +85,7 @@ pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
     .any(|p| cmd == *p || cmd.starts_with(&format!("{p} ")))
 }
 
-fn strip_tool_namespace(tool_name: Option<&str>) -> Option<&str> {
+pub(super) fn strip_tool_namespace(tool_name: Option<&str>) -> Option<&str> {
     let name = tool_name.map(str::trim).filter(|s| !s.is_empty())?;
     let bare = name.rsplit("__").next().unwrap_or(name);
     Some(bare.rsplit(':').next().unwrap_or(bare))

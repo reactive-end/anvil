@@ -3,9 +3,11 @@
 mod gates;
 mod payload;
 mod task_auto;
+mod token_guard;
 
 use std::io::{self, Read};
 use std::path::Path;
+use std::time::Instant;
 
 use anyhow::Result;
 use anvil_adapters::contract::{
@@ -17,6 +19,7 @@ use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, classify_files};
 use anvil_core::fs_util::with_file_lock;
 use anvil_core::git::{self, DiffScope};
+use anvil_core::stats::{StatsEvent, record_event};
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
 use anvil_graph::store;
@@ -24,6 +27,8 @@ use anvil_memory::MemoryEngine;
 use anvil_tasks::{list_tasks, resolve_author_fast};
 use serde_json::Value;
 
+use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
+use crate::daemon::try_request;
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
 use payload::{
     extract_command_field, extract_rel_file, is_circuit_recovery_command, is_mutating_file_tool,
@@ -32,6 +37,7 @@ use payload::{
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
 pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
+    let started = Instant::now();
     let adapter = AdapterKind::parse(adapter_raw)?;
     let event = HookEvent::parse(event_raw)?;
     let mut raw_stdin = String::new();
@@ -59,6 +65,9 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         AdapterKind::ClaudeCode => claude_code::render_output(&effective_root, event, &outcome)?,
     };
     println!("{}", serde_json::to_string(&rendered)?);
+
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let _ = record_event(&effective_root, StatsEvent::HookCall { elapsed_ms });
     Ok(())
 }
 
@@ -115,13 +124,17 @@ fn handle_pre_tool_use(
     {
         let is_recovery = cmd_field.is_some_and(|(_, cmd)| is_circuit_recovery_command(cmd));
         if is_read_only_tool(input.tool_name.as_deref()) || is_recovery {
-            return HookOutcome::allow();
+            return token_guard::check_read_token_guard(root, input)
+                .unwrap_or_else(HookOutcome::allow);
         }
         let tool = input.tool_name.as_deref().unwrap_or("tool");
         return HookOutcome::deny(format!(
             "Circuit Breaker OPEN ({} identical failures) — blocked `{tool}`. Run `anvil circuit reset` after fixing.",
             st.consecutive_failures
         ));
+    }
+    if let Some(guard_outcome) = token_guard::check_read_token_guard(root, input) {
+        return guard_outcome;
     }
     if let Some((key, cmd)) = cmd_field {
         if cmd.contains("--no-verify") {
@@ -150,17 +163,23 @@ fn handle_post_tool_use(
         && let Some(rel) = extract_rel_file(root, input.tool_input.as_ref())
     {
         collect_post_tool_messages(root, &rel, config, &mut messages);
-        let bin_path = store::default_bin_path(root);
-        if bin_path.is_file() {
-            let lock_path = root.join(".harness/.state/graph.lock");
-            let _ = with_file_lock(&lock_path, 2000, || {
-                if let Ok(mut graph) = store::load_binary(&bin_path)
-                    && matches!(update_file(&mut graph, root, &rel, config), Ok(true))
-                {
-                    let _ = store::save_binary(&graph, &bin_path);
-                }
-                Ok(())
-            });
+        let updated_via_daemon = matches!(
+            try_request(root, DaemonRequest::UpdateFile { rel_path: rel.clone() }),
+            Some(DaemonResponse::Updated { .. })
+        );
+        if !updated_via_daemon {
+            let bin_path = store::default_bin_path(root);
+            if bin_path.is_file() {
+                let lock_path = root.join(".harness/.state/graph.lock");
+                let _ = with_file_lock(&lock_path, 2000, || {
+                    if let Ok(mut graph) = store::load_binary(&bin_path)
+                        && matches!(update_file(&mut graph, root, &rel, config), Ok(true))
+                    {
+                        let _ = store::save_binary(&graph, &bin_path);
+                    }
+                    Ok(())
+                });
+            }
         }
         if let Ok(mut mem) = MemoryEngine::open_without_sync(root, "hook") {
             let _ = mem.mark_files_changed(std::slice::from_ref(&rel));

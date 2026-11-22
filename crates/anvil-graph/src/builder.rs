@@ -1,6 +1,7 @@
 //! Parallel full-repo graph construction (`ignore` + `rayon`) and O(1) incremental updates.
 
 mod collect;
+mod remove;
 mod walker;
 
 use std::fs;
@@ -13,7 +14,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
 use crate::model::CodeGraph;
-use crate::resolvers::{ResolutionContext, ResolvedEdge, resolve_file_edges};
+use crate::resolvers::{ResolutionContext, ResolvedEdge, http_routes, resolve_file_edges};
 
 pub use collect::collect_source_files;
 
@@ -52,6 +53,7 @@ pub fn build_full(repo_root: &Path, config: &AnvilConfig) -> Result<CodeGraph> {
         pending.push((lang, edges));
     }
     graph.rebuild_indexes();
+    http_routes::materialize_exposed_routes(&mut graph, &pending, false);
 
     let ctx = ResolutionContext::load(repo_root);
     let resolved_batches: Vec<Vec<ResolvedEdge>> = pending
@@ -103,10 +105,12 @@ pub fn update_file(
     let (_, mut reuse_slots) = walker::remove_file_incremental(graph, &rel);
     let raw_edges = walker::insert_file_facts(graph, item, true, Some(&mut reuse_slots));
     walker::finalize_unused_slots(graph, reuse_slots);
+    http_routes::materialize_exposed_routes_for_file(graph, &raw_edges, true);
 
     let ctx = ResolutionContext::load(repo_root);
     let new_edges = resolve_file_edges(lang, &raw_edges, graph, &ctx);
     walker::push_resolved_edges(graph, new_edges, true);
+    http_routes::link_external_route_calls(graph, true);
 
     maybe_compact(graph);
     Ok(true)
@@ -226,6 +230,7 @@ fn apply_incremental_changes(
         pending.push((lang, raw_edges));
     }
 
+    http_routes::materialize_exposed_routes(graph, &pending, false);
     let ctx = ResolutionContext::load(repo_root);
     let batches: Vec<Vec<ResolvedEdge>> = pending
         .par_iter()
@@ -234,6 +239,7 @@ fn apply_incremental_changes(
     for batch in batches {
         walker::push_resolved_edges(graph, batch, false);
     }
+    http_routes::link_external_route_calls(graph, false);
     if !graph.compact_tombstones() {
         graph.rebuild_adjacency();
     }

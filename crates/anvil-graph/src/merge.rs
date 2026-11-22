@@ -1,8 +1,11 @@
 //! Multi-repo unified graph merging (e.g. `fliiper/` + `centinela/`).
 
+use rustc_hash::FxHashMap;
+
 use crate::model::{
     CodeGraph, CompactEdge, GraphEdgeKind, GraphNode, INVALID_NODE_ID, NodeId, NodeKind,
 };
+use crate::resolvers::http_routes;
 
 const COMMON_UNRESOLVED_CALLS: &[&str] = &[
     "map", "get", "set", "push", "pop", "filter", "reduce", "forEach", "find", "some", "every",
@@ -19,16 +22,23 @@ const COMMON_UNRESOLVED_CALLS: &[&str] = &[
 /// Merges multiple named repository graphs into a single prefix-namespaced `CodeGraph`.
 pub fn merge_graphs(repos: &[(&str, &CodeGraph)]) -> CodeGraph {
     let mut merged = CodeGraph::new("multi-repo");
+    let mut shared_routes: FxHashMap<String, NodeId> = FxHashMap::default();
     for &(repo_name, sub) in repos {
-        merge_subrepo(&mut merged, repo_name, sub);
+        merge_subrepo(&mut merged, repo_name, sub, &mut shared_routes);
     }
     merged.rebuild_indexes();
     link_cross_repo_symbols(&mut merged);
+    http_routes::link_external_route_calls(&mut merged, false);
     merged.rebuild_adjacency();
     merged
 }
 
-fn merge_subrepo(merged: &mut CodeGraph, repo_name: &str, sub: &CodeGraph) {
+fn merge_subrepo(
+    merged: &mut CodeGraph,
+    repo_name: &str,
+    sub: &CodeGraph,
+    shared_routes: &mut FxHashMap<String, NodeId>,
+) {
     let prefix = CodeGraph::normalize_rel_path(repo_name).trim_matches('/').to_owned();
     let mut id_map = vec![INVALID_NODE_ID; sub.nodes.len()];
 
@@ -43,19 +53,31 @@ fn merge_subrepo(merged: &mut CodeGraph, repo_name: &str, sub: &CodeGraph) {
         if node.is_tombstone() {
             continue;
         }
+        let new_id = prefix_node_id(&prefix, &node.id, node.kind);
+        if node.kind == NodeKind::Semantic
+            && new_id.starts_with("route:")
+            && let Some(&existing) = shared_routes.get(&new_id)
+        {
+            id_map[old_idx] = existing;
+            continue;
+        }
         let new_file = if node.file.is_empty() {
             String::new()
         } else {
             format!("{prefix}/{}", node.file)
         };
         let new_nid = merged.nodes.len() as u32;
+        if node.kind == NodeKind::Semantic && new_id.starts_with("route:") {
+            shared_routes.insert(new_id.clone(), new_nid);
+        }
         id_map[old_idx] = new_nid;
         merged.nodes.push(GraphNode {
-            id: prefix_node_id(&prefix, &node.id, node.kind),
+            id: new_id,
             kind: node.kind,
             label: node.label.clone(),
             file: new_file,
             line: node.line,
+            end_line: node.end_line,
             language: node.language,
             symbol_kind: node.symbol_kind,
             signature: node.signature.clone(),
@@ -106,7 +128,13 @@ fn prefix_node_id(prefix: &str, old_id: &str, kind: NodeKind) -> String {
     match kind {
         NodeKind::File => format!("file:{prefix}/{}", old_id.strip_prefix("file:").unwrap_or(old_id)),
         NodeKind::Symbol => format!("sym:{prefix}/{}", old_id.strip_prefix("sym:").unwrap_or(old_id)),
-        NodeKind::Semantic => format!("sem:{prefix}/{}", old_id.strip_prefix("sem:").unwrap_or(old_id)),
+        NodeKind::Semantic => {
+            if old_id.starts_with("route:") {
+                old_id.to_owned()
+            } else {
+                format!("sem:{prefix}/{}", old_id.strip_prefix("sem:").unwrap_or(old_id))
+            }
+        }
     }
 }
 

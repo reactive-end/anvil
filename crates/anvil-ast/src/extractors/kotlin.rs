@@ -4,6 +4,7 @@ use anvil_core::traits::{EdgeKind, SymbolKind};
 use tree_sitter::Node;
 
 use super::ExtractState;
+use super::http_route::normalize_route_target;
 
 /// Visits a single Kotlin AST node to extract symbols, `@Composable` components, imports, and calls.
 pub fn visit_node(node: Node<'_>, state: &mut ExtractState<'_>) {
@@ -61,7 +62,8 @@ fn extract_class(node: Node<'_>, state: &mut ExtractState<'_>) {
         return;
     };
     let name = state.node_text(name_node).to_owned();
-    let line = ExtractState::line_of(node);
+    let span = ExtractState::span_of(node);
+    let line = span.0;
     let mods = modifiers_text(node, state);
 
     let mut is_interface = false;
@@ -73,19 +75,8 @@ fn extract_class(node: Node<'_>, state: &mut ExtractState<'_>) {
         }
     }
 
-    let kind = if is_interface {
-        SymbolKind::Interface
-    } else {
-        SymbolKind::Class
-    };
-    state.push_symbol(
-        name.clone(),
-        name.clone(),
-        kind,
-        line,
-        None,
-        is_public(mods),
-    );
+    let kind = if is_interface { SymbolKind::Interface } else { SymbolKind::Class };
+    state.push_symbol(name.clone(), name.clone(), kind, span, None, is_public(mods));
     extract_delegations(node, &name, line, state);
 }
 
@@ -122,19 +113,10 @@ fn extract_delegations(node: Node<'_>, class_name: &str, line: u32, state: &mut 
 }
 
 fn extract_object(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else {
-        return;
-    };
+    let Some(name_node) = node.child_by_field_name("name") else { return };
     let name = state.node_text(name_node).to_owned();
     let mods = modifiers_text(node, state);
-    state.push_symbol(
-        name.clone(),
-        name,
-        SymbolKind::Class,
-        ExtractState::line_of(node),
-        Some("object".to_owned()),
-        is_public(mods),
-    );
+    state.push_symbol(name.clone(), name, SymbolKind::Class, ExtractState::span_of(node), Some("object".to_owned()), is_public(mods));
 }
 
 fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
@@ -142,7 +124,7 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
         return;
     };
     let name = state.node_text(name_node).to_owned();
-    let line = ExtractState::line_of(node);
+    let span = ExtractState::span_of(node);
     let mods = modifiers_text(node, state);
     let is_composable = mods.contains("@Composable");
     let cls = enclosing_class(node, state);
@@ -159,7 +141,80 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
         Some(c) => format!("{c}.{name}"),
         None => name.clone(),
     };
-    state.push_symbol(name, qualified, kind, line, signature, is_public(mods));
+    extract_retrofit_routes(node, &qualified, state);
+    state.push_symbol(name, qualified, kind, span, signature, is_public(mods));
+}
+
+fn extract_retrofit_routes(fn_node: Node<'_>, qualified_fn: &str, state: &mut ExtractState<'_>) {
+    let mut cursor = fn_node.walk();
+    let Some(mods) = fn_node.children(&mut cursor).find(|c| c.kind() == "modifiers") else {
+        return;
+    };
+    let mut m_cursor = mods.walk();
+    for ann in mods.named_children(&mut m_cursor) {
+        if ann.kind() != "annotation" {
+            continue;
+        }
+        emit_kotlin_annotation_route(ann, qualified_fn, state);
+    }
+}
+
+fn emit_kotlin_annotation_route(ann: Node<'_>, qualified_fn: &str, state: &mut ExtractState<'_>) {
+    let Some(ctor) = ann.named_child(0) else { return };
+    if ctor.kind() != "constructor_invocation" {
+        return;
+    }
+    let mut user_type = None;
+    let mut value_args = None;
+    let mut cursor = ctor.walk();
+    for child in ctor.named_children(&mut cursor) {
+        match child.kind() {
+            "user_type" => user_type = Some(child),
+            "value_arguments" => value_args = Some(child),
+            _ => {}
+        }
+    }
+    let (Some(ut), Some(vargs)) = (user_type, value_args) else {
+        return;
+    };
+    let method = state
+        .node_text(ut)
+        .trim()
+        .rsplit('.')
+        .next()
+        .unwrap_or("");
+    if !matches!(
+        method,
+        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
+    ) {
+        return;
+    }
+    let Some(path) = extract_kotlin_first_string_arg(vargs, state) else {
+        return;
+    };
+    if let Some(target) = normalize_route_target(method, &path) {
+        state.push_edge(
+            Some(qualified_fn.to_owned()),
+            target,
+            EdgeKind::CallsRoute,
+            ExtractState::line_of(ann),
+        );
+    }
+}
+
+fn extract_kotlin_first_string_arg(vargs: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
+    let mut cursor = vargs.walk();
+    let first = vargs
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "value_argument")?;
+    let mut a_cursor = first.walk();
+    for child in first.named_children(&mut a_cursor) {
+        if child.kind() == "string_literal" {
+            let unquoted = ExtractState::unquote(state.node_text(child)).trim();
+            return (!unquoted.is_empty()).then(|| unquoted.to_owned());
+        }
+    }
+    None
 }
 
 fn extract_type_alias(node: Node<'_>, state: &mut ExtractState<'_>) {
@@ -167,14 +222,7 @@ fn extract_type_alias(node: Node<'_>, state: &mut ExtractState<'_>) {
     for child in node.named_children(&mut cursor) {
         if child.kind() == "identifier" {
             let name = state.node_text(child).to_owned();
-            state.push_symbol(
-                name.clone(),
-                name,
-                SymbolKind::TypeAlias,
-                ExtractState::line_of(node),
-                None,
-                true,
-            );
+            state.push_symbol(name.clone(), name, SymbolKind::TypeAlias, ExtractState::span_of(node), None, true);
             return;
         }
     }
@@ -183,11 +231,6 @@ fn extract_type_alias(node: Node<'_>, state: &mut ExtractState<'_>) {
 fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {
     if let Some(target_node) = node.named_child(0) {
         let callee = state.node_text(target_node).trim().to_owned();
-        state.push_edge(
-            None,
-            callee,
-            EdgeKind::Calls,
-            ExtractState::line_of(node),
-        );
+        state.push_edge(None, callee, EdgeKind::Calls, ExtractState::line_of(node));
     }
 }

@@ -2,6 +2,7 @@
 
 pub mod analytics;
 pub mod builder;
+mod freshness;
 pub mod graphify_compat;
 pub mod impact;
 pub mod merge;
@@ -10,19 +11,20 @@ pub mod query;
 pub mod resolvers;
 pub mod store;
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use anvil_core::config::AnvilConfig;
-use anvil_core::traits::{CompressedOutput, FreshnessReport, FreshnessState, SymbolFreshnessProvider};
+use anvil_core::traits::CompressedOutput;
 
 use crate::analytics::{CommunitySummary, GodNode};
 use crate::builder::IncrementalStats;
 use crate::graphify_compat::OverlayStats;
 use crate::impact::{BlastRadiusReport, OverengineeringReport};
 use crate::model::CodeGraph;
-use crate::query::{ExplainResult, OriginResult, PathResult, QueryHit};
+use crate::query::{
+    ExplainResult, OriginResult, PathResult, QueryHit, RepoOutline, SymbolSlice,
+};
 
 /// Crate version marker for workspace smoke checks.
 pub fn crate_name() -> &'static str {
@@ -145,6 +147,16 @@ impl CodeGraphEngine {
         query::find_origin(&self.graph, target)
     }
 
+    /// Reads only the AST line span `start_line..=end_line` of `target` from `repo_root`.
+    pub fn read_symbol(&self, target: &str, include_imports: bool) -> Result<Option<SymbolSlice>> {
+        query::read_symbol(&self.graph, &self.repo_root, target, include_imports)
+    }
+
+    /// Builds a compact body-free outline for `target` within `max_tokens`.
+    pub fn outline(&self, target: Option<&str>, max_tokens: usize) -> RepoOutline {
+        query::outline(&self.graph, &self.repo_root, target, max_tokens)
+    }
+
     /// Computes reverse-BFS blast radius and mapped test files from `changed_files`.
     pub fn blast_radius(&self, changed_files: &[String], max_depth: usize) -> BlastRadiusReport {
         impact::compute_blast_radius(&self.graph, changed_files, max_depth)
@@ -194,75 +206,4 @@ impl CodeGraphEngine {
     pub fn apply_graphify_overlay(&mut self, json_path: &Path) -> Result<OverlayStats> {
         graphify_compat::load_graphify_overlay(&mut self.graph, json_path)
     }
-}
-
-impl SymbolFreshnessProvider for CodeGraph {
-    fn check_freshness(
-        &self,
-        related_files: &[String],
-        related_symbols: &[String],
-    ) -> Result<FreshnessReport> {
-        for raw_file in related_files {
-            let norm = Self::normalize_rel_path(raw_file);
-            if !self.file_hashes.contains_key(&norm) {
-                return Ok(FreshnessReport {
-                    state: FreshnessState::Stale,
-                    reason: Some(format!("Referenced file `{norm}` no longer exists in code graph")),
-                });
-            }
-        }
-        for sym in related_symbols {
-            if !has_symbol(self, sym) {
-                return Ok(FreshnessReport {
-                    state: FreshnessState::Stale,
-                    reason: Some(format!("Referenced symbol `{sym}` was not found in code graph")),
-                });
-            }
-        }
-        Ok(FreshnessReport {
-            state: FreshnessState::Fresh,
-            reason: None,
-        })
-    }
-}
-
-impl SymbolFreshnessProvider for CodeGraphEngine {
-    fn check_freshness(
-        &self,
-        related_files: &[String],
-        related_symbols: &[String],
-    ) -> Result<FreshnessReport> {
-        let base = self.graph.check_freshness(related_files, related_symbols)?;
-        if base.state != FreshnessState::Fresh {
-            return Ok(base);
-        }
-        for raw_file in related_files {
-            let norm = CodeGraph::normalize_rel_path(raw_file);
-            let disk_path = self.repo_root.join(&norm);
-            let Ok(bytes) = fs::read(&disk_path) else {
-                return Ok(FreshnessReport {
-                    state: FreshnessState::Stale,
-                    reason: Some(format!("File `{norm}` is missing on disk")),
-                });
-            };
-            let live_hash = blake3::hash(&bytes).to_hex().to_string();
-            if self.graph.file_hashes.get(&norm) != Some(&live_hash) {
-                return Ok(FreshnessReport {
-                    state: FreshnessState::NeedsVerification,
-                    reason: Some(format!("File `{norm}` changed on disk since last graph update")),
-                });
-            }
-        }
-        Ok(base)
-    }
-}
-
-fn has_symbol(graph: &CodeGraph, sym: &str) -> bool {
-    if graph.contains_node_id(sym) || graph.symbol_index.contains_key(sym) {
-        return true;
-    }
-    let suffix = format!("::{sym}");
-    graph.nodes.iter().any(|n| {
-        !n.is_tombstone() && (n.label.eq_ignore_ascii_case(sym) || n.id.ends_with(&suffix))
-    })
 }

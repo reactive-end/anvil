@@ -2,6 +2,7 @@
 
 mod cli;
 mod commands;
+mod daemon;
 
 use std::process::ExitCode;
 
