@@ -18,6 +18,8 @@ pub struct DetectedRepo {
     pub rel_path: String,
     pub stacks: Vec<StackKind>,
     pub tools: Vec<ToolKind>,
+    #[serde(default)]
+    pub has_git: bool,
 }
 
 /// Workspace-level detection summary supporting single-repo and multi-repo roots.
@@ -28,31 +30,51 @@ pub struct WorkspaceDetection {
 }
 
 impl WorkspaceDetection {
-    /// Applies detected stacks, tools, and subrepos onto an [`AnvilConfig`].
+    /// Applies detected stacks, tools, and subrepos onto an [`AnvilConfig`] deterministically.
     pub fn apply_to_config(&self, config: &mut AnvilConfig) {
-        let mut all_stacks = FxHashSet::default();
-        let mut all_tools = FxHashSet::default();
+        let _ = self.merge_into_config(config);
+    }
+
+    /// Merges newly detected stacks, tools, subrepos, and root allowlist items into `config`.
+    /// Returns `true` when `config` was modified.
+    pub fn merge_into_config(&self, config: &mut AnvilConfig) -> bool {
+        let before = config.clone();
+        let mut all_stacks: FxHashSet<StackKind> = config.stacks.iter().copied().collect();
+        let mut all_tools: FxHashSet<ToolKind> = config.tools.iter().copied().collect();
         config.subrepos.clear();
         for repo in &self.repos {
-            all_stacks.extend(repo.stacks.iter().copied());
-            all_tools.extend(repo.tools.iter().copied());
+            let mut stacks = repo.stacks.clone();
+            stacks.sort();
+            stacks.dedup();
+            let mut tools = repo.tools.clone();
+            tools.sort();
+            tools.dedup();
+            all_stacks.extend(stacks.iter().copied());
+            all_tools.extend(tools.iter().copied());
             if self.is_multi_repo || repo.rel_path != "." {
                 config.subrepos.push(SubrepoConfig {
                     name: repo.name.clone(),
                     path: repo.rel_path.clone(),
-                    stacks: repo.stacks.clone(),
-                    tools: repo.tools.clone(),
+                    stacks,
+                    tools,
                 });
             }
         }
-        config.stacks = all_stacks.into_iter().collect();
-        config.tools = all_tools.into_iter().collect();
+        let mut sorted_stacks: Vec<_> = all_stacks.into_iter().collect();
+        sorted_stacks.sort();
+        config.stacks = sorted_stacks;
+
+        let mut sorted_tools: Vec<_> = all_tools.into_iter().collect();
+        sorted_tools.sort();
+        config.tools = sorted_tools;
+
         extend_stack_root_allowlist(config);
+        *config != before
     }
 }
 
 fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
-    let mut extras: Vec<&'static str> = Vec::new();
+    let mut extras: Vec<String> = Vec::new();
     let has_js = config.stacks.iter().any(|s| {
         matches!(
             s,
@@ -67,33 +89,36 @@ fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
         )
     });
     if has_js {
-        extras.extend(["package.json", "tsconfig.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"]);
+        extras.extend(
+            ["package.json", "tsconfig.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"]
+                .into_iter()
+                .map(str::to_owned),
+        );
     }
     if config.stacks.contains(&StackKind::Rust) {
-        extras.extend(["Cargo.toml", "Cargo.lock", "clippy.toml", "crates", "src"]);
+        extras.extend(["Cargo.toml", "Cargo.lock", "clippy.toml", "crates", "src"].into_iter().map(str::to_owned));
     }
     if config.stacks.contains(&StackKind::KotlinAndroid) {
-        extras.extend([
-            "app",
-            "gradle",
-            "gradlew",
-            "gradlew.bat",
-            "build.gradle.kts",
-            "settings.gradle.kts",
-            "build.gradle",
-            "settings.gradle",
-            "gradle.properties",
-        ]);
+        extras.extend(
+            ["app", "gradle", "gradlew", "gradlew.bat", "build.gradle.kts", "settings.gradle.kts", "build.gradle", "settings.gradle", "gradle.properties"]
+                .into_iter()
+                .map(str::to_owned),
+        );
     }
     if config.stacks.contains(&StackKind::FlutterDart) {
-        extras.extend(["pubspec.yaml", "pubspec.lock", "analysis_options.yaml", "lib", "test"]);
+        extras.extend(["pubspec.yaml", "pubspec.lock", "analysis_options.yaml", "lib", "test"].into_iter().map(str::to_owned));
     }
     if config.stacks.contains(&StackKind::Python) {
-        extras.extend(["pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"]);
+        extras.extend(["pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"].into_iter().map(str::to_owned));
+    }
+    for sub in &config.subrepos {
+        if let Some(top) = sub.path.split('/').next().filter(|s| !s.is_empty() && *s != ".") {
+            extras.push(top.to_owned());
+        }
     }
     for item in extras {
-        if !config.root_allowlist.iter().any(|existing| existing == item) {
-            config.root_allowlist.push(item.to_owned());
+        if !config.root_allowlist.iter().any(|existing| existing == &item) {
+            config.root_allowlist.push(item);
         }
     }
 }
@@ -148,19 +173,11 @@ fn is_ignored_dir(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return true;
     };
-    matches!(
-        name,
-        ".git"
-            | ".harness"
-            | "node_modules"
-            | "target"
-            | "dist"
-            | "build"
-            | ".gradle"
-            | ".dart_tool"
-            | ".venv"
-            | "venv"
-    )
+    name.starts_with('.')
+        || matches!(
+            name,
+            "node_modules" | "target" | "dist" | "build" | "venv" | "__pycache__" | "Pods"
+        )
 }
 
 fn inspect_repo_dir(dir: &Path, rel_path: &str) -> Result<Option<DetectedRepo>> {
@@ -172,7 +189,9 @@ fn inspect_repo_dir(dir: &Path, rel_path: &str) -> Result<Option<DetectedRepo>> 
     ecosystems::detect_kotlin_android_stack(dir, &mut stacks, &mut tools)?;
     ecosystems::detect_flutter_rust_tools(dir, &mut stacks, &mut tools);
 
-    if stacks.is_empty() && tools.is_empty() {
+    let has_git = dir.join(".git").exists();
+    let is_child = rel_path != ".";
+    if stacks.is_empty() && tools.is_empty() && !(is_child && has_git) {
         return Ok(None);
     }
     let name = dir
@@ -180,10 +199,15 @@ fn inspect_repo_dir(dir: &Path, rel_path: &str) -> Result<Option<DetectedRepo>> 
         .and_then(|n| n.to_str())
         .unwrap_or("root")
         .to_owned();
+    let mut sorted_stacks: Vec<_> = stacks.into_iter().collect();
+    sorted_stacks.sort();
+    let mut sorted_tools: Vec<_> = tools.into_iter().collect();
+    sorted_tools.sort();
     Ok(Some(DetectedRepo {
         name,
         rel_path: rel_path.to_owned(),
-        stacks: stacks.into_iter().collect(),
-        tools: tools.into_iter().collect(),
+        stacks: sorted_stacks,
+        tools: sorted_tools,
+        has_git,
     }))
 }

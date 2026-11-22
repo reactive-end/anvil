@@ -103,28 +103,9 @@ fn infer_symbols_from_graph(root: &Path, files: &[String]) -> Vec<String> {
     let Ok(cfg) = AnvilConfig::load_or_default(root) else {
         return Vec::new();
     };
-    let Ok(engine) = CodeGraphEngine::load_cached(root, cfg) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for file in files {
-        let norm = anvil_graph::model::CodeGraph::normalize_rel_path(file);
-        if let Some(nids) = engine.graph.file_nodes.get(&norm) {
-            for &nid in nids {
-                if let Some(node) = engine.graph.get_node(nid)
-                    && node.kind == anvil_graph::model::NodeKind::Symbol
-                    && node.exported
-                    && !out.iter().any(|s| s == &node.label)
-                {
-                    out.push(node.label.clone());
-                    if out.len() >= 8 {
-                        return out;
-                    }
-                }
-            }
-        }
-    }
-    out
+    CodeGraphEngine::load_cached(root, cfg)
+        .map(|engine| engine.exported_symbols_for_files(files, 8))
+        .unwrap_or_default()
 }
 
 fn cmd_search(mem: &MemoryEngine, query: &str, kind: Option<&str>, limit: usize) -> Result<()> {

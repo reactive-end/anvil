@@ -152,6 +152,30 @@ impl CodeGraphEngine {
         query::read_symbol(&self.graph, &self.repo_root, target, include_imports)
     }
 
+    /// Collects up to `limit` exported symbol labels defined in `files`.
+    pub fn exported_symbols_for_files(&self, files: &[String], limit: usize) -> Vec<String> {
+        let mut out = Vec::new();
+        for file in files {
+            let norm = CodeGraph::normalize_rel_path(file);
+            let Some(nids) = self.graph.file_nodes.get(&norm) else {
+                continue;
+            };
+            for &nid in nids {
+                if let Some(node) = self.graph.get_node(nid)
+                    && node.kind == crate::model::NodeKind::Symbol
+                    && node.exported
+                    && !out.iter().any(|s| s == &node.label)
+                {
+                    out.push(node.label.clone());
+                    if out.len() >= limit {
+                        return out;
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Builds a compact body-free outline for `target` within `max_tokens`.
     pub fn outline(&self, target: Option<&str>, max_tokens: usize) -> RepoOutline {
         query::outline(&self.graph, &self.repo_root, target, max_tokens)

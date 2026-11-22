@@ -9,16 +9,70 @@ use serde_json::Value;
 
 const SHELL_METACHARS: &[&str] = &["&&", "||", "|", ";", ">", "<", "$(", "`", "\n", "\r"];
 
-/// Resolves the effective repository root from a hook's `cwd` field.
+/// Resolves `(effective_root, fallback_workspace_root)` for a hook invocation.
+/// When a tool payload targets a file inside an initialized subproject or external repository
+/// (e.g. `centinela-ia-movil` while the IDE is open in `centinela/`), hooks route directly to
+/// that target project while remembering the umbrella workspace for pending prompt handoff.
+pub fn resolve_hook_targets(
+    default_root: &Path,
+    cwd: Option<&str>,
+    tool_input: Option<&Value>,
+) -> (PathBuf, Option<PathBuf>) {
+    let cwd_root = resolve_hook_root(default_root, cwd);
+    if let Some(target_file) = extract_target_file_path(tool_input, &cwd_root)
+        && let Some(start_dir) = target_file.parent().filter(|p| p.exists())
+        && let Some(file_root) = find_initialized_root_upward(start_dir)
+        && !paths_equal(&file_root, &cwd_root)
+    {
+        return (file_root, Some(cwd_root));
+    }
+    (cwd_root, None)
+}
+
+/// Resolves the effective repository root from a hook's `cwd` field, supporting non-git umbrella
+/// workspaces that hold `.harness/`.
 pub fn resolve_hook_root(default_root: &Path, cwd: Option<&str>) -> PathBuf {
     let Some(raw) = cwd.map(str::trim).filter(|s| !s.is_empty()) else {
         return default_root.to_path_buf();
     };
     let path = PathBuf::from(raw);
-    if path.is_dir() {
-        git::repo_root(&path).unwrap_or(path)
+    if !path.is_dir() {
+        return default_root.to_path_buf();
+    }
+    if path.join(".harness").is_dir() {
+        return path;
+    }
+    find_initialized_root_upward(&path)
+        .or_else(|| git::repo_root(&path).ok())
+        .unwrap_or(path)
+}
+
+fn find_initialized_root_upward(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|dir| dir.join(".harness").is_dir())
+        .map(Path::to_path_buf)
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => a == b,
+    }
+}
+
+fn extract_target_file_path(tool_input: Option<&Value>, cwd_root: &Path) -> Option<PathBuf> {
+    let obj = tool_input?.as_object()?;
+    let raw = ["TargetFile", "file_path", "path", "AbsolutePath", "target_file"]
+        .iter()
+        .find_map(|k| obj.get(*k).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
+    let p = PathBuf::from(raw);
+    if p.is_absolute() {
+        Some(p)
     } else {
-        default_root.to_path_buf()
+        Some(cwd_root.join(p))
     }
 }
 

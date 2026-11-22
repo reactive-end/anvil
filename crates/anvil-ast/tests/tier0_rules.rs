@@ -211,4 +211,21 @@ class MainActivity {
         "expected 0 permission diagnostics, got: {:?}",
         good.diagnostics
     );
+
+    let unchecked_ts = "Notification.requestPermission();\nnavigator.permissions.query({ name: 'notifications' }).then(() => {});\n";
+    let bad_ts = analyze_file(Path::new("src/perm.ts"), unchecked_ts, &cfg).expect("parse bad ts");
+    assert_eq!(
+        bad_ts.diagnostics.iter().filter(|d| d.rule == "no-unverified-permission").count(),
+        2,
+        "expected 2 JS/TS permission diagnostics, got: {:?}",
+        bad_ts.diagnostics
+    );
+
+    let checked_ts = "const st = await Notification.requestPermission();\nif (st === 'granted') { initPush(); }\n";
+    let ok_ts = analyze_file(Path::new("src/perm_ok.ts"), checked_ts, &cfg).expect("parse ok ts");
+    assert!(
+        !ok_ts.diagnostics.iter().any(|d| d.rule == "no-unverified-permission"),
+        "expected 0 JS/TS permission diagnostics, got: {:?}",
+        ok_ts.diagnostics
+    );
 }

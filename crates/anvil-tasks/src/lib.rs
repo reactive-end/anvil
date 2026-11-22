@@ -18,8 +18,9 @@ use serde::de::DeserializeOwned;
 pub use active::{
     ActiveTaskState, PendingPrompt, activate_task_from_meta, active_task_path,
     ensure_task_for_prompt, load_active_task, mark_summary_recorded,
-    mark_summary_recorded_with_files, materialize_task_on_edit, pending_prompt_path,
-    record_pending_prompt, record_touched_file, save_active_task,
+    mark_summary_recorded_with_files, materialize_task_on_edit,
+    materialize_task_on_edit_with_fallback, pending_prompt_path, record_pending_prompt,
+    record_touched_file, save_active_task,
 };
 pub use builder::build_root_tasks_json;
 pub use identity::{resolve_author, resolve_author_fast};

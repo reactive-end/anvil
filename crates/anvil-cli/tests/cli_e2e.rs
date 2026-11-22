@@ -324,3 +324,53 @@ fn mem_sync_prints_nonzero_ingested_count_for_new_chunk() {
         "expected ingested=1 applied=1, got: {sync_out}"
     );
 }
+
+fn seed_git_subrepo(dir: &Path, manifest: (&str, &str), file: (&str, &str)) {
+    fs::create_dir_all(dir).unwrap();
+    Command::new("git").args(["init"]).current_dir(dir).output().unwrap();
+    Command::new("git").args(["config", "user.name", "Test"]).current_dir(dir).output().unwrap();
+    Command::new("git").args(["config", "user.email", "t@e.co"]).current_dir(dir).output().unwrap();
+    let m_path = dir.join(manifest.0);
+    fs::create_dir_all(m_path.parent().unwrap()).unwrap();
+    fs::write(m_path, manifest.1).unwrap();
+    let f_path = dir.join(file.0);
+    fs::create_dir_all(f_path.parent().unwrap()).unwrap();
+    fs::write(f_path, file.1).unwrap();
+    Command::new("git").args(["add", "-A"]).current_dir(dir).output().unwrap();
+    Command::new("git").args(["commit", "-m", "init"]).current_dir(dir).output().unwrap();
+}
+
+#[test]
+fn multi_subproject_init_and_umbrella_hook_routing_work_like_centinela() {
+    let ws = TempDir::new().unwrap();
+    let root = ws.path();
+    let be = root.join("centinela-backend");
+    let mv = root.join("centinela-movil");
+    seed_git_subrepo(&be, ("package.json", r#"{"dependencies":{"@nestjs/core":"11.0.0"}}"#), ("src/api.ts", "export const ok = true;\n"));
+    seed_git_subrepo(&mv, ("build.gradle.kts", "plugins {}"), ("app/Main.kt", "class Main {}\n"));
+    fs::create_dir_all(root.join(".mimocode")).unwrap();
+    fs::write(root.join(".mimocode/package.json"), "{}").unwrap();
+
+    assert_ok(&run_anvil(root, &["init", "--adapter", "antigravity"]), "umbrella init");
+    assert!(root.join(".agents/hooks.json").exists());
+    assert!(!root.join(".claude").exists());
+    assert!(!root.join(".mimocode/.harness").exists());
+    assert!(be.join(".harness/config.json").exists() && be.join(".agents/hooks.json").exists());
+    assert!(mv.join(".harness/config.json").exists() && !mv.join(".claude").exists());
+
+    // Prompt arrives in umbrella root; edit targets centinela-movil -> lazy task materializes inside movil.
+    let prompt = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy(), "lastUserInput": "Fix Android build in movil" });
+    assert_ok(&run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt.to_string()), "prompt");
+    let target = mv.join("app/Main.kt");
+    fs::write(&target, "class Main { val v = 2 }\n").unwrap();
+    let edit = json!({
+        "hookEventName": "PostToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": { "toolName": "edit_file", "toolInput": { "TargetFile": target.to_string_lossy() } }
+    });
+    assert_ok(&run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "antigravity"], &edit.to_string()), "edit");
+
+    let tasks = anvil_tasks::list_tasks(&mv).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].request, "Fix Android build in movil");
+}

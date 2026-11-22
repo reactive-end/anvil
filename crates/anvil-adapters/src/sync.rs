@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use anvil_core::config::AnvilConfig;
+use anvil_core::config::{AdapterTarget, AnvilConfig};
 use anvil_core::fs_util::atomic_write;
 use anvil_core::stack_detector;
 
@@ -24,52 +24,119 @@ pub struct SyncReport {
     pub preserved_skills: Vec<String>,
 }
 
-/// Initializes `.harness/` in `repo_root` and synchronizes all thin adapters.
+/// Initializes `.harness/` in `repo_root` and synchronizes adapters (`auto` detection).
 pub fn init_repo(repo_root: &Path) -> Result<SyncReport> {
+    init_repo_with_adapter(repo_root, None)
+}
+
+/// Initializes `.harness/` in `repo_root` with an optional explicit [`AdapterTarget`].
+pub fn init_repo_with_adapter(
+    repo_root: &Path,
+    explicit_adapter: Option<AdapterTarget>,
+) -> Result<SyncReport> {
     let mut report = SyncReport::default();
     ensure_harness_skeleton(repo_root, &mut report)?;
 
+    let config = upsert_repo_config(repo_root, explicit_adapter, &mut report)?;
+    sync_into(repo_root, config.adapters, &mut report)?;
+    Ok(report)
+}
+
+/// Synchronizes adapter skills, hook/MCP configs, `.gitignore`, and instructions idempotently.
+pub fn sync_repo(repo_root: &Path) -> Result<SyncReport> {
+    sync_repo_with_adapter(repo_root, None)
+}
+
+/// Synchronizes adapters with an optional explicit [`AdapterTarget`] override, upgrading config tools.
+pub fn sync_repo_with_adapter(
+    repo_root: &Path,
+    explicit_adapter: Option<AdapterTarget>,
+) -> Result<SyncReport> {
+    let mut report = SyncReport::default();
+    ensure_harness_skeleton(repo_root, &mut report)?;
+
+    let config = upsert_repo_config(repo_root, explicit_adapter, &mut report)?;
+    sync_into(repo_root, config.adapters, &mut report)?;
+    Ok(report)
+}
+
+fn upsert_repo_config(
+    repo_root: &Path,
+    explicit_adapter: Option<AdapterTarget>,
+    report: &mut SyncReport,
+) -> Result<AnvilConfig> {
     let config_path = AnvilConfig::path(repo_root);
+    let detection = stack_detector::detect_workspace(repo_root)?;
+
     if !config_path.exists() {
-        let detection = stack_detector::detect_workspace(repo_root)?;
-        let mut config = AnvilConfig::default();
+        let mut config = AnvilConfig {
+            adapters: explicit_adapter.unwrap_or_else(|| infer_default_adapters(repo_root)),
+            ..AnvilConfig::default()
+        };
         detection.apply_to_config(&mut config);
         config.save(repo_root)?;
         report.written_files.push(config_path);
+        return Ok(config);
     }
 
-    sync_into(repo_root, &mut report)?;
-    Ok(report)
+    let mut config = AnvilConfig::load(repo_root)?;
+    let mut changed = detection.merge_into_config(&mut config);
+    if let Some(target) = explicit_adapter
+        && config.adapters != target
+    {
+        config.adapters = target;
+        changed = true;
+    }
+    if changed {
+        config.save(repo_root)?;
+        report.written_files.push(config_path);
+    }
+    Ok(config)
 }
 
-/// Synchronizes `.harness/skills/`, adapter configs, `.gitignore`, `AGENTS.md`, and `CLAUDE.md`
-/// without deleting pre-existing user skills, hooks, or MCP servers.
-pub fn sync_repo(repo_root: &Path) -> Result<SyncReport> {
-    let mut report = SyncReport::default();
-    ensure_harness_skeleton(repo_root, &mut report)?;
-    sync_into(repo_root, &mut report)?;
-    Ok(report)
+fn infer_default_adapters(repo_root: &Path) -> AdapterTarget {
+    if let Ok(env_raw) = std::env::var("ANVIL_ADAPTER")
+        && let Ok(Some(parsed)) = AdapterTarget::parse_cli(&env_raw)
+    {
+        return parsed;
+    }
+    let has_agy = repo_root.join(".agents").exists() || repo_root.join("AGENTS.md").exists();
+    let has_claude = repo_root.join(".claude").exists()
+        || repo_root.join("CLAUDE.md").exists()
+        || repo_root.join(".mcp.json").exists();
+    match (has_agy, has_claude) {
+        (true, false) => AdapterTarget::Antigravity,
+        (false, true) => AdapterTarget::Claude,
+        _ => AdapterTarget::All,
+    }
 }
 
-fn sync_into(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
-    write_embedded_skills(repo_root, report)?;
-    sync_skills_targets(repo_root, report)?;
+fn sync_into(
+    repo_root: &Path,
+    target: AdapterTarget,
+    report: &mut SyncReport,
+) -> Result<()> {
+    sync_skills_targets(repo_root, target, report)?;
 
-    for (path, changed) in [
-        (antigravity::config::hooks_config_path(repo_root), antigravity::config::merge_hooks_config(repo_root)?),
-        (antigravity::config::mcp_config_path(repo_root), antigravity::config::merge_mcp_config(repo_root)?),
-        (claude_code::config::settings_config_path(repo_root), claude_code::config::merge_settings_config(repo_root)?),
-        (claude_code::config::mcp_config_path(repo_root), claude_code::config::merge_mcp_config(repo_root)?),
-    ] {
-        if changed {
-            report.written_files.push(path);
-        }
+    if target.includes_antigravity() {
+        record_write(antigravity::config::hooks_config_path(repo_root), antigravity::config::merge_hooks_config(repo_root)?, report);
+        record_write(antigravity::config::mcp_config_path(repo_root), antigravity::config::merge_mcp_config(repo_root)?, report);
+        sync_managed_doc(&repo_root.join("AGENTS.md"), templates::AGENTS_MD, report)?;
+    }
+    if target.includes_claude() {
+        record_write(claude_code::config::settings_config_path(repo_root), claude_code::config::merge_settings_config(repo_root)?, report);
+        record_write(claude_code::config::mcp_config_path(repo_root), claude_code::config::merge_mcp_config(repo_root)?, report);
+        sync_managed_doc(&repo_root.join("CLAUDE.md"), templates::CLAUDE_MD, report)?;
     }
 
     sync_gitignore(repo_root, report)?;
-    sync_managed_doc(&repo_root.join("AGENTS.md"), templates::AGENTS_MD, report)?;
-    sync_managed_doc(&repo_root.join("CLAUDE.md"), templates::CLAUDE_MD, report)?;
     Ok(())
+}
+
+fn record_write(path: PathBuf, changed: bool, report: &mut SyncReport) {
+    if changed {
+        report.written_files.push(path);
+    }
 }
 
 pub(crate) fn write_if_changed(path: &Path, content: &str) -> Result<bool> {
@@ -86,7 +153,7 @@ fn ensure_dir(dir: &Path) -> Result<()> {
 
 fn ensure_harness_skeleton(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
     let harness = repo_root.join(".harness");
-    for rel in ["rules", "candidates", "skills", "memory/chunks", "tasks", ".state"] {
+    for rel in ["rules", "candidates", "memory/chunks", "tasks", ".state"] {
         let dir = harness.join(rel);
         if !dir.exists() {
             ensure_dir(&dir)?;
@@ -96,41 +163,60 @@ fn ensure_harness_skeleton(repo_root: &Path, report: &mut SyncReport) -> Result<
     Ok(())
 }
 
-fn write_embedded_skills(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
-    let skills_root = repo_root.join(".harness").join("skills");
-    for skill in templates::EMBEDDED_SKILLS {
-        let target = skills_root.join(skill.name).join("SKILL.md");
-        if write_if_changed(&target, skill.skill_md)? {
-            report.written_files.push(target);
-        }
+fn sync_skills_targets(
+    repo_root: &Path,
+    target: AdapterTarget,
+    report: &mut SyncReport,
+) -> Result<()> {
+    let custom_root = repo_root.join(".harness").join("skills");
+    let custom_names = list_subdir_names(&custom_root)?;
+    let builtin_names: BTreeSet<String> = templates::EMBEDDED_SKILLS
+        .iter()
+        .map(|s| s.name.to_owned())
+        .collect();
+
+    let mut targets = Vec::new();
+    if target.includes_antigravity() {
+        targets.push(repo_root.join(".agents").join("skills"));
     }
-    Ok(())
-}
-
-fn sync_skills_targets(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
-    let source_root = repo_root.join(".harness").join("skills");
-    let source_names = list_subdir_names(&source_root)?;
-
-    let targets = [
-        repo_root.join(".agents").join("skills"),
-        repo_root.join(".claude").join("skills"),
-    ];
+    if target.includes_claude() {
+        targets.push(repo_root.join(".claude").join("skills"));
+    }
 
     let mut preserved = BTreeSet::new();
     for target_root in &targets {
         ensure_dir(target_root)?;
-        for existing_name in list_subdir_names(target_root)? {
-            if !source_names.contains(&existing_name) {
-                preserved.insert(existing_name);
+        for existing in list_subdir_names(target_root)? {
+            if !custom_names.contains(&existing) && !builtin_names.contains(&existing) {
+                preserved.insert(existing);
             }
         }
-        for skill_name in &source_names {
-            let src_dir = source_root.join(skill_name);
-            let dst_dir = target_root.join(skill_name);
-            copy_dir_non_destructively(&src_dir, &dst_dir, report)?;
-        }
+        sync_target_skill_dir(&custom_root, &custom_names, target_root, report)?;
     }
     report.preserved_skills.extend(preserved);
+    Ok(())
+}
+
+fn sync_target_skill_dir(
+    custom_root: &Path,
+    custom_names: &BTreeSet<String>,
+    target_root: &Path,
+    report: &mut SyncReport,
+) -> Result<()> {
+    for skill in templates::EMBEDDED_SKILLS {
+        if custom_names.contains(skill.name) {
+            continue;
+        }
+        let dst = target_root.join(skill.name).join("SKILL.md");
+        if write_if_changed(&dst, skill.skill_md)? {
+            report.written_files.push(dst);
+        }
+    }
+    for skill_name in custom_names {
+        let src_dir = custom_root.join(skill_name);
+        let dst_dir = target_root.join(skill_name);
+        copy_dir_non_destructively(&src_dir, &dst_dir, report)?;
+    }
     Ok(())
 }
 

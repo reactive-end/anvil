@@ -1,4 +1,4 @@
-//! Tier 0 rule: block silent permission assumptions (e.g. empty `RequestPermission` callbacks).
+//! Tier 0 rule: block silent permission assumptions (unhandled callbacks or unchecked permission APIs).
 
 use anvil_core::traits::{Diagnostic, Language, Severity};
 use tree_sitter::Node;
@@ -7,45 +7,129 @@ use super::{RuleState, has_anvil_allow};
 
 const RULE_ID: &str = "no-unverified-permission";
 
-/// Flags permission request registrations that ignore the granted/denied outcome.
+/// Flags permission APIs and callbacks that ignore granted/denied outcomes.
 pub fn check_node(node: Node<'_>, state: &mut RuleState<'_>) {
-    if state.language != Language::Kotlin || node.kind() != "call_expression" {
-        return;
+    match state.language {
+        Language::Kotlin => check_kotlin_permission(node, state),
+        Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => {
+            check_js_ts_permission(node, state);
+        }
+        _ => {}
     }
+}
 
+fn check_kotlin_permission(node: Node<'_>, state: &mut RuleState<'_>) {
+    match node.kind() {
+        "call_expression" => check_kotlin_activity_result(node, state),
+        "function_declaration" => check_kotlin_permissions_result(node, state),
+        _ => {}
+    }
+}
+
+fn check_kotlin_activity_result(node: Node<'_>, state: &mut RuleState<'_>) {
     let text = &state.source[node.byte_range()];
     if !text.contains("registerForActivityResult")
         || (!text.contains("RequestPermission") && !text.contains("RequestMultiplePermissions"))
     {
         return;
     }
-
     let Some(lambda) = find_callback_lambda(node) else {
         return;
     };
-    let body_text = extract_lambda_body_code(lambda, state.source);
-    let handles_outcome = !body_text.is_empty()
-        && (body_text.contains("if")
-            || body_text.contains("when")
-            || body_text.contains('!'));
-
-    if handles_outcome {
+    let body = extract_lambda_body_code(lambda, state.source);
+    if !body.is_empty() && (body.contains("if") || body.contains("when") || body.contains('!')) {
         return;
     }
+    emit_diag(
+        node,
+        state,
+        "`registerForActivityResult(RequestPermission)` callback ignores the granted/denied outcome — never assume runtime permissions are accepted automatically",
+        "Branch on the `granted` result after window focus and provide a denial fallback (e.g. `Settings.ACTION_APP_NOTIFICATION_SETTINGS`)",
+    );
+}
 
+fn check_kotlin_permissions_result(node: Node<'_>, state: &mut RuleState<'_>) {
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
+    if &state.source[name_node.byte_range()] != "onRequestPermissionsResult" {
+        return;
+    }
+    let Some(body_node) = node.child_by_field_name("body") else {
+        return;
+    };
+    let code = strip_comments(&state.source[body_node.byte_range()]);
+    let checks_grant = code.contains("PERMISSION_GRANTED")
+        || (code.contains("grantResults")
+            && (code.contains("if") || code.contains("when") || code.contains("all") || code.contains("any")));
+    if checks_grant {
+        return;
+    }
+    emit_diag(
+        node,
+        state,
+        "`onRequestPermissionsResult` ignores `grantResults` — verify permission state explicitly and handle denial",
+        "Inspect `grantResults` against `PackageManager.PERMISSION_GRANTED` and provide a settings/UI fallback on denial",
+    );
+}
+
+fn check_js_ts_permission(node: Node<'_>, state: &mut RuleState<'_>) {
+    if node.kind() != "call_expression" {
+        return;
+    }
+    let text = &state.source[node.byte_range()];
+    if text.contains("Notification.requestPermission") {
+        let bare_stmt = node.parent().is_some_and(|p| p.kind() == "expression_statement");
+        let empty_then = has_empty_promise_then(node, state.source);
+        if bare_stmt || empty_then {
+            emit_diag(
+                node,
+                state,
+                "`Notification.requestPermission()` result is ignored — never assume browser permission is granted",
+                "Await the returned status (`status === 'granted'`) and handle `'denied'`/`'default'` states explicitly",
+            );
+        }
+    } else if text.contains("navigator.permissions.query") && has_empty_promise_then(node, state.source) {
+        emit_diag(
+            node,
+            state,
+            "`navigator.permissions.query().then(...)` ignores the permission state callback result",
+            "Inspect `status.state` (`'granted'`, `'prompt'`, `'denied'`) before acting on the permission",
+        );
+    }
+}
+
+fn has_empty_promise_then(inner_call: Node<'_>, source: &str) -> bool {
+    let Some(member) = inner_call.parent().filter(|p| p.kind() == "member_expression") else {
+        return false;
+    };
+    let Some(then_call) = member.parent().filter(|p| p.kind() == "call_expression") else {
+        return false;
+    };
+    let then_text = &source[then_call.byte_range()];
+    let Some((_, after_then)) = then_text.split_once(".then") else {
+        return false;
+    };
+    let code = strip_comments(after_then);
+    code.contains("=> {}")
+        || code.contains("=>{}")
+        || code.contains("function(){}")
+        || code.contains("function () {}")
+}
+
+fn emit_diag(node: Node<'_>, state: &mut RuleState<'_>, message: &str, suggestion: &str) {
     let line = node.start_position().row as u32 + 1;
     if has_anvil_allow(state, line, RULE_ID) {
         return;
     }
-
     state.diagnostics.push(Diagnostic {
         rule: RULE_ID.to_owned(),
         severity: Severity::Error,
         file: state.file.to_owned(),
         line,
         column: node.start_position().column as u32 + 1,
-        message: "`registerForActivityResult(RequestPermission)` callback does not handle the granted/denied outcome — never assume runtime permissions are accepted automatically".to_owned(),
-        suggestion: Some("Branch on the `granted` result after window focus and provide a denial fallback (e.g. `Settings.ACTION_APP_NOTIFICATION_SETTINGS`)".to_owned()),
+        message: message.to_owned(),
+        suggestion: Some(suggestion.to_owned()),
     });
 }
 
@@ -64,9 +148,7 @@ fn find_callback_lambda(call_node: Node<'_>) -> Option<Node<'_>> {
                 if sub.kind() == "value_argument" {
                     let mut arg_cur = sub.walk();
                     for arg_child in sub.named_children(&mut arg_cur) {
-                        if arg_child.kind() == "lambda_literal"
-                            || arg_child.kind() == "annotated_lambda"
-                        {
+                        if matches!(arg_child.kind(), "lambda_literal" | "annotated_lambda") {
                             return Some(arg_child);
                         }
                     }

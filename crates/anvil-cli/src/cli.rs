@@ -25,14 +25,21 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Initialize `.harness/` and thin adapters in a repository.
+    /// Initialize `.harness/` and thin adapters in a repository (and independent subprojects).
     Init {
         /// Target repository directory (defaults to current directory).
         #[arg(long)]
         path: Option<PathBuf>,
+        /// Target AI adapter (`auto`, `all`, `antigravity`, `claude`).
+        #[arg(long, default_value = "auto")]
+        adapter: String,
     },
-    /// Non-destructively sync `.harness/skills/` and adapter configs.
-    Sync,
+    /// Non-destructively sync skills, config tools, and adapter files.
+    Sync {
+        /// Target AI adapter (`auto`, `all`, `antigravity`, `claude`).
+        #[arg(long, default_value = "auto")]
+        adapter: String,
+    },
     /// Audit harness health, strict configs, graph, memory, identity, and stack tools.
     Doctor,
     /// Execute an Antigravity or Claude Code lifecycle hook reading JSON from stdin.

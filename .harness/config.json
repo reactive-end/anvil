@@ -3,8 +3,121 @@
   "stacks": [
     "rust"
   ],
-  "tools": [],
-  "subrepos": [],
+  "tools": [
+    "cargo"
+  ],
+  "subrepos": [
+    {
+      "name": "harness",
+      "path": ".",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-adapters",
+      "path": "crates/anvil-adapters",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-ast",
+      "path": "crates/anvil-ast",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-cli",
+      "path": "crates/anvil-cli",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-core",
+      "path": "crates/anvil-core",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-deps",
+      "path": "crates/anvil-deps",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-graph",
+      "path": "crates/anvil-graph",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-mcp",
+      "path": "crates/anvil-mcp",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-memory",
+      "path": "crates/anvil-memory",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-qa",
+      "path": "crates/anvil-qa",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    },
+    {
+      "name": "anvil-tasks",
+      "path": "crates/anvil-tasks",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ]
+    }
+  ],
   "tier_budgets": {
     "tier0_ms": 500,
     "tier1_secs": 15,
@@ -31,7 +144,8 @@
     "scripts",
     "tasks.json",
     "templates",
-    "tsconfig.json"
+    "tsconfig.json",
+    "src"
   ],
   "circuit_breaker_limit": 3,
   "deps_max_age_months": 24,
@@ -39,6 +153,7 @@
     "web": "unconfigured",
     "mobile": "unconfigured"
   },
+  "adapters": "all",
   "allowed_escapes": [
     "anvil-allow"
   ]

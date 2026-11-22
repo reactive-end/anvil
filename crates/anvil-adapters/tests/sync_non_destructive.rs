@@ -93,10 +93,31 @@ fn init_and_sync_preserve_preexisting_skills() {
     );
 
     for skill in templates::EMBEDDED_SKILLS {
-        assert!(root.join(".harness/skills").join(skill.name).join("SKILL.md").exists());
+        assert!(!root.join(".harness/skills").join(skill.name).exists());
         assert!(root.join(".agents/skills").join(skill.name).join("SKILL.md").exists());
         assert!(root.join(".claude/skills").join(skill.name).join("SKILL.md").exists());
     }
+}
+
+#[test]
+fn single_adapter_selection_skips_unused_adapter_and_avoids_duplication() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    fs::write(root.join("build.gradle.kts"), "plugins {}").expect("gradle");
+
+    let custom = root.join(".harness/skills/android-custom/SKILL.md");
+    fs::create_dir_all(custom.parent().unwrap()).expect("mkdir custom");
+    fs::write(&custom, "# Custom Android Skill\n").expect("write custom skill");
+
+    sync::init_repo_with_adapter(root, Some(anvil_core::config::AdapterTarget::Antigravity))
+        .expect("init antigravity only");
+
+    assert!(root.join(".agents/hooks.json").exists());
+    assert!(root.join(".agents/skills/android-custom/SKILL.md").exists());
+    assert!(root.join("AGENTS.md").exists());
+    assert!(!root.join(".claude").exists());
+    assert!(!root.join("CLAUDE.md").exists());
+    assert!(!root.join(".mcp.json").exists());
 }
 
 #[test]

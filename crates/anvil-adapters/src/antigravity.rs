@@ -24,6 +24,12 @@ struct RawAntigravityInput {
     last_user_input: Option<String>,
     #[serde(alias = "tool_call")]
     tool_call: Option<RawToolCall>,
+    #[serde(alias = "name", alias = "tool_name")]
+    tool_name: Option<String>,
+    #[serde(alias = "input", alias = "arguments", alias = "tool_input")]
+    tool_input: Option<Value>,
+    #[serde(alias = "output", alias = "response", alias = "tool_output")]
+    tool_output: Option<Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -61,9 +67,9 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         event,
         cwd: raw.cwd,
         session_id: raw.session_id,
-        tool_name: tool_call.tool_name,
-        tool_input: tool_call.tool_input,
-        tool_output: tool_call.tool_output,
+        tool_name: tool_call.tool_name.or(raw.tool_name),
+        tool_input: tool_call.tool_input.or(raw.tool_input),
+        tool_output: tool_call.tool_output.or(raw.tool_output),
         prompt: raw.prompt,
         user_prompt,
     })

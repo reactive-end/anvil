@@ -3,11 +3,42 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+/// Target AI coding assistants whose adapter files are synchronized by `anvil init` / `anvil sync`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdapterTarget {
+    #[default]
+    All,
+    Antigravity,
+    Claude,
+}
+
+impl AdapterTarget {
+    /// Parses CLI `--adapter` values (`auto` returns `Ok(None)`).
+    pub fn parse_cli(raw: &str) -> Result<Option<Self>> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" | "" => Ok(None),
+            "all" | "both" => Ok(Some(Self::All)),
+            "antigravity" | "agy" => Ok(Some(Self::Antigravity)),
+            "claude" | "claude_code" | "claude-code" => Ok(Some(Self::Claude)),
+            other => bail!("unsupported adapter target `{other}` (expected auto|all|antigravity|claude)"),
+        }
+    }
+
+    pub fn includes_antigravity(self) -> bool {
+        matches!(self, Self::All | Self::Antigravity)
+    }
+
+    pub fn includes_claude(self) -> bool {
+        matches!(self, Self::All | Self::Claude)
+    }
+}
+
 /// Supported project technology stacks detected in target repositories.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StackKind {
     React,
@@ -25,7 +56,7 @@ pub enum StackKind {
 }
 
 /// Supported linters, typecheckers, and QA tools detected in a repository.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolKind {
     Eslint,
@@ -135,6 +166,8 @@ pub struct AnvilConfig {
     pub deps_max_age_months: u32,
     #[serde(default)]
     pub qa_driver: QaDriverConfig,
+    #[serde(default)]
+    pub adapters: AdapterTarget,
     #[serde(default = "default_allowed_escapes")]
     pub allowed_escapes: Vec<String>,
 }
@@ -151,6 +184,7 @@ impl Default for AnvilConfig {
             circuit_breaker_limit: default_circuit_breaker_limit(),
             deps_max_age_months: default_deps_max_age_months(),
             qa_driver: QaDriverConfig::default(),
+            adapters: AdapterTarget::default(),
             allowed_escapes: default_allowed_escapes(),
         }
     }

@@ -20,7 +20,7 @@ use crate::commands::ExitCodeError;
 pub fn execute(root: &Path) -> Result<()> {
     let mut failures = 0usize;
     let config = check_config(root, &mut failures);
-    check_adapters(root, &mut failures);
+    check_adapters(root, &config, &mut failures);
     check_tsconfig_strict(root, &config, &mut failures);
     check_graph_index(root);
     let author = check_identity(root);
@@ -53,18 +53,25 @@ fn check_config(root: &Path, failures: &mut usize) -> AnvilConfig {
     }
 }
 
-fn check_adapters(root: &Path, failures: &mut usize) {
-    let required = [
-        antigravity::config::hooks_config_path(root),
-        antigravity::config::mcp_config_path(root),
-        claude_code::config::settings_config_path(root),
-        claude_code::config::mcp_config_path(root),
-        root.join("AGENTS.md"),
-        root.join("CLAUDE.md"),
-    ];
+fn check_adapters(root: &Path, config: &AnvilConfig, failures: &mut usize) {
+    let mut required = Vec::new();
+    if config.adapters.includes_antigravity() {
+        required.extend([
+            antigravity::config::hooks_config_path(root),
+            antigravity::config::mcp_config_path(root),
+            root.join("AGENTS.md"),
+        ]);
+    }
+    if config.adapters.includes_claude() {
+        required.extend([
+            claude_code::config::settings_config_path(root),
+            claude_code::config::mcp_config_path(root),
+            root.join("CLAUDE.md"),
+        ]);
+    }
     let missing: Vec<_> = required.into_iter().filter(|p| !p.exists()).collect();
     if missing.is_empty() {
-        println!("[OK]   adapters: Antigravity + Claude Code files present");
+        println!("[OK]   adapters: {:?} files present", config.adapters);
     } else {
         *failures += 1;
         println!(

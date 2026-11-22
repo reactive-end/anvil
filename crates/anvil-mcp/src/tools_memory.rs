@@ -26,26 +26,7 @@ fn handle_save(server: &mut McpServer, args: &Value) -> Result<Value> {
     if related_symbols.is_empty() && !related_files.is_empty()
         && let Ok(engine) = server.ensure_graph()
     {
-        for file in &related_files {
-            let norm = anvil_graph::model::CodeGraph::normalize_rel_path(file);
-            if let Some(nids) = engine.graph.file_nodes.get(&norm) {
-                for &nid in nids {
-                    if let Some(node) = engine.graph.get_node(nid)
-                        && node.kind == anvil_graph::model::NodeKind::Symbol
-                        && node.exported
-                        && !related_symbols.iter().any(|s| s == &node.label)
-                    {
-                        related_symbols.push(node.label.clone());
-                        if related_symbols.len() >= 8 {
-                            break;
-                        }
-                    }
-                }
-            }
-            if related_symbols.len() >= 8 {
-                break;
-            }
-        }
+        related_symbols = engine.exported_symbols_for_files(&related_files, 8);
     }
     let input = ObservationInput {
         topic_key: optional_str(args, "topic_key").map(str::to_owned),

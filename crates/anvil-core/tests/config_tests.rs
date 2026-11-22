@@ -84,6 +84,7 @@ fn config_load_strips_utf8_bom_and_kotlin_allowlist_populated() -> Result<()> {
             rel_path: ".".to_owned(),
             stacks: vec![StackKind::KotlinAndroid],
             tools: vec![],
+            has_git: false,
         }],
     };
     let mut cfg = AnvilConfig::default();

@@ -32,7 +32,7 @@ use crate::daemon::try_request;
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
 use payload::{
     extract_command_field, extract_rel_file, is_circuit_recovery_command, is_mutating_file_tool,
-    is_read_only_tool, resolve_hook_root, should_bypass_stop, should_wrap_with_anvil_run,
+    is_read_only_tool, resolve_hook_targets, should_bypass_stop, should_wrap_with_anvil_run,
 };
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
@@ -47,7 +47,8 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         AdapterKind::Antigravity => antigravity::parse_input(&raw_stdin, Some(event))?,
         AdapterKind::ClaudeCode => claude_code::parse_input(&raw_stdin, Some(event))?,
     };
-    let effective_root = resolve_hook_root(root, input.cwd.as_deref());
+    let (effective_root, fallback_prompt_root) =
+        resolve_hook_targets(root, input.cwd.as_deref(), input.tool_input.as_ref());
     let config = AnvilConfig::load_or_default(&effective_root)?;
 
     let outcome = match event {
@@ -56,7 +57,12 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
             task_auto::handle_prompt_hook(&effective_root, &input)
         }
         HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input),
-        HookEvent::PostToolUse => handle_post_tool_use(&effective_root, &config, &input),
+        HookEvent::PostToolUse => handle_post_tool_use(
+            &effective_root,
+            fallback_prompt_root.as_deref(),
+            &config,
+            &input,
+        ),
         HookEvent::Stop => handle_stop(&effective_root, &config, should_bypass_stop(&raw_stdin)),
     };
 
@@ -155,6 +161,7 @@ fn handle_pre_tool_use(
 
 fn handle_post_tool_use(
     root: &Path,
+    fallback_prompt_root: Option<&Path>,
     config: &AnvilConfig,
     input: &NormalizedHookInput,
 ) -> HookOutcome {
@@ -184,7 +191,9 @@ fn handle_post_tool_use(
         if let Ok(mut mem) = MemoryEngine::open_without_sync(root, "hook") {
             let _ = mem.mark_files_changed(std::slice::from_ref(&rel));
         }
-        if let Ok(Some(state)) = anvil_tasks::materialize_task_on_edit(root, &rel) {
+        if let Ok(Some(state)) =
+            anvil_tasks::materialize_task_on_edit_with_fallback(root, &rel, fallback_prompt_root)
+        {
             messages.push(InboxMessage::new(
                 "anvil-tasks",
                 MessageLevel::Info,
@@ -215,6 +224,9 @@ fn handle_stop(root: &Path, config: &AnvilConfig, bypass_stop: bool) -> HookOutc
             msg,
             None,
         )]);
+    }
+    if let Some(sub_block) = check_subrepo_stop_gates(root, config) {
+        return sub_block;
     }
     let changed = git::changed_files(root, DiffScope::WorkingTree).unwrap_or_default();
     if changed.is_empty() {
@@ -253,4 +265,38 @@ fn handle_stop(root: &Path, config: &AnvilConfig, bypass_stop: bool) -> HookOutc
         ));
     }
     HookOutcome::with_messages(messages)
+}
+
+fn check_subrepo_stop_gates(root: &Path, config: &AnvilConfig) -> Option<HookOutcome> {
+    if root.join(".git").exists() || config.subrepos.is_empty() {
+        return None;
+    }
+    for sub in &config.subrepos {
+        if sub.path == "." {
+            continue;
+        }
+        let sub_dir = root.join(&sub.path);
+        if !sub_dir.join(".harness").is_dir() {
+            continue;
+        }
+        task_auto::refresh_tasks_json_if_changed(&sub_dir);
+        let sub_cfg = AnvilConfig::load_or_default(&sub_dir).unwrap_or_else(|_| config.clone());
+        let sub_changed = git::changed_files(&sub_dir, DiffScope::WorkingTree).unwrap_or_default();
+        if sub_changed.is_empty() {
+            continue;
+        }
+        let errs = collect_changed_gate_errors(&sub_dir, &sub_changed, &sub_cfg);
+        if !errs.is_empty() {
+            return Some(HookOutcome::block_stop(format!(
+                "Tier 0 AST gate failed in `{}` ({} error(s)): {}",
+                sub.path,
+                errs.len(),
+                errs.join("; ")
+            )));
+        }
+        if let Some(block) = task_auto::check_pending_task_summary(&sub_dir, &sub_changed) {
+            return Some(block);
+        }
+    }
+    None
 }

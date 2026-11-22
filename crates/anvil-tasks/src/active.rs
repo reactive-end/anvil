@@ -157,6 +157,16 @@ pub fn record_pending_prompt(repo: &Path, prompt: &str) -> Result<bool> {
 /// `pending-prompt.json`), or appends `rel_path` if an `InProgress` task is already active.
 /// Returns `Ok(Some(state))` ONLY when a new task was created on this edit.
 pub fn materialize_task_on_edit(repo: &Path, rel_path: &str) -> Result<Option<ActiveTaskState>> {
+    materialize_task_on_edit_with_fallback(repo, rel_path, None)
+}
+
+/// Same as [`materialize_task_on_edit`], falling back to `fallback_prompt_root`'s recent
+/// `pending-prompt.json` when edits originate from a parent multi-repo workspace.
+pub fn materialize_task_on_edit_with_fallback(
+    repo: &Path,
+    rel_path: &str,
+    fallback_prompt_root: Option<&Path>,
+) -> Result<Option<ActiveTaskState>> {
     let norm = rel_path.trim().replace('\\', "/");
     let norm = norm.strip_prefix("./").unwrap_or(&norm);
     if norm.is_empty() || norm.starts_with(".harness/") || norm == "tasks.json" {
@@ -178,7 +188,8 @@ pub fn materialize_task_on_edit(repo: &Path, rel_path: &str) -> Result<Option<Ac
                 return Ok(None);
             }
 
-            let pending = load_pending_prompt_unlocked(repo)?;
+            let pending = load_pending_prompt_unlocked(repo)?
+                .or_else(|| load_fresh_fallback_prompt(fallback_prompt_root));
             let (request, prompt_hash) = match pending {
                 Some(p) => (p.prompt, p.prompt_hash),
                 None => {
@@ -203,6 +214,13 @@ pub fn materialize_task_on_edit(repo: &Path, rel_path: &str) -> Result<Option<Ac
             Ok(Some(state))
         },
     )
+}
+
+fn load_fresh_fallback_prompt(fallback_root: Option<&Path>) -> Option<PendingPrompt> {
+    let root = fallback_root?;
+    let p = load_pending_prompt_unlocked(root).ok().flatten()?;
+    let age_secs = (Utc::now() - p.recorded_at).num_seconds();
+    (age_secs <= 600).then_some(p)
 }
 
 /// Appends a mutated repo-relative file path to the active `InProgress` task under lock.
