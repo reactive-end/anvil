@@ -1,5 +1,6 @@
 //! Tier 0 deterministic AST rule orchestration and structured `anvil-allow` validation.
 
+pub mod assumptions;
 pub mod barrels;
 pub mod comments;
 pub mod escape_hatches;
@@ -28,6 +29,7 @@ const ESCAPE_RULES: &[&str] = &[
     "no-suppress",
     "no-rust-allow",
     "no-unsafe",
+    "no-unverified-permission",
 ];
 
 /// Per-file state shared across Tier 0 AST rules during a single walk.
@@ -185,6 +187,7 @@ pub fn check_node(node: Node<'_>, state: &mut RuleState<'_>) {
 
     escape_hatches::check_ast_escape(node, state);
     strict_types::check_node(node, state);
+    assumptions::check_node(node, state);
 }
 
 /// Evaluates file-level structural rules (barrels, root hygiene) after or around the AST walk.

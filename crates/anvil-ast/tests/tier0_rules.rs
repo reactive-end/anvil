@@ -174,3 +174,41 @@ fn root_hygiene_checks_relative_root_files_against_allowlist() {
         .expect("nested");
     assert!(nested.diagnostics.is_empty());
 }
+
+#[test]
+fn kotlin_unverified_permission_callback_is_flagged_while_handled_passes() {
+    let cfg = default_cfg();
+    let bad_kt = r#"
+class MainActivity {
+    val launcher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* assumed granted */ }
+}
+"#;
+    let bad = analyze_file(Path::new("app/MainActivity.kt"), bad_kt, &cfg).expect("parse bad kt");
+    assert!(
+        bad.diagnostics.iter().any(|d| d.rule == "no-unverified-permission"),
+        "expected no-unverified-permission diagnostic, got: {:?}",
+        bad.diagnostics
+    );
+
+    let good_kt = r#"
+class MainActivity {
+    val launcher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            notifyReady()
+        } else {
+            openSettings()
+        }
+    }
+}
+"#;
+    let good = analyze_file(Path::new("app/MainActivity.kt"), good_kt, &cfg).expect("parse good kt");
+    assert!(
+        !good.diagnostics.iter().any(|d| d.rule == "no-unverified-permission"),
+        "expected 0 permission diagnostics, got: {:?}",
+        good.diagnostics
+    );
+}

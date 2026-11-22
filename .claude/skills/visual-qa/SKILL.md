@@ -24,10 +24,12 @@ Never rely on screenshots alone. Run objective checks first via `anvil qa`:
   - No clipped/overflowing text outside scrollable containers without intentional `text-overflow: ellipsis`
   - No overlapping interactive bounding boxes (`button`, `a`, `input`, `[role="button"]`)
   - No collapsed `0x0` visible controls and no broken images (`naturalWidth === 0`)
-- **Mobile (View-Tree / Logcat)**:
+- **Mobile (View-Tree / Logcat / Permissions)**:
   - `adb logcat` contains zero `FATAL EXCEPTION` or `ANR`
   - `uiautomator dump` / `mobile-mcp` shows no truncated labels or off-viewport interactive nodes
   - No overlapping interactive bounds; verify Roborazzi screenshot diffs when configured
+  - **Never assume runtime permissions (`POST_NOTIFICATIONS`, `CAMERA`, `LOCATION`, etc.) are pre-granted**: never mask missing prompts with `adb pm grant` before verifying that cold start requests the permission *after* window focus and handles denial/settings fallback (`Settings.ACTION_APP_NOTIFICATION_SETTINGS`)
+  - When bridging or inspecting webviews/SPAs, inspect actual DOM & open `shadowRoot` trees first instead of assuming light-DOM `document.body.innerText`
 
 ## 3. Directed Visual Inspection
 

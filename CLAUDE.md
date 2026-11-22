@@ -25,5 +25,6 @@
    - Forbidden unless structured `anvil-allow(<rule>): <reason> [<ref>]`: `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `!important`, `# noqa`, `@Suppress`, `TODO`/`FIXME`/`HACK`.
    - Avoid pure barrel files (`index.ts`) and unapproved root files.
 4. **Skills**: Follow `.claude/skills/` (`subagent-routing`, `visual-qa`, `ratchet-review`, `memory-hygiene`).
-5. **Automatic Task Tracking (Mandatory)**: Tasks are auto-created by hooks on user prompts; before concluding any code-editing turn, ALWAYS record a concise summary with `anvil tasks done <ID> "<summary>"` (or `anvil tasks update <ID> "<summary>"` if still in progress).
+5. **Automatic Task Tracking (Mandatory)**: Tasks materialize lazily on the first edited file; before concluding any code-editing turn, ALWAYS record a concise summary with `anvil tasks done <ID> "<summary>"` (or `anvil tasks update <ID> "<summary>"` if still in progress).
+6. **Zero Unverified Assumptions (Evidence First)**: Never assume runtime permissions, auth/session state, DOM structure (e.g. Shadow DOM vs light DOM), or config constraints without gathering runtime/source facts first. Always verify permission grant state after window focus and handle denial with an explicit settings/UI fallback (never empty `RequestPermission` callbacks or `adb pm grant` shortcuts).
 <!-- anvil:managed:end -->
