@@ -21,6 +21,32 @@ pub fn call_memory_tool(server: &mut McpServer, name: &str, args: &Value) -> Res
 fn handle_save(server: &mut McpServer, args: &Value) -> Result<Value> {
     let kind_raw = required_str(args, "kind")?;
     let kind: MemoryKind = kind_raw.parse()?;
+    let related_files = string_array_arg(args, "related_files");
+    let mut related_symbols = string_array_arg(args, "related_symbols");
+    if related_symbols.is_empty() && !related_files.is_empty()
+        && let Ok(engine) = server.ensure_graph()
+    {
+        for file in &related_files {
+            let norm = anvil_graph::model::CodeGraph::normalize_rel_path(file);
+            if let Some(nids) = engine.graph.file_nodes.get(&norm) {
+                for &nid in nids {
+                    if let Some(node) = engine.graph.get_node(nid)
+                        && node.kind == anvil_graph::model::NodeKind::Symbol
+                        && node.exported
+                        && !related_symbols.iter().any(|s| s == &node.label)
+                    {
+                        related_symbols.push(node.label.clone());
+                        if related_symbols.len() >= 8 {
+                            break;
+                        }
+                    }
+                }
+            }
+            if related_symbols.len() >= 8 {
+                break;
+            }
+        }
+    }
     let input = ObservationInput {
         topic_key: optional_str(args, "topic_key").map(str::to_owned),
         kind,
@@ -31,8 +57,8 @@ fn handle_save(server: &mut McpServer, args: &Value) -> Result<Value> {
             .or_else(|_| required_str(args, "location"))?
             .to_owned(),
         learned: required_str(args, "learned")?.to_owned(),
-        related_files: string_array_arg(args, "related_files"),
-        related_symbols: string_array_arg(args, "related_symbols"),
+        related_files,
+        related_symbols,
         ttl_seconds: args.get("ttl_seconds").and_then(Value::as_i64),
     };
 

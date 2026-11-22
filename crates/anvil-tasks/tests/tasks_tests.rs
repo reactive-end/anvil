@@ -279,3 +279,37 @@ fn record_touched_file_accumulates_unique_project_paths() {
     assert_eq!(active.task_id, state.task_id);
     assert_eq!(active.touched_files, vec!["src/auth.kt", "src/webview.kt"]);
 }
+
+#[test]
+fn lazy_task_materializes_only_on_real_file_edit() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    let recorded = anvil_tasks::record_pending_prompt(
+        tmp.path(),
+        "Analyze files only without making edits",
+    )
+    .expect("record pending prompt");
+    assert!(recorded);
+    assert!(list_tasks(tmp.path()).expect("list tasks").is_empty());
+
+    let ignored = anvil_tasks::materialize_task_on_edit(tmp.path(), ".harness/config.json")
+        .expect("ignore harness path");
+    assert!(ignored.is_none());
+    assert!(list_tasks(tmp.path()).expect("list tasks").is_empty());
+
+    let created = anvil_tasks::materialize_task_on_edit(tmp.path(), "src/main.rs")
+        .expect("materialize on real edit")
+        .expect("task created");
+    assert_eq!(created.touched_files, vec!["src/main.rs"]);
+    assert_eq!(list_tasks(tmp.path()).expect("list tasks").len(), 1);
+
+    let second = anvil_tasks::materialize_task_on_edit(tmp.path(), "src/lib.rs")
+        .expect("append second file");
+    assert!(second.is_none());
+    let active = anvil_tasks::load_active_task(tmp.path())
+        .expect("load active")
+        .expect("active exists");
+    assert_eq!(active.touched_files, vec!["src/lib.rs", "src/main.rs"]);
+}

@@ -20,7 +20,7 @@ pub fn execute(root: &Path, sub: MemSubcmd) -> Result<()> {
     let mut mem = MemoryEngine::open_without_sync(root, author)?;
 
     match sub {
-        save_sub @ MemSubcmd::Save { .. } => cmd_save(&mut mem, save_sub)?,
+        save_sub @ MemSubcmd::Save { .. } => cmd_save(root, &mut mem, save_sub)?,
         MemSubcmd::Search { query, kind, limit } => {
             let _ = mem.sync();
             cmd_search(&mem, &query, kind.as_deref(), limit)?;
@@ -56,7 +56,7 @@ pub fn execute(root: &Path, sub: MemSubcmd) -> Result<()> {
     Ok(())
 }
 
-fn cmd_save(mem: &mut MemoryEngine, sub: MemSubcmd) -> Result<()> {
+fn cmd_save(root: &Path, mem: &mut MemoryEngine, sub: MemSubcmd) -> Result<()> {
     let MemSubcmd::Save {
         kind,
         title,
@@ -72,6 +72,11 @@ fn cmd_save(mem: &mut MemoryEngine, sub: MemSubcmd) -> Result<()> {
     else {
         return Ok(());
     };
+    let resolved_symbols = if symbols.is_empty() && !files.is_empty() {
+        infer_symbols_from_graph(root, &files)
+    } else {
+        symbols
+    };
     let obs = mem.save(ObservationInput {
         topic_key,
         kind: kind.parse()?,
@@ -81,11 +86,45 @@ fn cmd_save(mem: &mut MemoryEngine, sub: MemSubcmd) -> Result<()> {
         location,
         learned,
         related_files: files,
-        related_symbols: symbols,
+        related_symbols: resolved_symbols,
         ttl_seconds: ttl,
     })?;
-    println!("saved memory id={} topic_key={} kind={}", obs.id, obs.topic_key, obs.kind);
+    println!(
+        "saved memory id={} topic_key={} kind={} symbols={}",
+        obs.id,
+        obs.topic_key,
+        obs.kind,
+        obs.related_symbols.len()
+    );
     Ok(())
+}
+
+fn infer_symbols_from_graph(root: &Path, files: &[String]) -> Vec<String> {
+    let Ok(cfg) = AnvilConfig::load_or_default(root) else {
+        return Vec::new();
+    };
+    let Ok(engine) = CodeGraphEngine::load_cached(root, cfg) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for file in files {
+        let norm = anvil_graph::model::CodeGraph::normalize_rel_path(file);
+        if let Some(nids) = engine.graph.file_nodes.get(&norm) {
+            for &nid in nids {
+                if let Some(node) = engine.graph.get_node(nid)
+                    && node.kind == anvil_graph::model::NodeKind::Symbol
+                    && node.exported
+                    && !out.iter().any(|s| s == &node.label)
+                {
+                    out.push(node.label.clone());
+                    if out.len() >= 8 {
+                        return out;
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 fn cmd_search(mem: &MemoryEngine, query: &str, kind: Option<&str>, limit: usize) -> Result<()> {

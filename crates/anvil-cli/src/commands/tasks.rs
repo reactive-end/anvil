@@ -8,8 +8,8 @@ use anyhow::{Result, bail};
 use anvil_core::git::{self, DiffScope};
 use anvil_tasks::{
     TaskStatus, activate_task_from_meta, append_entry, append_entry_as, build_root_tasks_json,
-    list_tasks, load_active_task, mark_summary_recorded, resolve_author, resolve_merge, start_task,
-    start_task_as, write_task_plan,
+    list_tasks, load_active_task, mark_summary_recorded_with_files, resolve_author, resolve_merge,
+    start_task, start_task_as, write_task_plan,
 };
 
 use crate::cli::subcmds::TasksSubcmd;
@@ -69,7 +69,7 @@ fn cmd_append(
         None => append_entry(root, task_id, status, summary, &resolved_files)?,
     };
     let consolidated = build_root_tasks_json(root)?;
-    mark_summary_recorded(root, task_id, status)?;
+    mark_summary_recorded_with_files(root, task_id, status, &entry.files_touched)?;
     println!(
         "updated {} [{}] entry={} files={} (tasks.json total={})",
         task_id,
@@ -78,7 +78,20 @@ fn cmd_append(
         entry.files_touched.len(),
         consolidated.task_count
     );
+    if status == TaskStatus::Done && !entry.files_touched.is_empty() && looks_like_learning(summary)
+    {
+        println!(
+            "memory-hint: consider saving durable root-cause/decision via `anvil mem save` (or MCP `mem_save`) with related_files."
+        );
+    }
     Ok(())
+}
+
+fn looks_like_learning(summary: &str) -> bool {
+    let lower = summary.to_ascii_lowercase();
+    ["fix", "bug", "error", "gotcha", "workaround", "auth", "oauth", "2fa", "corr", "fallback"]
+        .iter()
+        .any(|kw| lower.contains(kw))
 }
 
 /// Uses explicit `--files` when provided; otherwise auto-collects files from `active-task.json`

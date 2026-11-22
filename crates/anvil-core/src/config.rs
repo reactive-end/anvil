@@ -42,6 +42,8 @@ pub enum ToolKind {
     Pytest,
     Roborazzi,
     SonarQube,
+    Cargo,
+    Gradle,
 }
 
 /// Configuration for a single repository or subrepo within a multi-repo workspace.
@@ -223,18 +225,15 @@ fn default_root_allowlist() -> Vec<String> {
     [
         ".agents",
         ".claude",
+        ".gitattributes",
         ".gitignore",
         ".harness",
         ".mcp.json",
         "AGENTS.md",
         "CLAUDE.md",
-        "Cargo.lock",
-        "Cargo.toml",
         "LICENSE",
         "README.md",
-        "package.json",
         "tasks.json",
-        "tsconfig.json",
     ]
     .into_iter()
     .map(str::to_owned)

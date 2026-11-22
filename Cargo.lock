@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-adapters"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-core",
  "anyhow",
@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-ast"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-core",
  "anyhow",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-adapters",
  "anvil-ast",
@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "blake3",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-deps"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-core",
  "anyhow",
@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-graph"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-ast",
  "anvil-core",
@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-mcp"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-core",
  "anvil-graph",
@@ -208,7 +208,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-memory"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-core",
  "anyhow",
@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-qa"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-core",
  "anyhow",
@@ -237,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-tasks"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anvil-core",
  "anyhow",

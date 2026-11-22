@@ -167,7 +167,7 @@ fn root_hygiene_checks_relative_root_files_against_allowlist() {
     assert_eq!(bad.diagnostics.len(), 1);
     assert_eq!(bad.diagnostics[0].rule, "root-hygiene");
 
-    let allowed = analyze_file(Path::new("tsconfig.json"), "{}", &cfg).expect("root allowlist");
+    let allowed = analyze_file(Path::new("tasks.json"), "{}", &cfg).expect("root allowlist");
     assert!(allowed.diagnostics.is_empty());
 
     let nested = analyze_file(Path::new("src/scratch_notes.ts"), "export const x = 1;", &cfg)

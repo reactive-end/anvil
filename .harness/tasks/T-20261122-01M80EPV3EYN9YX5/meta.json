@@ -1,0 +1,6 @@
+{
+  "task_id": "T-20261122-01M80EPV3EYN9YX5",
+  "created_by": "reactive-end",
+  "request": "Release anvil v0.3.2: lazy tasks, git -uall, symbolic-ref branch, stack allowlist, auto memory symbols",
+  "created_at": "2026-11-22T01:42:38.446008300Z"
+}

@@ -53,6 +53,25 @@ impl WorkspaceDetection {
 
 fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
     let mut extras: Vec<&'static str> = Vec::new();
+    let has_js = config.stacks.iter().any(|s| {
+        matches!(
+            s,
+            StackKind::React
+                | StackKind::Vite
+                | StackKind::NextJs
+                | StackKind::Astro
+                | StackKind::Angular
+                | StackKind::NestJs
+                | StackKind::ExpoReactNative
+                | StackKind::TypeScript
+        )
+    });
+    if has_js {
+        extras.extend(["package.json", "tsconfig.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"]);
+    }
+    if config.stacks.contains(&StackKind::Rust) {
+        extras.extend(["Cargo.toml", "Cargo.lock", "clippy.toml", "crates", "src"]);
+    }
     if config.stacks.contains(&StackKind::KotlinAndroid) {
         extras.extend([
             "app",

@@ -75,8 +75,14 @@ fn normalize_lexical(path: &Path) -> PathBuf {
     out
 }
 
-/// Returns the active branch name (or `HEAD` when detached).
+/// Returns the active branch name (using `symbolic-ref` fallback for unborn `HEAD`, or `HEAD` when detached).
 pub fn current_branch(repo_root: &Path) -> Result<String> {
+    if let Ok(sym) = run_git(repo_root, &["symbolic-ref", "--short", "HEAD"]) {
+        let name = sym.trim();
+        if !name.is_empty() {
+            return Ok(name.to_owned());
+        }
+    }
     let out = run_git(repo_root, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     Ok(out.trim().to_owned())
 }
@@ -89,7 +95,7 @@ pub fn head_commit(repo_root: &Path) -> Result<String> {
 
 /// Inspects added, modified, deleted, and untracked files in one NUL-delimited `git status` call.
 pub fn working_tree_status(repo_root: &Path) -> Result<WorkingTreeStatus> {
-    let out = run_git_unquoted(repo_root, &["status", "--porcelain=v1", "-z"])?;
+    let out = run_git_unquoted(repo_root, &["status", "--porcelain=v1", "-z", "-uall"])?;
     let mut status = WorkingTreeStatus::default();
     let mut entries = out.split('\0');
 

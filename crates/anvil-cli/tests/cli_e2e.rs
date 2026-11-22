@@ -215,75 +215,63 @@ fn cli_hooks_antigravity_and_claude_roundtrip() {
     assert_eq!(serde_json::from_str::<Value>(&stop_out).unwrap()["decision"], json!("allow"));
 }
 
+fn fire_claude_edit(root: &Path, rel: &str) -> Value {
+    let edit = json!({
+        "hook_event_name": "PostToolUse",
+        "cwd": root.to_string_lossy(),
+        "tool_name": "Edit",
+        "tool_input": { "file_path": root.join(rel).to_string_lossy() }
+    });
+    let out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "claude"], &edit.to_string()),
+        "claude PostToolUse",
+    );
+    serde_json::from_str(&out).unwrap()
+}
+
 #[test]
 fn cli_hands_free_task_tracking_hooks_e2e() {
     let repo = setup_git_ts_repo();
     let root = repo.path();
     assert_ok(&run_anvil(root, &["init"]), "init");
-
-    // Commit initial fixture files so git working tree starts clean.
     Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
     Command::new("git").args(["commit", "-m", "initial"]).current_dir(root).output().unwrap();
 
-    let prompt1 = json!({
-        "hook_event_name": "UserPromptSubmit",
-        "cwd": root.to_string_lossy(),
-        "prompt": "Implement automatic task tracking"
-    });
-    let out1 = assert_ok(
-        &run_anvil_stdin(root, &["hook", "user-prompt-submit", "--adapter", "claude"], &prompt1.to_string()),
-        "claude UserPromptSubmit 1",
-    );
-    let json1: Value = serde_json::from_str(&out1).unwrap();
+    // Prompt hook records pending prompt lazily without creating a task on disk yet.
+    let prompt1 = json!({ "hook_event_name": "UserPromptSubmit", "cwd": root.to_string_lossy(), "prompt": "Implement automatic task tracking" });
+    assert_ok(&run_anvil_stdin(root, &["hook", "user-prompt-submit", "--adapter", "claude"], &prompt1.to_string()), "prompt1");
+    assert!(anvil_tasks::list_tasks(root).unwrap().is_empty());
+
+    // First mutating PostToolUse materializes the task lazily and records the touched file.
+    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 3;\n}\n").unwrap();
+    let json1 = fire_claude_edit(root, "src/core.ts");
     let ctx1 = json1["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
     assert!(ctx1.contains("Auto-registered task T-"));
     let task_id1 = ctx1.split_whitespace().find(|t| t.starts_with("T-")).unwrap().trim_end_matches('.').to_owned();
 
     // Follow-up prompt reuses the same in-progress task without creating a duplicate.
-    let prompt2 = json!({
-        "hookEventName": "PreInvocation",
-        "cwd": root.to_string_lossy(),
-        "lastUserInput": "Also add edge case checks"
-    });
-    let out2 = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt2.to_string()),
-        "agy PreInvocation follow-up",
-    );
+    let prompt2 = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy(), "lastUserInput": "Also add edge case checks" });
+    let out2 = assert_ok(&run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt2.to_string()), "prompt2");
     assert_eq!(serde_json::from_str::<Value>(&out2).unwrap(), json!({}));
 
-    // Modify a source file -> Stop blocks once until `anvil tasks done` is recorded.
-    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 3;\n}\n").unwrap();
+    // Stop blocks once until `anvil tasks done` is recorded.
     let stop_req = json!({ "hook_event_name": "Stop", "cwd": root.to_string_lossy() });
-    let stop_blocked = assert_ok(
-        &run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()),
-        "claude stop blocked",
-    );
-    let blocked_json: Value = serde_json::from_str(&stop_blocked).unwrap();
-    assert_eq!(blocked_json["decision"], json!("block"));
-    assert!(blocked_json["reason"].as_str().unwrap().contains(&format!("anvil tasks done {task_id1}")));
+    let blocked: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "stop1")).unwrap();
+    assert_eq!(blocked["decision"], json!("block"));
+    assert!(blocked["reason"].as_str().unwrap().contains(&format!("anvil tasks done {task_id1}")));
 
     assert_ok(&run_anvil(root, &["tasks", "done", &task_id1, "Updated compute multiplier"]), "tasks done");
-    let stop_ok = assert_ok(
-        &run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()),
-        "claude stop allowed after done",
-    );
-    let ok_json: Value = serde_json::from_str(&stop_ok).unwrap();
+    let ok_json: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "stop2")).unwrap();
     assert!(ok_json["systemMessage"].as_str().unwrap().contains("1 impacted file(s)"));
 
-    // Next prompt after Done starts a new task.
-    let prompt3 = json!({
-        "hookEventName": "PreInvocation",
-        "cwd": root.to_string_lossy(),
-        "lastUserInput": "Add unit tests for page module"
-    });
-    let out3 = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt3.to_string()),
-        "agy PreInvocation new task",
-    );
-    let json3: Value = serde_json::from_str(&out3).unwrap();
-    let injected = json3["injectSteps"][0]["systemMessage"]["systemMessage"].as_str().unwrap();
-    assert!(injected.contains("Auto-registered task T-"));
-    assert!(!injected.contains(&task_id1));
+    // Next prompt after Done stays lazy until a file is actually edited.
+    let prompt3 = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy(), "lastUserInput": "Add unit tests for page module" });
+    assert_ok(&run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt3.to_string()), "prompt3");
+    assert_eq!(anvil_tasks::list_tasks(root).unwrap().len(), 1);
+
+    let json3 = fire_claude_edit(root, "src/page.tsx");
+    let ctx3 = json3["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+    assert!(ctx3.contains("Auto-registered task T-") && !ctx3.contains(&task_id1));
 }
 
 #[test]

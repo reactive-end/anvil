@@ -106,6 +106,7 @@ pub(super) fn detect_kotlin_android_stack(
         return Ok(());
     }
     stacks.insert(StackKind::KotlinAndroid);
+    tools.insert(ToolKind::Gradle);
     let gradle_texts = [
         dir.join("build.gradle.kts"),
         dir.join("app/build.gradle.kts"),
@@ -139,6 +140,7 @@ pub(super) fn detect_flutter_rust_tools(
     }
     if dir.join("Cargo.toml").exists() {
         stacks.insert(StackKind::Rust);
+        tools.insert(ToolKind::Cargo);
     }
     if dir.join("sonar-project.properties").exists() {
         tools.insert(ToolKind::SonarQube);

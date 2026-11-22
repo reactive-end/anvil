@@ -4,28 +4,19 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
-use anvil_adapters::contract::{HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput};
+use anvil_adapters::contract::{HookOutcome, NormalizedHookInput};
 use anvil_tasks::ledger::tasks_root;
-use anvil_tasks::{TaskStatus, build_root_tasks_json, ensure_task_for_prompt, load_active_task};
+use anvil_tasks::{
+    TaskStatus, build_root_tasks_json, load_active_task, record_pending_prompt,
+};
 
-/// Auto-creates or reuses an active task on Antigravity `PreInvocation` and Claude `UserPromptSubmit`.
+/// Records a pending user prompt in `.harness/.state/pending-prompt.json` (gitignored) without
+/// creating a task yet; tasks materialize lazily on the first real file edit in `PostToolUse`.
 pub fn handle_prompt_hook(root: &Path, input: &NormalizedHookInput) -> HookOutcome {
-    let Some(prompt) = input.user_prompt.as_deref() else {
-        return HookOutcome::allow();
-    };
-    let Ok(Some((state, true))) = ensure_task_for_prompt(root, prompt) else {
-        return HookOutcome::allow();
-    };
-    let msg = format!(
-        "Auto-registered task {}. When finished editing files, record a concise summary via: anvil tasks done {} \"<summary>\" (or update if still in progress).",
-        state.task_id, state.task_id
-    );
-    HookOutcome::with_messages(vec![InboxMessage::new(
-        "anvil-tasks",
-        MessageLevel::Info,
-        msg,
-        None,
-    )])
+    if let Some(prompt) = input.user_prompt.as_deref() {
+        let _ = record_pending_prompt(root, prompt);
+    }
+    HookOutcome::allow()
 }
 
 /// Rebuilds `tasks.json` ONLY when `.harness/tasks/` has newer metadata or entries than `tasks.json`.

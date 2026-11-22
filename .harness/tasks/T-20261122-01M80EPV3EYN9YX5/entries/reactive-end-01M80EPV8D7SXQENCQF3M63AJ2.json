@@ -1,0 +1,28 @@
+{
+  "entry_id": "01M80EPV8D7SXQENCQF3M63AJ2",
+  "task_id": "T-20261122-01M80EPV3EYN9YX5",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Corregidos todos los hallazgos de auditoria en anvil v0.3.2: materializacion lazy de tareas en PostToolUse, git status -uall, symbolic-ref para unborn HEAD, sync de touched_files en active-task.json, root_allowlist y ToolKind por stack, y auto-inferencia de related_symbols en memoria",
+  "files_touched": [
+    "Cargo.lock",
+    "Cargo.toml",
+    "crates/anvil-ast/tests/tier0_rules.rs",
+    "crates/anvil-cli/src/commands/doctor.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/task_auto.rs",
+    "crates/anvil-cli/src/commands/mem.rs",
+    "crates/anvil-cli/src/commands/tasks.rs",
+    "crates/anvil-cli/tests/cli_e2e.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/git.rs",
+    "crates/anvil-core/src/stack_detector.rs",
+    "crates/anvil-core/src/stack_detector/ecosystems.rs",
+    "crates/anvil-mcp/src/tools_memory.rs",
+    "crates/anvil-tasks/src/active.rs",
+    "crates/anvil-tasks/src/lib.rs",
+    "crates/anvil-tasks/tests/tasks_tests.rs"
+  ],
+  "timestamp": "2026-11-22T01:42:38.640533600Z"
+}

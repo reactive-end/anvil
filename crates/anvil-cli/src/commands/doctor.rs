@@ -248,7 +248,8 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
             ToolKind::Vitest => "vitest",
             ToolKind::Jest => "jest",
             ToolKind::Pytest => "pytest",
-            ToolKind::Roborazzi | ToolKind::SonarQube => continue,
+            ToolKind::Cargo => "cargo",
+            ToolKind::Gradle | ToolKind::Roborazzi | ToolKind::SonarQube => continue,
         };
         if !bins.contains(&bin) {
             bins.push(bin);

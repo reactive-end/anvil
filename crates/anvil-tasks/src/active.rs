@@ -29,6 +29,20 @@ pub struct ActiveTaskState {
     pub touched_files: Vec<String>,
 }
 
+/// Ephemeral prompt snapshot stored in `.harness/.state/pending-prompt.json` (gitignored)
+/// so read-only turns never pollute `.harness/tasks/` or `tasks.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingPrompt {
+    pub prompt: String,
+    pub prompt_hash: String,
+    pub recorded_at: DateTime<Utc>,
+}
+
+/// Returns the canonical path `.harness/.state/pending-prompt.json`.
+pub fn pending_prompt_path(repo: &Path) -> PathBuf {
+    repo.join(".harness").join(".state").join("pending-prompt.json")
+}
+
 /// Returns the canonical path `.harness/.state/active-task.json`.
 pub fn active_task_path(repo: &Path) -> PathBuf {
     repo.join(".harness").join(".state").join("active-task.json")
@@ -110,6 +124,87 @@ pub fn activate_task_from_meta(repo: &Path, meta: &TaskMeta) -> Result<()> {
     save_active_task(repo, &state)
 }
 
+/// Captures a non-trivial user prompt in `.harness/.state/pending-prompt.json` without creating
+/// a task on disk yet. A task is only materialized lazily on the first mutating file edit.
+pub fn record_pending_prompt(repo: &Path, prompt: &str) -> Result<bool> {
+    let trimmed = prompt.trim();
+    if is_ignored_prompt(trimmed) {
+        return Ok(false);
+    }
+    with_file_lock(
+        &active_task_lock_path(repo),
+        ACTIVE_TASK_LOCK_TIMEOUT_MS,
+        || {
+            let prompt_hash = hash_prompt(trimmed);
+            if let Some(existing) = load_active_task_unlocked(repo)?
+                && task_dir(repo, &existing.task_id).join("meta.json").exists()
+                && (existing.prompt_hash == prompt_hash || existing.status == TaskStatus::InProgress)
+            {
+                return Ok(false);
+            }
+            let pending = PendingPrompt {
+                prompt: trimmed.to_owned(),
+                prompt_hash,
+                recorded_at: Utc::now(),
+            };
+            atomic_write_json(&pending_prompt_path(repo), &pending)?;
+            Ok(true)
+        },
+    )
+}
+
+/// Lazily materializes a tracked task on the first mutated project file (consuming
+/// `pending-prompt.json`), or appends `rel_path` if an `InProgress` task is already active.
+/// Returns `Ok(Some(state))` ONLY when a new task was created on this edit.
+pub fn materialize_task_on_edit(repo: &Path, rel_path: &str) -> Result<Option<ActiveTaskState>> {
+    let norm = rel_path.trim().replace('\\', "/");
+    let norm = norm.strip_prefix("./").unwrap_or(&norm);
+    if norm.is_empty() || norm.starts_with(".harness/") || norm == "tasks.json" {
+        return Ok(None);
+    }
+    with_file_lock(
+        &active_task_lock_path(repo),
+        ACTIVE_TASK_LOCK_TIMEOUT_MS,
+        || {
+            if let Some(mut existing) = load_active_task_unlocked(repo)?
+                && task_dir(repo, &existing.task_id).join("meta.json").exists()
+                && existing.status == TaskStatus::InProgress
+            {
+                if !existing.touched_files.iter().any(|f| f == norm) {
+                    existing.touched_files.push(norm.to_owned());
+                    existing.touched_files.sort();
+                    save_active_task_unlocked(repo, &existing)?;
+                }
+                return Ok(None);
+            }
+
+            let pending = load_pending_prompt_unlocked(repo)?;
+            let (request, prompt_hash) = match pending {
+                Some(p) => (p.prompt, p.prompt_hash),
+                None => {
+                    let fallback = format!("Edit {norm}");
+                    let hash = hash_prompt(&fallback);
+                    (fallback, hash)
+                }
+            };
+            let author = resolve_author_fast(repo)?;
+            let meta = start_task_as(repo, &author, &request)?;
+            build_root_tasks_json(repo)?;
+            let state = ActiveTaskState {
+                task_id: meta.task_id,
+                prompt_hash,
+                status: TaskStatus::InProgress,
+                summary_recorded_at: None,
+                started_at: meta.created_at,
+                touched_files: vec![norm.to_owned()],
+            };
+            save_active_task_unlocked(repo, &state)?;
+            let _ = fs::remove_file(pending_prompt_path(repo));
+            Ok(Some(state))
+        },
+    )
+}
+
 /// Appends a mutated repo-relative file path to the active `InProgress` task under lock.
 pub fn record_touched_file(repo: &Path, rel_path: &str) -> Result<()> {
     let norm = rel_path.trim().replace('\\', "/");
@@ -139,12 +234,22 @@ pub fn record_touched_file(repo: &Path, rel_path: &str) -> Result<()> {
 
 /// Updates `.harness/.state/active-task.json` under lock when a summary is recorded.
 pub fn mark_summary_recorded(repo: &Path, task_id: &str, status: TaskStatus) -> Result<()> {
+    mark_summary_recorded_with_files(repo, task_id, status, &[])
+}
+
+/// Updates `.harness/.state/active-task.json` under lock, also syncing `files_touched`.
+pub fn mark_summary_recorded_with_files(
+    repo: &Path,
+    task_id: &str,
+    status: TaskStatus,
+    files: &[String],
+) -> Result<()> {
     with_file_lock(
         &active_task_lock_path(repo),
         ACTIVE_TASK_LOCK_TIMEOUT_MS,
         || {
             let now = Utc::now();
-            let next = match load_active_task_unlocked(repo)? {
+            let mut next = match load_active_task_unlocked(repo)? {
                 Some(mut existing) if existing.task_id == task_id => {
                     existing.status = status;
                     existing.summary_recorded_at = Some(now);
@@ -168,9 +273,31 @@ pub fn mark_summary_recorded(repo: &Path, task_id: &str, status: TaskStatus) -> 
                     }
                 }
             };
+            for f in files {
+                let norm = f.trim().replace('\\', "/");
+                if !norm.is_empty() && !next.touched_files.iter().any(|x| x == &norm) {
+                    next.touched_files.push(norm);
+                }
+            }
+            next.touched_files.sort();
             save_active_task_unlocked(repo, &next)
         },
     )
+}
+
+fn load_pending_prompt_unlocked(repo: &Path) -> Result<Option<PendingPrompt>> {
+    let path = pending_prompt_path(repo);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    let pending: PendingPrompt = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse JSON at {}", path.display()))?;
+    Ok(Some(pending))
 }
 
 fn load_active_task_unlocked(repo: &Path) -> Result<Option<ActiveTaskState>> {
