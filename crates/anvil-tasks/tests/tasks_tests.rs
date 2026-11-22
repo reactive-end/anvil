@@ -255,3 +255,27 @@ fn same_prompt_after_done_does_not_create_duplicate_task() {
     assert_eq!(reused.status, TaskStatus::Done);
     assert_eq!(list_tasks(tmp.path()).expect("list tasks").len(), 1);
 }
+
+#[test]
+fn record_touched_file_accumulates_unique_project_paths() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    let (state, created) = ensure_task_for_prompt(tmp.path(), "Refactor authentication redirect flow")
+        .expect("ensure task")
+        .expect("task created");
+    assert!(created);
+
+    anvil_tasks::record_touched_file(tmp.path(), r"src\auth.kt").expect("record auth");
+    anvil_tasks::record_touched_file(tmp.path(), "./src/webview.kt").expect("record webview");
+    anvil_tasks::record_touched_file(tmp.path(), "src/auth.kt").expect("dedupe auth");
+    anvil_tasks::record_touched_file(tmp.path(), ".harness/config.json").expect("skip harness");
+    anvil_tasks::record_touched_file(tmp.path(), "tasks.json").expect("skip tasks.json");
+
+    let active = anvil_tasks::load_active_task(tmp.path())
+        .expect("load active")
+        .expect("active exists");
+    assert_eq!(active.task_id, state.task_id);
+    assert_eq!(active.touched_files, vec!["src/auth.kt", "src/webview.kt"]);
+}

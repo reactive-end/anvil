@@ -17,7 +17,7 @@ use serde::de::DeserializeOwned;
 
 pub use active::{
     ActiveTaskState, activate_task_from_meta, active_task_path, ensure_task_for_prompt,
-    load_active_task, mark_summary_recorded, save_active_task,
+    load_active_task, mark_summary_recorded, record_touched_file, save_active_task,
 };
 pub use builder::build_root_tasks_json;
 pub use identity::{resolve_author, resolve_author_fast};

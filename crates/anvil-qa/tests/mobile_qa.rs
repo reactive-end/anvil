@@ -90,3 +90,19 @@ fn roborazzi_diff_and_qa_engine_compressed_report_work_end_to_end() {
     assert!(tight.contains("QA [FAIL] platform=mobile"));
     assert!(tight.contains("truncated)"));
 }
+
+#[test]
+fn uiautomator_ignores_hidden_zero_bounds_and_root_webview() {
+    let xml = r#"<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" clickable="false" bounds="[0,0][1080,2400]">
+    <node index="0" text="" class="android.webkit.WebView" clickable="true" enabled="true" bounds="[0,0][1080,2400]">
+      <node index="0" text="Hidden aria node" class="android.view.View" clickable="false" bounds="[0,0][0,0]" />
+    </node>
+    <node index="1" text="Action" resource-id="com.app:id/btn" class="android.widget.Button" clickable="true" enabled="true" bounds="[800,2000][1020,2140]" />
+  </node>
+</hierarchy>"#;
+
+    let violations = scan_uiautomator_xml(xml, 1080, 2400);
+    assert!(violations.is_empty(), "expected 0 false positives, got: {violations:?}");
+}

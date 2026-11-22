@@ -25,6 +25,8 @@ pub struct ActiveTaskState {
     pub status: TaskStatus,
     pub summary_recorded_at: Option<DateTime<Utc>>,
     pub started_at: DateTime<Utc>,
+    #[serde(default)]
+    pub touched_files: Vec<String>,
 }
 
 /// Returns the canonical path `.harness/.state/active-task.json`.
@@ -87,6 +89,7 @@ pub fn ensure_task_for_prompt(
                 status: TaskStatus::InProgress,
                 summary_recorded_at: None,
                 started_at: meta.created_at,
+                touched_files: Vec::new(),
             };
             save_active_task_unlocked(repo, &state)?;
             Ok(Some((state, true)))
@@ -102,8 +105,36 @@ pub fn activate_task_from_meta(repo: &Path, meta: &TaskMeta) -> Result<()> {
         status: TaskStatus::InProgress,
         summary_recorded_at: None,
         started_at: meta.created_at,
+        touched_files: Vec::new(),
     };
     save_active_task(repo, &state)
+}
+
+/// Appends a mutated repo-relative file path to the active `InProgress` task under lock.
+pub fn record_touched_file(repo: &Path, rel_path: &str) -> Result<()> {
+    let norm = rel_path.trim().replace('\\', "/");
+    let norm = norm.strip_prefix("./").unwrap_or(&norm);
+    if norm.is_empty() || norm.starts_with(".harness/") || norm == "tasks.json" {
+        return Ok(());
+    }
+    with_file_lock(
+        &active_task_lock_path(repo),
+        ACTIVE_TASK_LOCK_TIMEOUT_MS,
+        || {
+            let Some(mut state) = load_active_task_unlocked(repo)? else {
+                return Ok(());
+            };
+            if state.status != TaskStatus::InProgress {
+                return Ok(());
+            }
+            if !state.touched_files.iter().any(|f| f == norm) {
+                state.touched_files.push(norm.to_owned());
+                state.touched_files.sort();
+                save_active_task_unlocked(repo, &state)?;
+            }
+            Ok(())
+        },
+    )
 }
 
 /// Updates `.harness/.state/active-task.json` under lock when a summary is recorded.
@@ -133,6 +164,7 @@ pub fn mark_summary_recorded(repo: &Path, task_id: &str, status: TaskStatus) -> 
                         status,
                         summary_recorded_at: Some(now),
                         started_at,
+                        touched_files: Vec::new(),
                     }
                 }
             };

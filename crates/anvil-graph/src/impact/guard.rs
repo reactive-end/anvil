@@ -31,6 +31,9 @@ pub fn check_overengineering(
     let mut warnings = Vec::new();
     for added in added_files {
         let norm = CodeGraph::normalize_rel_path(added);
+        if !is_indexed_code_file(graph, &norm) {
+            continue;
+        }
         let consumers = count_external_consumers(graph, &norm);
         if consumers <= 1 {
             warnings.push(OverengineeringWarning {
@@ -77,6 +80,16 @@ pub fn check_overengineering(
         flagged: !warnings.is_empty(),
         warnings,
     }
+}
+
+fn is_indexed_code_file(graph: &CodeGraph, file: &str) -> bool {
+    if file.starts_with(".harness/")
+        || file.starts_with(".agents/")
+        || file.starts_with(".claude/")
+    {
+        return false;
+    }
+    graph.file_nodes.contains_key(file)
 }
 
 fn count_external_consumers(graph: &CodeGraph, file: &str) -> usize {

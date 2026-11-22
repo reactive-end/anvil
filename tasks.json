@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "task_count": 2,
-  "updated_at": "2026-11-21T13:14:51.119987900Z",
+  "task_count": 3,
+  "updated_at": "2026-11-22T01:17:00.347346500Z",
   "tasks": [
     {
       "task_id": "T-20261121-01M7YC7MM5WX2CGP",
@@ -102,6 +102,77 @@
             "templates/CLAUDE.md"
           ],
           "timestamp": "2026-11-21T13:14:51.119987900Z"
+        }
+      ]
+    },
+    {
+      "task_id": "T-20261122-01M80D7WTWKESEZN",
+      "request": "Release anvil v0.3.1: auto-populate files_touched and 5 Windows/Kotlin/QA fixes",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "files_touched": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/anvil-ast/src/extractors/kotlin.rs",
+        "crates/anvil-cli/src/commands/hook.rs",
+        "crates/anvil-cli/src/commands/qa.rs",
+        "crates/anvil-cli/src/commands/tasks.rs",
+        "crates/anvil-core/src/config.rs",
+        "crates/anvil-core/src/stack_detector.rs",
+        "crates/anvil-core/tests/config_tests.rs",
+        "crates/anvil-graph/src/impact/guard.rs",
+        "crates/anvil-qa/src/mobile.rs",
+        "crates/anvil-qa/tests/mobile_qa.rs",
+        "crates/anvil-tasks/src/active.rs",
+        "crates/anvil-tasks/src/lib.rs",
+        "crates/anvil-tasks/tests/tasks_tests.rs"
+      ],
+      "summary": "Aplicados 6 fixes en anvil v0.3.1: UTF-8 BOM en AnvilConfig::load, root_allowlist para KotlinAndroid, nombre real en object Kotlin, filtro de archivos no-codigo en check_overengineering, lectura tolerante UTF-16LE/lossy y filtro WebView/0x0 en scan-mobile, y auto-captura de files_touched en PostToolUse + anvil tasks update|done",
+      "entry_count": 2,
+      "created_at": "2026-11-22T01:17:00.124303Z",
+      "updated_at": "2026-11-22T01:17:00.347346500Z",
+      "entries": [
+        {
+          "entry_id": "01M80D7WTX8G2VEBRDM1JBJAKE",
+          "task_id": "T-20261122-01M80D7WTWKESEZN",
+          "author": "reactive-end",
+          "status": "in_progress",
+          "branch": "main",
+          "summary": "Started task: Release anvil v0.3.1: auto-populate files_touched and 5 Windows/Kotlin/QA fixes",
+          "files_touched": [],
+          "timestamp": "2026-11-22T01:17:00.160831800Z"
+        },
+        {
+          "entry_id": "01M80D7X0R9198SBMNR0E1ZJ5K",
+          "task_id": "T-20261122-01M80D7WTWKESEZN",
+          "author": "reactive-end",
+          "status": "done",
+          "branch": "main",
+          "summary": "Aplicados 6 fixes en anvil v0.3.1: UTF-8 BOM en AnvilConfig::load, root_allowlist para KotlinAndroid, nombre real en object Kotlin, filtro de archivos no-codigo en check_overengineering, lectura tolerante UTF-16LE/lossy y filtro WebView/0x0 en scan-mobile, y auto-captura de files_touched en PostToolUse + anvil tasks update|done",
+          "files_touched": [
+            "Cargo.lock",
+            "Cargo.toml",
+            "crates/anvil-ast/src/extractors/kotlin.rs",
+            "crates/anvil-cli/src/commands/hook.rs",
+            "crates/anvil-cli/src/commands/qa.rs",
+            "crates/anvil-cli/src/commands/tasks.rs",
+            "crates/anvil-core/src/config.rs",
+            "crates/anvil-core/src/stack_detector.rs",
+            "crates/anvil-core/tests/config_tests.rs",
+            "crates/anvil-graph/src/impact/guard.rs",
+            "crates/anvil-qa/src/mobile.rs",
+            "crates/anvil-qa/tests/mobile_qa.rs",
+            "crates/anvil-tasks/src/active.rs",
+            "crates/anvil-tasks/src/lib.rs",
+            "crates/anvil-tasks/tests/tasks_tests.rs"
+          ],
+          "timestamp": "2026-11-22T01:17:00.347346500Z"
         }
       ]
     }

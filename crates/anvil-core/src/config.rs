@@ -165,7 +165,8 @@ impl AnvilConfig {
         let path = Self::path(repo_root);
         let raw = fs::read_to_string(&path)
             .with_context(|| format!("failed to read config at {}", path.display()))?;
-        serde_json::from_str(&raw)
+        let clean = raw.strip_prefix('\u{feff}').unwrap_or(&raw);
+        serde_json::from_str(clean)
             .with_context(|| format!("failed to parse JSON config at {}", path.display()))
     }
 

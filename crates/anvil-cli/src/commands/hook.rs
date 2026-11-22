@@ -184,6 +184,7 @@ fn handle_post_tool_use(
         if let Ok(mut mem) = MemoryEngine::open_without_sync(root, "hook") {
             let _ = mem.mark_files_changed(std::slice::from_ref(&rel));
         }
+        let _ = anvil_tasks::record_touched_file(root, &rel);
     }
     update_circuit_from_output(root, config, input, &mut messages);
     HookOutcome::with_messages(messages)

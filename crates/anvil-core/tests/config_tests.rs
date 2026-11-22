@@ -64,3 +64,32 @@ fn language_rust_serializes_as_snake_case() -> Result<()> {
     assert_eq!(decoded, Language::Rust);
     Ok(())
 }
+
+#[test]
+fn config_load_strips_utf8_bom_and_kotlin_allowlist_populated() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let cfg_path = AnvilConfig::path(tmp.path());
+    if let Some(parent) = cfg_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let bom_json = format!("\u{feff}{}", serde_json::to_string_pretty(&AnvilConfig::default())?);
+    std::fs::write(&cfg_path, bom_json)?;
+    let loaded = AnvilConfig::load(tmp.path())?;
+    assert_eq!(loaded.version, 1);
+
+    let detection = anvil_core::stack_detector::WorkspaceDetection {
+        is_multi_repo: false,
+        repos: vec![anvil_core::stack_detector::DetectedRepo {
+            name: "demo".to_owned(),
+            rel_path: ".".to_owned(),
+            stacks: vec![StackKind::KotlinAndroid],
+            tools: vec![],
+        }],
+    };
+    let mut cfg = AnvilConfig::default();
+    detection.apply_to_config(&mut cfg);
+    assert!(cfg.root_allowlist.iter().any(|x| x == "app"));
+    assert!(cfg.root_allowlist.iter().any(|x| x == "gradlew.bat"));
+    assert!(cfg.root_allowlist.iter().any(|x| x == "build.gradle.kts"));
+    Ok(())
+}

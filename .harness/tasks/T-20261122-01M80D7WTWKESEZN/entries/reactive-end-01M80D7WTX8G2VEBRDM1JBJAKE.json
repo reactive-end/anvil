@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M80D7WTX8G2VEBRDM1JBJAKE",
+  "task_id": "T-20261122-01M80D7WTWKESEZN",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Release anvil v0.3.1: auto-populate files_touched and 5 Windows/Kotlin/QA fixes",
+  "files_touched": [],
+  "timestamp": "2026-11-22T01:17:00.160831800Z"
+}

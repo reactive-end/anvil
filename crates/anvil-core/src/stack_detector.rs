@@ -47,6 +47,35 @@ impl WorkspaceDetection {
         }
         config.stacks = all_stacks.into_iter().collect();
         config.tools = all_tools.into_iter().collect();
+        extend_stack_root_allowlist(config);
+    }
+}
+
+fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
+    let mut extras: Vec<&'static str> = Vec::new();
+    if config.stacks.contains(&StackKind::KotlinAndroid) {
+        extras.extend([
+            "app",
+            "gradle",
+            "gradlew",
+            "gradlew.bat",
+            "build.gradle.kts",
+            "settings.gradle.kts",
+            "build.gradle",
+            "settings.gradle",
+            "gradle.properties",
+        ]);
+    }
+    if config.stacks.contains(&StackKind::FlutterDart) {
+        extras.extend(["pubspec.yaml", "pubspec.lock", "analysis_options.yaml", "lib", "test"]);
+    }
+    if config.stacks.contains(&StackKind::Python) {
+        extras.extend(["pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"]);
+    }
+    for item in extras {
+        if !config.root_allowlist.iter().any(|existing| existing == item) {
+            config.root_allowlist.push(item.to_owned());
+        }
     }
 }
 

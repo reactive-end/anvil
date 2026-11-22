@@ -116,7 +116,14 @@ fn extract_object(node: Node<'_>, state: &mut ExtractState<'_>) {
     let Some(name_node) = node.child_by_field_name("name") else { return };
     let name = state.node_text(name_node).to_owned();
     let mods = modifiers_text(node, state);
-    state.push_symbol(name.clone(), name, SymbolKind::Class, ExtractState::span_of(node), Some("object".to_owned()), is_public(mods));
+    state.push_symbol(
+        name.clone(),
+        name.clone(),
+        SymbolKind::Class,
+        ExtractState::span_of(node),
+        Some(format!("object {name}")),
+        is_public(mods),
+    );
 }
 
 fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
@@ -130,7 +137,7 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
     let cls = enclosing_class(node, state);
 
     let (kind, signature) = if is_composable {
-        (SymbolKind::Component, Some("@Composable".to_owned()))
+        (SymbolKind::Component, Some(format!("@Composable {name}")))
     } else if cls.is_some() {
         (SymbolKind::Method, None)
     } else {

@@ -100,6 +100,10 @@ impl XmlScanState {
         if text.is_empty() || has_scrollable_ancestor {
             return;
         }
+        // Android accessibility dumps hidden/offscreen virtual nodes (e.g. WebView/Compose) as [0,0][0,0].
+        if b.x1 == 0 && b.y1 == 0 && b.x2 == 0 && b.y2 == 0 {
+            return;
+        }
         let collapsed = b.x2 <= b.x1 || b.y2 <= b.y1;
         let out_of_viewport = b.x1 < 0 || b.y1 < 0 || b.x2 > self.viewport_width || b.y2 > self.viewport_height;
         let clipped_by_parent = parent_bounds.is_some_and(|p| b.x1 < p.x1 || b.y1 < p.y1 || b.x2 > p.x2 || b.y2 > p.y2);
@@ -149,8 +153,14 @@ fn register_clickable(
 ) -> Option<usize> {
     let is_clickable = extract_attr(tag, "clickable") == Some("true");
     let is_enabled = extract_attr(tag, "enabled") != Some("false");
+    let class_name = extract_attr(tag, "class").unwrap_or("");
     let b = bounds?;
-    if !is_clickable || !is_enabled || b.x2 <= b.x1 || b.y2 <= b.y1 {
+    if !is_clickable
+        || !is_enabled
+        || class_name == "android.webkit.WebView"
+        || b.x2 <= b.x1
+        || b.y2 <= b.y1
+    {
         return None;
     }
     let idx = clickables.len();

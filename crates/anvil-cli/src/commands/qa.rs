@@ -117,12 +117,8 @@ fn cmd_scan_mobile(
         bail!("provide --xml and/or --logcat for mobile QA scanning");
     }
     let config = AnvilConfig::load_or_default(root)?;
-    let xml = xml_path
-        .map(|p| fs::read_to_string(p).with_context(|| format!("failed to read {}", p.display())))
-        .transpose()?;
-    let logcat = logcat_path
-        .map(|p| fs::read_to_string(p).with_context(|| format!("failed to read {}", p.display())))
-        .transpose()?;
+    let xml = xml_path.map(read_text_tolerant).transpose()?;
+    let logcat = logcat_path.map(read_text_tolerant).transpose()?;
 
     let violations = engine.scan_mobile_artifacts(
         xml.as_deref(),
@@ -167,4 +163,30 @@ fn cmd_run(root: &Path, engine: &QaEngine, url: &str, phase: &str, out_dir: &Pat
         return Err(ExitCodeError::silent(1).into());
     }
     Ok(())
+}
+
+/// Reads UTF-8, UTF-16LE/BE (e.g. PowerShell redirection), or lossy byte logs without failing.
+fn read_text_tolerant(path: &Path) -> Result<String> {
+    let bytes =
+        fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        let units: Vec<u16> = bytes[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect();
+        return Ok(String::from_utf16_lossy(&units));
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        let units: Vec<u16> = bytes[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_be_bytes(*c))
+            .collect();
+        return Ok(String::from_utf16_lossy(&units));
+    }
+    let lossy = String::from_utf8_lossy(&bytes);
+    Ok(lossy.strip_prefix('\u{feff}').unwrap_or(&lossy).to_owned())
 }

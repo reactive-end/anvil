@@ -1,13 +1,15 @@
 //! `anvil tasks`: conflict-free team task ledger and `tasks.json` builder.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
 use anyhow::{Result, bail};
+use anvil_core::git::{self, DiffScope};
 use anvil_tasks::{
     TaskStatus, activate_task_from_meta, append_entry, append_entry_as, build_root_tasks_json,
-    list_tasks, mark_summary_recorded, resolve_author, resolve_merge, start_task, start_task_as,
-    write_task_plan,
+    list_tasks, load_active_task, mark_summary_recorded, resolve_author, resolve_merge, start_task,
+    start_task_as, write_task_plan,
 };
 
 use crate::cli::subcmds::TasksSubcmd;
@@ -61,17 +63,54 @@ fn cmd_append(
     files: &[String],
     author: Option<&str>,
 ) -> Result<()> {
+    let resolved_files = resolve_touched_files(root, task_id, files);
     let entry = match author {
-        Some(a) => append_entry_as(root, task_id, a, status, summary, files)?,
-        None => append_entry(root, task_id, status, summary, files)?,
+        Some(a) => append_entry_as(root, task_id, a, status, summary, &resolved_files)?,
+        None => append_entry(root, task_id, status, summary, &resolved_files)?,
     };
     let consolidated = build_root_tasks_json(root)?;
     mark_summary_recorded(root, task_id, status)?;
     println!(
-        "updated {} [{}] entry={} (tasks.json total={})",
-        task_id, entry.status, entry.entry_id, consolidated.task_count
+        "updated {} [{}] entry={} files={} (tasks.json total={})",
+        task_id,
+        entry.status,
+        entry.entry_id,
+        entry.files_touched.len(),
+        consolidated.task_count
     );
     Ok(())
+}
+
+/// Uses explicit `--files` when provided; otherwise auto-collects files from `active-task.json`
+/// and `git status` working-tree changes (excluding `.harness/` metadata and `tasks.json`).
+fn resolve_touched_files(root: &Path, task_id: &str, explicit: &[String]) -> Vec<String> {
+    if !explicit.is_empty() {
+        return explicit.to_vec();
+    }
+    let mut set = BTreeSet::new();
+    if let Ok(Some(active)) = load_active_task(root)
+        && active.task_id == task_id
+    {
+        for f in active.touched_files {
+            if is_project_file(&f) {
+                set.insert(f);
+            }
+        }
+    }
+    if let Ok(changed) = git::changed_files(root, DiffScope::WorkingTree) {
+        for f in changed {
+            let norm = f.replace('\\', "/");
+            if is_project_file(&norm) {
+                set.insert(norm);
+            }
+        }
+    }
+    set.into_iter().collect()
+}
+
+fn is_project_file(path: &str) -> bool {
+    let trimmed = path.trim();
+    !trimmed.is_empty() && !trimmed.starts_with(".harness/") && trimmed != "tasks.json"
 }
 
 fn cmd_plan(root: &Path, task_id: &str, markdown_or_file: &str, author: Option<String>) -> Result<()> {
