@@ -8,6 +8,7 @@ use anvil_deps::{AuditOptions, LiveRegistryFetcher, audit_manifests, is_supporte
 use anvil_qa::QaEngine;
 
 use crate::commands::deps::discover_manifests;
+use crate::ui;
 
 /// Runs Tier 2 dependency auditing and visual QA readiness checks.
 /// Returns `true` when deprecated or stale dependencies were found.
@@ -26,11 +27,16 @@ pub fn run_tier2(
         let qa = QaEngine::new(root);
         if let Some(prompt) = qa.onboarding_prompt(config) {
             println!(
-                "  [Tier 2] visual QA driver unconfigured for {:?}; run `anvil qa onboard`",
+                "  {} visual QA driver unconfigured for {:?}; run `anvil qa onboard`",
+                ui::yellow("[Tier 2]"),
                 prompt.platform
             );
         } else {
-            println!("  [Tier 2] visual QA platform={:?}", qa.detect_platform(config));
+            println!(
+                "  {} visual QA platform={:?}",
+                ui::cyan("[Tier 2]"),
+                qa.detect_platform(config)
+            );
         }
     }
     deps_findings
@@ -63,12 +69,20 @@ fn run_deps_audit(root: &Path, changed: &[String], full: bool) -> bool {
             }
             if report.findings.is_empty() {
                 println!(
-                    "  [Tier 2] deps audit: PASS (checked={}, 0 findings)",
-                    report.checked_packages
+                    "  {} {}",
+                    ui::cyan("[Tier 2]"),
+                    ui::green(&format!(
+                        "deps audit: PASS (checked={}, 0 findings)",
+                        report.checked_packages
+                    ))
                 );
                 return false;
             }
-            println!("  [Tier 2] deps audit: FAIL ({} finding(s))", report.findings.len());
+            println!(
+                "  {} {}",
+                ui::cyan("[Tier 2]"),
+                ui::red(&format!("deps audit: FAIL ({} finding(s))", report.findings.len()))
+            );
             for f in &report.findings {
                 let detail = f
                     .deprecation_message

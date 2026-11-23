@@ -6,6 +6,8 @@ use anyhow::Result;
 use anvil_adapters::sync;
 use anvil_core::config::{AdapterTarget, AnvilConfig};
 
+use crate::ui;
+
 /// Synchronizes adapters, skills, and stack tools in `root` and initialized subprojects.
 pub fn execute(root: &Path, adapter_raw: &str) -> Result<()> {
     let explicit_adapter = AdapterTarget::parse_cli(adapter_raw)?;
@@ -24,13 +26,19 @@ pub fn execute(root: &Path, adapter_raw: &str) -> Result<()> {
         }
     }
 
+    let prefix = if ui::colors_enabled() { "✓ " } else { "" };
     println!(
-        "anvil sync complete: {} files updated, {} pre-existing skills preserved",
-        report.written_files.len(),
+        "{}{} {} files updated, {} pre-existing skills preserved",
+        ui::green(prefix),
+        ui::green("anvil sync complete:"),
+        ui::bold(&report.written_files.len().to_string()),
         report.preserved_skills.len()
     );
-    for path in &report.written_files {
-        println!("  updated: {}", path.display());
+    if !report.written_files.is_empty() {
+        ui::print_section("Updated Files");
+        for path in &report.written_files {
+            println!("  {} {}", ui::dim("updated:"), ui::cyan(&path.display().to_string()));
+        }
     }
     Ok(())
 }

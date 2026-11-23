@@ -18,6 +18,7 @@ use anvil_graph::model::CodeGraph;
 use rustc_hash::FxHashSet;
 
 use crate::commands::ExitCodeError;
+use crate::ui;
 use tier1::{Tier1Options, run_tier1};
 
 /// Executes `anvil check [--full] [--tier 0|1|2] [--no-tests] [--no-cache]`.
@@ -28,15 +29,17 @@ pub fn execute(
     no_tests: bool,
     no_cache: bool,
 ) -> Result<()> {
+    ui::print_banner_if_tty("Tiered Verification Pipeline");
     let config = AnvilConfig::load_or_default(root)?;
     let (changed_paths, added_paths, classification) = classify_repo_diff(root);
     let effective_tier = resolve_tier(full, tier_override, classification.minimum_tier);
 
     println!(
-        "anvil check: category={:?} tier={:?} changed={} skip_logic_tests={}",
-        classification.primary_category,
-        effective_tier,
-        changed_paths.len(),
+        "{} category={} tier={} changed={} skip_logic_tests={}",
+        ui::accent("anvil check:"),
+        ui::cyan(&format!("{:?}", classification.primary_category)),
+        ui::bold(&format!("{effective_tier:?}")),
+        ui::cyan(&changed_paths.len().to_string()),
         classification.skip_logic_tests
     );
 
@@ -44,6 +47,7 @@ pub fn execute(
     let mut tier1_failed = false;
 
     if effective_tier >= Tier::Tier1 && (full || !changed_paths.is_empty()) {
+        ui::print_section("Tier 1 · Impact, Typecheck & Tests");
         tier1_failed = run_tier1(
             root,
             &config,
@@ -60,6 +64,7 @@ pub fn execute(
     }
     let mut tier2_failed = false;
     if effective_tier >= Tier::Tier2 {
+        ui::print_section("Tier 2 · Dependencies & Visual QA");
         tier2_failed = tier2::run_tier2(root, &config, &changed_paths, &classification, full);
     }
 
@@ -72,7 +77,10 @@ pub fn execute(
         )
         .into());
     }
-    println!("anvil check: PASS");
+    if ui::colors_enabled() {
+        println!();
+    }
+    println!("{}", ui::green("✓ anvil check: PASS"));
     Ok(())
 }
 
@@ -164,17 +172,21 @@ fn run_tier0(root: &Path, config: &AnvilConfig, changed: &[String], full: bool) 
 
 fn print_diagnostics(diagnostics: &[Diagnostic], errors: &mut usize) {
     for diag in diagnostics {
-        let tag = match diag.severity {
+        let badge = match diag.severity {
             Severity::Error => {
                 *errors += 1;
-                "ERROR"
+                ui::error_badge()
             }
-            Severity::Warning => "WARN",
-            Severity::Info => "INFO",
+            Severity::Warning => ui::warn_badge(),
+            Severity::Info => ui::info_badge(),
         };
         println!(
-            "  [{tag}] {}:{}:{} [{}] {}",
-            diag.file, diag.line, diag.column, diag.rule, diag.message
+            "  {badge} {}:{}:{} {} {}",
+            ui::cyan(&diag.file),
+            diag.line,
+            diag.column,
+            ui::dim(&format!("[{}]", diag.rule)),
+            diag.message
         );
     }
 }

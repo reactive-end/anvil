@@ -10,6 +10,7 @@ use anvil_graph::impact::BlastRadiusReport;
 use anvil_graph::model::CodeGraph;
 
 use crate::commands::ExitCodeError;
+use crate::ui;
 
 /// Executes `anvil impact [files...] [--depth N] [--origin <sym>] [--typecheck]`.
 pub fn execute(
@@ -54,24 +55,39 @@ pub fn execute(
 
 fn print_blast_report(report: &BlastRadiusReport) {
     println!(
-        "blast radius (depth={}, {:.2}ms): {} changed -> {} impacted file(s), {} related test(s)",
+        "{} (depth={}, {:.2}ms): {} changed -> {} impacted file(s), {} related test(s)",
+        ui::accent("blast radius"),
         report.max_depth,
         report.elapsed_ms,
-        report.changed_files.len(),
-        report.impacted_files.len(),
-        report.related_tests.len()
+        ui::bold(&report.changed_files.len().to_string()),
+        ui::yellow(&report.impacted_files.len().to_string()),
+        ui::cyan(&report.related_tests.len().to_string())
     );
-    for item in &report.impacted_files {
-        println!(
-            "  [d={}{}] {} ({})",
-            item.depth,
-            if item.is_screen { ",screen" } else { "" },
-            item.file,
-            item.via_edges.join("; ")
-        );
+    if !report.impacted_files.is_empty() {
+        ui::print_section("Impacted Files");
+        for item in &report.impacted_files {
+            let badge = format!(
+                "[d={}{}]",
+                item.depth,
+                if item.is_screen { ",screen" } else { "" }
+            );
+            let styled_badge = if item.is_screen {
+                ui::yellow(&badge)
+            } else {
+                ui::dim(&badge)
+            };
+            println!(
+                "  {styled_badge} {} {}",
+                ui::cyan(&item.file),
+                ui::dim(&format!("({})", item.via_edges.join("; ")))
+            );
+        }
     }
-    for test in &report.related_tests {
-        println!("  [test] {test}");
+    if !report.related_tests.is_empty() {
+        ui::print_section("Related Tests");
+        for test in &report.related_tests {
+            println!("  {} {}", ui::green("[test]"), test);
+        }
     }
 }
 

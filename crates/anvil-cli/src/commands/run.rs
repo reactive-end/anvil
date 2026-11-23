@@ -12,6 +12,7 @@ use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::stats::{StatsEvent, record_event};
 
 use crate::commands::ExitCodeError;
+use crate::ui;
 
 /// Runs `cmd` in `root`, compresses output, updates Circuit Breaker, and preserves exit code.
 pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
@@ -42,7 +43,12 @@ pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
     let cb = CircuitBreaker::new(root, config.circuit_breaker_limit);
     if compressed.passed {
         let _ = cb.record_success();
-        println!("PASS ({}): {}", compressed.tool, compressed.summary);
+        println!(
+            "{} ({}): {}",
+            ui::green("PASS"),
+            ui::cyan(&compressed.tool),
+            compressed.summary
+        );
         return Ok(());
     }
 
@@ -52,25 +58,37 @@ pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
         compressed.lines.join("\n")
     };
     let status = cb.record_failure(&compressed.tool, &failure_sample, &cmd_str)?;
+    print_failure_report(&compressed, status.is_open(), status.consecutive_failures);
+    Err(ExitCodeError::silent(exit_code).into())
+}
 
+fn print_failure_report(
+    compressed: &anvil_core::traits::CompressedOutput,
+    circuit_open: bool,
+    consecutive_failures: u32,
+) {
     println!(
-        "FAIL ({}, exit={}, errors={}): {}",
-        compressed.tool, compressed.exit_code, compressed.total_errors, compressed.summary
+        "{} ({}, exit={}, errors={}): {}",
+        ui::red("FAIL"),
+        ui::cyan(&compressed.tool),
+        compressed.exit_code,
+        compressed.total_errors,
+        compressed.summary
     );
     for line in &compressed.lines {
         println!("{line}");
     }
     if let Some(log_path) = &compressed.raw_log_path {
-        println!("raw log: {}", log_path.display());
+        println!("{} {}", ui::dim("raw log:"), ui::dim(&log_path.display().to_string()));
     }
-    if status.is_open() {
+    if circuit_open {
         eprintln!(
-            "CIRCUIT BREAKER OPEN ({} identical failures). Inspect root cause and run `anvil circuit reset`.",
-            status.consecutive_failures
+            "{}",
+            ui::red(&format!(
+                "CIRCUIT BREAKER OPEN ({consecutive_failures} identical failures). Inspect root cause and run `anvil circuit reset`."
+            ))
         );
     }
-
-    Err(ExitCodeError::silent(exit_code).into())
 }
 
 fn record_compressor_stats(

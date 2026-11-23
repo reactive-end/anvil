@@ -4,20 +4,43 @@ pub mod subcmds;
 
 use std::path::PathBuf;
 
+use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Parser, Subcommand};
 
+use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
     CircuitSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd, MemSubcmd, QaSubcmd, RatchetSubcmd,
     TasksSubcmd,
 };
 
+fn clap_styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Yellow.on_default() | Effects::BOLD)
+        .usage(AnsiColor::Yellow.on_default() | Effects::BOLD)
+        .literal(AnsiColor::Cyan.on_default() | Effects::BOLD)
+        .placeholder(AnsiColor::BrightBlack.on_default())
+        .valid(AnsiColor::Green.on_default() | Effects::BOLD)
+        .invalid(AnsiColor::Red.on_default() | Effects::BOLD)
+        .error(AnsiColor::Red.on_default() | Effects::BOLD)
+}
+
 /// `anvil` — Native AI Engineering Harness CLI.
 #[derive(Debug, Parser)]
-#[command(name = "anvil", version, about = "Anvil AI engineering harness")]
+#[command(
+    name = "anvil",
+    version,
+    about = "Native AI Engineering Harness",
+    before_help = PLAIN_ANVIL_BANNER,
+    styles = clap_styles()
+)]
 pub struct Cli {
     /// Override repository root directory.
     #[arg(long, global = true)]
     pub root: Option<PathBuf>,
+
+    /// Disable ANSI colors and decorative terminal output.
+    #[arg(long, global = true)]
+    pub no_color: bool,
 
     #[command(subcommand)]
     pub command: Command,
@@ -112,7 +135,7 @@ pub enum Command {
         #[command(subcommand)]
         sub: CircuitSubcmd,
     },
-    /// Audit dependencies for deprecation or staleness across npm/PyPI/pub.dev/Maven/Cargo.
+    /// Audit dependencies for deprecation or staleness across npm/PyPI/pub.dev/Maven/Cargo/Composer.
     Deps {
         /// Scan all supported manifests in the repository instead of git diff.
         #[arg(long)]

@@ -10,8 +10,11 @@ use anvil_core::stack_detector;
 use anvil_graph::CodeGraphEngine;
 use anvil_tasks::{build_root_tasks_json, install_git_merge_driver};
 
+use crate::ui;
+
 /// Initializes `anvil` in `root` and any independent child project folders inside `root`.
 pub fn execute(root: &Path, adapter_raw: &str) -> Result<()> {
+    ui::print_banner_if_tty("Workspace Initialization");
     fs::create_dir_all(root)
         .with_context(|| format!("failed to create target directory {}", root.display()))?;
 
@@ -56,17 +59,50 @@ fn init_single_repo(
     let graph_bin = engine.save()?;
     let tasks = build_root_tasks_json(dir)?;
 
-    println!("{banner} {}", dir.display());
+    let stacks_str = format_debug_list(&config.stacks);
+    let tools_str = format_debug_list(&config.tools);
+    let prefix = if ui::colors_enabled() { "✓ " } else { "" };
+
     println!(
-        "  stacks={:?} tools={:?} adapters={:?} merge_driver={merge_driver_status} graph=({} nodes, {} edges) tasks={} files_written={} ({})",
-        config.stacks,
-        config.tools,
-        config.adapters,
-        engine.graph.nodes.len(),
-        engine.graph.edges.len(),
-        tasks.task_count,
-        report.written_files.len(),
-        graph_bin.display()
+        "{}{} {}",
+        ui::green(prefix),
+        ui::green(banner),
+        ui::bold(&dir.display().to_string())
     );
+    ui::print_kv("stacks", &ui::cyan(&stacks_str));
+    ui::print_kv("tools", &ui::cyan(&tools_str));
+    ui::print_kv("adapters", &format!("{:?}", config.adapters));
+    ui::print_kv("merge_driver", merge_driver_status);
+    ui::print_kv(
+        "graph",
+        &format!(
+            "{} nodes, {} edges  {}",
+            ui::bold(&engine.graph.nodes.len().to_string()),
+            ui::bold(&engine.graph.edges.len().to_string()),
+            ui::dim(&format!("({})", graph_bin.display()))
+        ),
+    );
+    ui::print_kv(
+        "summary",
+        &format!(
+            "tasks={}  files_written={}",
+            tasks.task_count,
+            report.written_files.len()
+        ),
+    );
+    if ui::colors_enabled() {
+        println!();
+    }
     Ok(config)
+}
+
+fn format_debug_list<T: std::fmt::Debug>(items: &[T]) -> String {
+    if items.is_empty() {
+        return "none".to_owned();
+    }
+    items
+        .iter()
+        .map(|item| format!("{item:?}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }

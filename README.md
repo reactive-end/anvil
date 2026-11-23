@@ -1,7 +1,28 @@
-# anvil
+```text
+                                                  ⣀⣀⣀⣀⣠⣤⢤⣤⢴⣶⢶⣶⢶⣿⢿⣿⢿⣷⢄
+                                   ⢀⣀⣀⣀⣤⢤⣤⢤⣶⢶⣶⢾⣿⢿⣿⢿⣿⢿⣿⢿⡿⠿⠿⠽⣿⢿⣿⢟⣛⢽⣿⢿⣿⢿⣷⢦⡀
+                              ⢰⢶⣿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢶⣶⢿⣿⣿⣿⣿⣿⣿⣿⠿⢿⠟⢟⠟⢿
+                         ⢀⣀⣀⣀⣤⢼⢅⠝⠿⣿⣿⢿⣿⢿⣿⢿⣿⢿⣿⢿⣿⣿⣿⣿⣿⣿⣿⡿⢿⠿⢿⠟⢟⠟⢍⠝⠍⠕⢅⠑⢅⠕⢅⠅⢅⠕⢼
+                        ⢸⠝⢿⣿⢿⣿⢿⣵⢕⢅⠝⠿⣿⣿⠿⢿⠿⢟⠟⢟⠟⢍⠝⠍⠝⢅⠕⢅⠕⢅⠅⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⣕⠥⠓⠉
+                  ⢀⣀⣀⣤⣤⣶⣾⣿⢷⣝⢿⣿⣿⣿⣿⣵⣵⠅⠗⢅⠕⢅⠅⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⣵⠥⠓⠉
+         ⢀⣀⣠⢤⢤⢶⢶⢾⢽⢿⢽⢿⢽⢿⢽⢿⢽⢽⢽⠗⣿⠝⢍⠝⢅⠕⠅⡕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⠕⢅⢕⢅⠕⢅⡵⠕⠋⠁
+     ⠐⠒⠛⠛⠻⠿⠿⠿⠿⠽⠭⠽⠥⠽⠥⢝⣁⣙⣅⣙⣅⠙⠅⠕⣏⠕⢅⠕⠅⠕⠅⠗⢅⠕⢅⠕⢅⢕⢅⢕⢅⢕⢕⢕⢕⢕⢕⠕⢕⠕⣕⣽⠵⠋⠁
+                          ⠑⢄⠅⣷⠕⢅⢕⢵⢕⢿⢗⢕⠕⢕⠝⠕⠝⠕⠝⠕⠑⠅⠑⠅⠁⠁⠁⡠⠓⠁
+                            ⠑⠿⠕⠛⢻⠇⠁⠅⠁⠁⠁ ⠁ ⢁⠤⠥⠤⡁⠄⠁⠄⠅⠄⢥⢿⢿⢵⢤⢤⡀
+                           ⢀⣀⣀⣀⢤⢞⢕⢕⠄⡅⠄⠅⢅⠅⢅⡏   ⡗⢅⢕⢕⢕⢕⢟⣽⢽⢽⢿⢵⢽⢦⡀
+                       ⢸⢿⣽⢽⢽⢽⢽⢽⢽⢽⢽⢝⢽⣗⢕⢕⢕⢕⢕⢷⢤⢴⢖⢕⢕⢕⢵⢝⢵⢝⢵⢝⢽⢽⢽⢿⢽⣿⣦⡀
+                    ⡾⣽⢝⢕⢅⠝⢿⣽⢽⢽⢽⢽⢽⢽⢽⣽⢝⢵⢝⢵⢽⢵⢽⢵⢝⣽⣝⣽⢽⣽⡽⢽⠿⠿⠟⠟⠟⠏⠝⠍⣝⣽⣝⢶⣄
+                    ⡗⢍⠿⣽⢝⢕⢥⡍⠿⢽⣽⣽⣽⣽⣽⣽⠽⢽⠿⠟⠟⠟⠟⠍⠝⢍⣝⣅⣕⣥⣵⣥⣵⢷⣷⣵⡿⢿⠿⢿⠟⢟⠟⢟⢽
+                    ⠑⢅⠕⠭⡿⣽⢝⢝⢧⡝⠝⣍⣕⣅⣵⣥⣵⣥⣵⣷⣷⣷⠿⢿⠟⠋⠉⠙⢝⠏⠝⢍⠝⢅⠕⢅⠕⢅⠕⢅⠕⢅⢕⣅⣽
+                      ⠉⠉⢳⢍⠝⣿⠿⢿⠿⢝⠟⢟⠟⢍⠝⢍⠕⢅⠕⢅⡕⠁     ⠑⢵⣥⠵⠥⠵⠕⠓⠓⠓⠉⠉⠉⠉
+                        ⠈⠣⡕⣿⠕⢅⠕⢅⠕⢅⣕⣅⣕⡥⠵⠥⠵⠛
+                          ⠈⠛⠓⠓⠉⠉⠉⠁
+```
+
+# Anvil
 
 Native Rust AI engineering harness for **Antigravity** and **Claude Code**.  
-Zero external runtime dependencies — single stripped native binary (`17.32 MB` on Windows x86_64) embedding `tree-sitter` grammars (including Rust), an incremental code graph (`anvil-graph`), SQLite FTS5 + Git-safe persistent memory (`anvil-memory`), unified 12-tool stdio MCP server (`anvil mcp`), resident local daemon (`anvil daemon`), tiered verification with content-addressed check caching, conflict-free team task ledger, and hybrid Web/Mobile visual QA.
+Zero external runtime dependencies — single stripped native binary embedding `tree-sitter` grammars (TypeScript/JS, HTML/Blade, CSS/SCSS, Python, Kotlin, Dart, Rust, PHP 8.x), an incremental code graph (`anvil-graph`), SQLite FTS5 + Git-safe persistent memory (`anvil-memory`), unified 12-tool stdio MCP server (`anvil mcp`), resident local daemon (`anvil daemon`), tiered verification with content-addressed check caching, conflict-free team task ledger, and hybrid Web/Mobile visual QA.
 
 ## What's New in v0.3.0
 
@@ -45,18 +66,18 @@ Release profile uses `opt-level = 3`, `lto = "fat"`, `codegen-units = 1`, `strip
 
 Every crate is single-responsibility with an acyclic DAG (`crates/`), `unsafe_code = "forbid"`, and a strict `<= 350` line cap per `.rs` file:
 
-| Crate | Responsibility |
-| :--- | :--- |
-| `anvil-core` | Config (`.harness/config.json`), shared traits (`SymbolFreshnessProvider`, `OutputParser`), stack detector, diff classifier, content-addressed Tier 1 check cache, noise-filtered `diff_grep`, `stats` telemetry, `N=3` circuit breaker, ratchet engine, git helpers, log compressors, canonical `fs_util` |
-| `anvil-ast` | Single-pass embedded `tree-sitter` parser pool (TS/TSX, JS, HTML, CSS, Python, Kotlin, Dart, Rust), symbol `end_line` spans, HTTP route/call extractors, and Tier 0 deterministic rules (`escape-hatches`, `comments`, `strict-types`, `barrels`, `root-hygiene`) |
-| `anvil-graph` | Parallel incremental code graph (`blake3` + `rayon` + `FxHashMap` + `NodeId(u32)` + v3 `postcard`), framework + HTTP route resolvers, `read_symbol` / `outline`, `tsgo`/`tsc` off-repo typecheck, label-propagation communities, Tarjan SCC cycles, reverse-BFS blast radius, multi-repo merge |
-| `anvil-memory` | Local SQLite FTS5 (`rusqlite` bundled) + conflict-free `.harness/memory/chunks/*.jsonl`, progressive disclosure (`search`/`timeline`/`get`/`context`), secret redaction, staleness check via `SymbolFreshnessProvider` |
-| `anvil-mcp` | Unified JSON-RPC 2.0 `stdio` MCP server exposing 12 `graph_*` and `mem_*` tools with mtime-gated graph/chunk caching and token-savings telemetry |
-| `anvil-tasks` | Conflict-free team task ledger (`.harness/tasks/<TASK-ID>/entries/<user>-<ulid>.json`), isolated `plan-<user>.md`, deterministic `tasks.json`, and Git merge driver |
-| `anvil-adapters` | Thin adapter sync and hook translation for Antigravity (`.agents/`, `AGENTS.md`) and Claude Code (`.claude/`, `CLAUDE.md`, `.mcp.json`) via locked `.harness/.state/inbox.json` |
-| `anvil-deps` | Tier 2 dependency staleness/deprecation audits across npm, PyPI, pub.dev, Maven Central/Google Maven, and Cargo |
-| `anvil-qa` | Hybrid Web (DOM audit script, Playwright capture runner, console/overflow/overlap checks) and Mobile (`adb logcat`, `uiautomator` XML, Roborazzi) visual QA |
-| `anvil-cli` | Thin CLI wiring (`clap`), resident TCP daemon (`daemon/`), Token Guard hook, and one module per subcommand |
+| Crate            | Responsibility                                                                                                                                                                                                                                                                                                                  |
+| :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `anvil-core`     | Config (`.harness/config.json`), shared traits (`SymbolFreshnessProvider`, `OutputParser`), stack detector, diff classifier, content-addressed Tier 1 check cache, noise-filtered `diff_grep`, `stats` telemetry, `N=3` circuit breaker, ratchet engine, git helpers, log compressors, canonical `fs_util`                      |
+| `anvil-ast`      | Single-pass embedded `tree-sitter` parser pool (TS/TSX, JS, HTML, CSS, Python, Kotlin, Dart, Rust, PHP 8.x, Laravel Blade), symbol `end_line` spans, HTTP route/call & Laravel view/Inertia extractors, and Tier 0 deterministic rules (`escape-hatches`, `comments`, `strict-types`, `php-hygiene`, `barrels`, `root-hygiene`) |
+| `anvil-graph`    | Parallel incremental code graph (`blake3` + `rayon` + `FxHashMap` + `NodeId(u32)` + v3 `postcard`), framework + PSR-4 + HTTP route resolvers, `read_symbol` / `outline`, `tsgo`/`tsc`/PHPStan/Psalm/Pest/PHPUnit runners, label-propagation communities, Tarjan SCC cycles, reverse-BFS blast radius, multi-repo merge          |
+| `anvil-memory`   | Local SQLite FTS5 (`rusqlite` bundled) + conflict-free `.harness/memory/chunks/*.jsonl`, progressive disclosure (`search`/`timeline`/`get`/`context`), secret redaction, staleness check via `SymbolFreshnessProvider`                                                                                                          |
+| `anvil-mcp`      | Unified JSON-RPC 2.0 `stdio` MCP server exposing 12 `graph_*` and `mem_*` tools with mtime-gated graph/chunk caching and token-savings telemetry                                                                                                                                                                                |
+| `anvil-tasks`    | Conflict-free team task ledger (`.harness/tasks/<TASK-ID>/entries/<user>-<ulid>.json`), isolated `plan-<user>.md`, deterministic `tasks.json`, and Git merge driver                                                                                                                                                             |
+| `anvil-adapters` | Thin adapter sync and hook translation for Antigravity (`.agents/`, `AGENTS.md`) and Claude Code (`.claude/`, `CLAUDE.md`, `.mcp.json`) via locked `.harness/.state/inbox.json`                                                                                                                                                 |
+| `anvil-deps`     | Tier 2 dependency staleness/deprecation audits across npm, PyPI, pub.dev, Maven Central/Google Maven, Cargo, and Composer/Packagist                                                                                                                                                                                             |
+| `anvil-qa`       | Hybrid Web (DOM audit script, Playwright capture runner, console/overflow/overlap checks) and Mobile (`adb logcat`, `uiautomator` XML, Roborazzi) visual QA                                                                                                                                                                     |
+| `anvil-cli`      | Thin CLI wiring (`clap`), resident TCP daemon (`daemon/`), Token Guard hook, and one module per subcommand                                                                                                                                                                                                                      |
 
 > **CI Note**: `.github/workflows/ci.yml` lives on local branch `chore/ci-workflow` pending GitHub `workflow` OAuth scope before pushing to `origin`.
 
@@ -96,10 +117,10 @@ Running `anvil init` or `anvil sync` non-destructively configures both agents fr
 
 Measured with `target/release/anvil.exe` (`18,158,080` bytes / `17.32 MB`) on this Rust workspace (`2,143` nodes, `8,665` edges):
 
-| Operation | Measured Latency |
-| :--- | :--- |
-| `anvil --version` (process startup) | `8.93 ms` median |
-| `anvil graph query` (cold v3 binary load + BM25) | `12.15 ms` median |
-| `anvil graph query` (via resident TCP daemon) | `13.79 ms` median |
-| `anvil mem search` (CLI process + SQLite FTS5) | `12.30 ms` median |
-| Reverse-BFS blast radius (`70` impacted, `14` tests) | `0.48 ms` |
+| Operation                                            | Measured Latency  |
+| :--------------------------------------------------- | :---------------- |
+| `anvil --version` (process startup)                  | `8.93 ms` median  |
+| `anvil graph query` (cold v3 binary load + BM25)     | `12.15 ms` median |
+| `anvil graph query` (via resident TCP daemon)        | `13.79 ms` median |
+| `anvil mem search` (CLI process + SQLite FTS5)       | `12.30 ms` median |
+| Reverse-BFS blast radius (`70` impacted, `14` tests) | `0.48 ms`         |

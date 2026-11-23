@@ -139,3 +139,40 @@ fn laravel_init_doctor_tier0_strict_types_graph_and_token_guard() {
     let guard_out = run_anvil_stdin(root, &["hook", "pre-tool-use"], &payload);
     assert_eq!(guard_out.status.code(), Some(2), "expected token guard deny for composer.lock");
 }
+
+#[test]
+fn cli_renders_ascii_anvil_banner_and_respects_color_controls() {
+    let help = Command::new(anvil_bin()).arg("--help").output().expect("help");
+    let help_text = String::from_utf8_lossy(&help.stdout);
+    assert!(help.status.success());
+    assert!(help_text.contains("A N V I L"), "missing ASCII banner: {help_text}");
+    assert!(help_text.contains("⠈⠛⠓⠓⠉⠉⠉⠁"), "missing 3D Braille anvil base: {help_text}");
+
+    let repo = setup_laravel_git_repo();
+    let root = repo.path();
+    assert!(run_anvil(root, &["init"]).status.success());
+
+    let colored = Command::new(anvil_bin())
+        .env("ANVIL_COLOR", "always")
+        .arg("--root")
+        .arg(root)
+        .arg("doctor")
+        .output()
+        .expect("colored doctor");
+    let colored_out = String::from_utf8_lossy(&colored.stdout);
+    assert!(colored.status.success());
+    assert!(colored_out.contains('\x1b'), "expected ANSI color sequences when ANVIL_COLOR=always");
+    assert!(colored_out.contains("A N V I L"), "expected banner on forced color doctor");
+
+    let plain = Command::new(anvil_bin())
+        .env("ANVIL_COLOR", "always")
+        .arg("--no-color")
+        .arg("--root")
+        .arg(root)
+        .arg("doctor")
+        .output()
+        .expect("no-color doctor");
+    let plain_out = String::from_utf8_lossy(&plain.stdout);
+    assert!(plain.status.success());
+    assert!(!plain_out.contains('\x1b'), "expected zero ANSI escapes with --no-color: {plain_out}");
+}

@@ -13,6 +13,8 @@ use anvil_graph::CodeGraphEngine;
 use anvil_graph::impact::BlastRadiusReport;
 use chrono::Utc;
 
+use crate::ui;
+
 #[derive(Clone, Copy)]
 pub(super) struct Tier1Options {
     pub full: bool,
@@ -32,24 +34,32 @@ pub(super) fn run_tier1(
     let engine = CodeGraphEngine::load_or_build(root, config.clone())?;
     let blast = engine.blast_radius(changed, 2);
     println!(
-        "  [Tier 1] blast_radius: {} impacted, {} related test(s) ({:.2}ms)",
-        blast.impacted_files.len(),
-        blast.related_tests.len(),
-        blast.elapsed_ms
+        "  {} blast_radius: {} impacted, {} related test(s) {}",
+        ui::cyan("[Tier 1]"),
+        ui::bold(&blast.impacted_files.len().to_string()),
+        ui::bold(&blast.related_tests.len().to_string()),
+        ui::dim(&format!("({:.2}ms)", blast.elapsed_ms))
     );
 
     if !changed.is_empty() {
         let over = engine.check_overengineering(changed, added_paths, changed.len() <= 3);
         for w in over.warnings {
             println!(
-                "  [WARN] overengineering: {} (consumers={}): {}",
-                w.file, w.consumer_count, w.reason
+                "  {} overengineering: {} (consumers={}): {}",
+                ui::warn_badge(),
+                ui::cyan(&w.file),
+                w.consumer_count,
+                w.reason
             );
         }
     }
 
     if !opts.full && classification.skip_logic_tests {
-        println!("  [Tier 1] style/docs-only diff: skipping logic typecheck/test suites");
+        println!(
+            "  {} {}",
+            ui::cyan("[Tier 1]"),
+            ui::dim("style/docs-only diff: skipping logic typecheck/test suites")
+        );
         return Ok(false);
     }
 
@@ -97,7 +107,7 @@ fn try_tier1_cache_hit(root: &Path, cache_key: Option<&str>) -> bool {
         return false;
     };
     if matches!(check_cache::lookup(root, key), Ok(Some(entry)) if entry.passed) {
-        println!("  [Tier 1] PASS (cached)");
+        println!("  {} {}", ui::cyan("[Tier 1]"), ui::green("PASS (cached)"));
         let _ = record_event(root, StatsEvent::CheckCacheHit);
         return true;
     }
@@ -120,11 +130,14 @@ fn store_tier1_cache(root: &Path, cache_key: Option<&str>) {
 fn report_compressed(kind: &str, outputs: &[CompressedOutput]) -> bool {
     let mut failed = false;
     for out in outputs {
-        println!("  [{kind}:{}] {}", out.tool, out.summary);
-        if !out.passed {
+        let tag = ui::dim(&format!("[{kind}:{}] ", out.tool));
+        if out.passed {
+            println!("  {tag}{}", ui::green(&out.summary));
+        } else {
             failed = true;
+            println!("  {tag}{}", ui::red(&out.summary));
             for line in &out.lines {
-                println!("    {line}");
+                println!("    {}", ui::red(line));
             }
         }
     }

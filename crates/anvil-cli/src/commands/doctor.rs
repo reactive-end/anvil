@@ -15,9 +15,12 @@ use rustc_hash::FxHashSet;
 use serde_json::Value;
 
 use crate::commands::ExitCodeError;
+use crate::ui;
 
 /// Runs repository health diagnostics and fails only on critical missing/broken setup.
 pub fn execute(root: &Path) -> Result<()> {
+    ui::print_banner_if_tty("Repository Health Diagnostics");
+    ui::print_section("Health Checks");
     let mut failures = 0usize;
     let config = check_config(root, &mut failures);
     check_adapters(root, &config, &mut failures);
@@ -36,19 +39,30 @@ pub fn execute(root: &Path) -> Result<()> {
         )
         .into());
     }
-    println!("doctor: all critical checks passed");
+    if ui::colors_enabled() {
+        println!();
+    }
+    println!("{}", ui::green("✓ doctor: all critical checks passed"));
     Ok(())
 }
 
 fn check_config(root: &Path, failures: &mut usize) -> AnvilConfig {
     match AnvilConfig::load(root) {
         Ok(cfg) => {
-            println!("[OK]   config: .harness/config.json (stacks={})", cfg.stacks.len());
+            ui::print_status_row(
+                &ui::ok_badge(),
+                "config",
+                &format!(
+                    ".harness/config.json  (stacks={}, subrepos={})",
+                    ui::cyan(&cfg.stacks.len().to_string()),
+                    ui::cyan(&cfg.subrepos.len().to_string())
+                ),
+            );
             cfg
         }
         Err(err) => {
             *failures += 1;
-            println!("[FAIL] config: {err}");
+            ui::print_status_row(&ui::fail_badge(), "config", &err.to_string());
             AnvilConfig::default()
         }
     }
@@ -72,12 +86,17 @@ fn check_adapters(root: &Path, config: &AnvilConfig, failures: &mut usize) {
     }
     let missing: Vec<_> = required.into_iter().filter(|p| !p.exists()).collect();
     if missing.is_empty() {
-        println!("[OK]   adapters: {:?} files present", config.adapters);
+        ui::print_status_row(
+            &ui::ok_badge(),
+            "adapters",
+            &format!("{:?} files present", config.adapters),
+        );
     } else {
         *failures += 1;
-        println!(
-            "[FAIL] adapters: missing {} file(s); run `anvil sync`",
-            missing.len()
+        ui::print_status_row(
+            &ui::fail_badge(),
+            "adapters",
+            &format!("missing {} file(s); run `anvil sync`", missing.len()),
         );
     }
 }
@@ -91,17 +110,26 @@ fn check_tsconfig_strict(root: &Path, config: &AnvilConfig, failures: &mut usize
         let mut visited = FxHashSet::default();
         match resolve_tsconfig_strict(root, &ts_path, &mut visited, 0) {
             Ok(Some(true)) => {
-                println!("[OK]   tsconfig: strict=true ({})", ts_path.display());
+                ui::print_status_row(
+                    &ui::ok_badge(),
+                    "tsconfig",
+                    &format!("strict=true  {}", ui::dim(&format!("({})", ts_path.display()))),
+                );
             }
             Ok(Some(false)) | Ok(None) => {
                 *failures += 1;
-                println!(
-                    "[FAIL] tsconfig: compilerOptions.strict is not true ({})",
-                    ts_path.display()
+                ui::print_status_row(
+                    &ui::fail_badge(),
+                    "tsconfig",
+                    &format!("compilerOptions.strict is not true ({})", ts_path.display()),
                 );
             }
             Err(()) => {
-                println!("[WARN] tsconfig: could not parse {}", ts_path.display());
+                ui::print_status_row(
+                    &ui::warn_badge(),
+                    "tsconfig",
+                    &format!("could not parse {}", ts_path.display()),
+                );
             }
         }
     }
@@ -191,26 +219,43 @@ fn probe_tsconfig_path(base: &Path) -> Option<PathBuf> {
 fn check_graph_index(root: &Path) {
     let bin = store::default_bin_path(root);
     if !bin.exists() {
-        println!("[WARN] graph: .harness/.state/graph.bin missing (run `anvil graph build`)");
+        ui::print_status_row(
+            &ui::warn_badge(),
+            "graph",
+            ".harness/.state/graph.bin missing (run `anvil graph build`)",
+        );
         return;
     }
     match store::read_header(&bin) {
-        Ok(header) => println!(
-            "[OK]   graph: {} nodes, {} edges",
-            header.live_nodes, header.live_edges
+        Ok(header) => ui::print_status_row(
+            &ui::ok_badge(),
+            "graph",
+            &format!(
+                "{} nodes, {} edges",
+                ui::cyan(&header.live_nodes.to_string()),
+                ui::cyan(&header.live_edges.to_string())
+            ),
         ),
-        Err(err) => println!("[WARN] graph: unreadable ({err}); run `anvil graph build`"),
+        Err(err) => ui::print_status_row(
+            &ui::warn_badge(),
+            "graph",
+            &format!("unreadable ({err}); run `anvil graph build`"),
+        ),
     }
 }
 
 fn check_identity(root: &Path) -> String {
     match resolve_author(root) {
         Ok(author) if author != "unknown" => {
-            println!("[OK]   identity: {author}");
+            ui::print_status_row(&ui::ok_badge(), "identity", &ui::cyan(&author));
             author
         }
         _ => {
-            println!("[WARN] identity: could not resolve `gh` or `git user.name`");
+            ui::print_status_row(
+                &ui::warn_badge(),
+                "identity",
+                "could not resolve `gh` or `git user.name`",
+            );
             "unknown".to_owned()
         }
     }
@@ -220,23 +265,33 @@ fn check_memory(root: &Path, author: &str) {
     match MemoryEngine::open_without_sync(root, author) {
         Ok(mut mem) => {
             let synced = mem.sync().map(|s| s.records_applied).unwrap_or(0);
-            println!("[OK]   memory: SQLite FTS5 ready (synced {synced} new records)");
+            ui::print_status_row(
+                &ui::ok_badge(),
+                "memory",
+                &format!("SQLite FTS5 ready (synced {synced} new records)"),
+            );
         }
-        Err(err) => println!("[WARN] memory: {err}"),
+        Err(err) => ui::print_status_row(&ui::warn_badge(), "memory", &err.to_string()),
     }
 }
 
 fn check_circuit(root: &Path, limit: u32) {
     let cb = CircuitBreaker::new(root, limit);
     match cb.status() {
-        Ok(st) if st.is_open() => {
-            println!(
-                "[WARN] circuit: OPEN ({} consecutive failures; run `anvil circuit reset`)",
+        Ok(st) if st.is_open() => ui::print_status_row(
+            &ui::warn_badge(),
+            "circuit",
+            &format!(
+                "OPEN ({} consecutive failures; run `anvil circuit reset`)",
                 st.consecutive_failures
-            );
-        }
-        Ok(st) => println!("[OK]   circuit: {:?} (streak={})", st.state, st.consecutive_failures),
-        Err(err) => println!("[WARN] circuit: {err}"),
+            ),
+        ),
+        Ok(st) => ui::print_status_row(
+            &ui::ok_badge(),
+            "circuit",
+            &format!("{:?} (streak={})", st.state, st.consecutive_failures),
+        ),
+        Err(err) => ui::print_status_row(&ui::warn_badge(), "circuit", &err.to_string()),
     }
 }
 
@@ -270,9 +325,17 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
         })
         .collect();
     if missing.is_empty() {
-        println!("[OK]   tools: all detected CLI tools found in local/PATH");
+        ui::print_status_row(
+            &ui::ok_badge(),
+            "tools",
+            "all detected CLI tools found in local/PATH",
+        );
     } else {
-        println!("[WARN] tools: not on local/PATH: {}", missing.join(", "));
+        ui::print_status_row(
+            &ui::warn_badge(),
+            "tools",
+            &format!("not on local/PATH: {}", ui::yellow(&missing.join(", "))),
+        );
     }
 }
 
@@ -340,15 +403,31 @@ fn check_phpstan_config(root: &Path, config: &AnvilConfig) {
         if let Some(path) = neon {
             let level = parse_phpstan_level(&path);
             match level {
-                Some(lvl) => println!("[OK]   phpstan: level={lvl} ({})", path.display()),
-                None => println!("[WARN] phpstan: no explicit level found ({})", path.display()),
+                Some(lvl) => ui::print_status_row(
+                    &ui::ok_badge(),
+                    "phpstan",
+                    &format!("level={}  {}", ui::cyan(&lvl), ui::dim(&format!("({})", path.display()))),
+                ),
+                None => ui::print_status_row(
+                    &ui::warn_badge(),
+                    "phpstan",
+                    &format!("no explicit level found ({})", path.display()),
+                ),
             }
         } else if dir.join("psalm.xml").is_file() || dir.join("psalm.xml.dist").is_file() {
-            println!("[OK]   psalm: config present ({})", dir.display());
+            ui::print_status_row(
+                &ui::ok_badge(),
+                "psalm",
+                &format!("config present  {}", ui::dim(&format!("({})", dir.display()))),
+            );
         } else {
-            println!(
-                "[WARN] phpstan: missing phpstan.neon/psalm.xml in {} (recommended for PHP/Laravel Tier 1)",
-                dir.display()
+            ui::print_status_row(
+                &ui::warn_badge(),
+                "phpstan",
+                &format!(
+                    "missing phpstan.neon/psalm.xml in {} (recommended for PHP/Laravel Tier 1)",
+                    dir.display()
+                ),
             );
         }
     }

@@ -10,6 +10,7 @@ use anvil_deps::{
 };
 
 use crate::commands::ExitCodeError;
+use crate::ui;
 
 /// Executes `anvil deps [--all] [manifests...]`.
 pub fn execute(root: &Path, all: bool, manifests: &[PathBuf]) -> Result<()> {
@@ -31,26 +32,32 @@ pub fn execute(root: &Path, all: bool, manifests: &[PathBuf]) -> Result<()> {
     };
 
     println!(
-        "deps audit: checked={} cache_hits={} network={} max_age={}mo findings={} errors={}",
-        report.checked_packages,
+        "{} checked={} cache_hits={} network={} max_age={}mo findings={} errors={}",
+        ui::accent("deps audit:"),
+        ui::bold(&report.checked_packages.to_string()),
         report.cache_hits,
         report.network_fetches,
         report.max_age_months,
-        report.findings.len(),
+        if report.findings.is_empty() {
+            ui::green("0")
+        } else {
+            ui::red(&report.findings.len().to_string())
+        },
         report.errors.len()
     );
     for finding in &report.findings {
         println!(
-            "  [WARN] {}:{} ({}) issues={:?} age={:?}mo",
+            "  {} {}:{} {} issues={:?} age={:?}mo",
+            ui::warn_badge(),
             finding.ecosystem,
-            finding.package,
-            finding.manifest_path,
+            ui::bold(&finding.package),
+            ui::dim(&format!("({})", finding.manifest_path)),
             finding.issues,
             finding.age_months
         );
     }
     for err in &report.errors {
-        eprintln!("  [ERR]  {err}");
+        eprintln!("  {} {err}", ui::red("[ERR] "));
     }
     if !report.findings.is_empty() {
         return Err(ExitCodeError::silent(1).into());
@@ -78,7 +85,15 @@ fn collect_recursive(root: &Path, dir: &Path, depth: usize, out: &mut Vec<PathBu
             let skip = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
                 matches!(
                     n,
-                    ".git" | ".harness" | "node_modules" | "target" | "dist" | "build" | ".venv"
+                    ".git"
+                        | ".harness"
+                        | "node_modules"
+                        | "target"
+                        | "dist"
+                        | "build"
+                        | ".venv"
+                        | "vendor"
+                        | "storage"
                 )
             });
             if !skip {
