@@ -1,16 +1,20 @@
 //! Kotlin/Gradle and Rust targeted test runners for `impact/tests_runner.rs`.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::Result;
+use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
-use anvil_core::fs_util::resolve_local_or_path_bin;
+use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin};
 use anvil_core::traits::CompressedOutput;
 use rustc_hash::FxHashSet;
 
 use super::tests_runner::{exec_compressed, skip_output};
 use super::typecheck::resolve_gradle_bin;
+use super::typecheck_php::build_php_tool_command;
 use crate::resolvers::kotlin::extract_kotlin_package;
 use crate::resolvers::rust_cargo::parse_package_name;
 
@@ -121,4 +125,102 @@ fn detect_rust_crate_for_file(repo_root: &Path, rel_file: &str) -> String {
         cur = dir.parent().filter(|p| p.starts_with(repo_root));
     }
     String::new()
+}
+
+pub(super) fn run_php_tests(
+    repo_root: &Path,
+    config: &AnvilConfig,
+    files: &[&str],
+) -> Result<Vec<CompressedOutput>> {
+    let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
+    for raw in files {
+        let norm = raw.replace('\\', "/");
+        let work_dir = find_php_project_root(repo_root, &norm);
+        let rel = repo_root
+            .join(&norm)
+            .strip_prefix(&work_dir)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or(norm);
+        grouped.entry(work_dir).or_default().push(rel);
+    }
+
+    let mut out = Vec::with_capacity(grouped.len());
+    for (work_dir, scoped_files) in grouped {
+        out.push(run_php_tests_in_dir(repo_root, &work_dir, config, &scoped_files)?);
+    }
+    Ok(out)
+}
+
+fn find_php_project_root(repo_root: &Path, rel_file: &str) -> PathBuf {
+    let abs = repo_root.join(rel_file);
+    let mut cur = abs.parent();
+    while let Some(dir) = cur {
+        if dir.join("composer.json").is_file() || dir.join("phpunit.xml").is_file() {
+            return dir.to_path_buf();
+        }
+        if dir == repo_root {
+            break;
+        }
+        cur = dir.parent().filter(|p| p.starts_with(repo_root));
+    }
+    repo_root.to_path_buf()
+}
+
+fn run_php_tests_in_dir(
+    log_root: &Path,
+    work_dir: &Path,
+    config: &AnvilConfig,
+    files: &[String],
+) -> Result<CompressedOutput> {
+    if let Some(mut cmd) = build_php_tool_command(work_dir, "pest") {
+        cmd.args(files);
+        return exec_php_command(log_root, config, &mut cmd, "pest");
+    }
+    if let Some(mut cmd) = build_php_tool_command(work_dir, "phpunit") {
+        cmd.args(files);
+        return exec_php_command(log_root, config, &mut cmd, "phpunit");
+    }
+    if work_dir.join("artisan").is_file()
+        && let Some(php_bin) = resolve_php_bin()
+    {
+        let mut cmd = Command::new(php_bin);
+        cmd.arg("artisan").arg("test").args(files).current_dir(work_dir);
+        return exec_php_command(log_root, config, &mut cmd, "artisan test");
+    }
+    Ok(skip_output("pest/phpunit", "no pest, phpunit, or php artisan runtime found"))
+}
+
+fn exec_php_command(
+    log_root: &Path,
+    config: &AnvilConfig,
+    cmd: &mut Command,
+    label: &str,
+) -> Result<CompressedOutput> {
+    let output = match cmd.output() {
+        Ok(out) => out,
+        Err(err) => {
+            return compress_output(
+                Some(log_root),
+                label,
+                1,
+                &format!("failed to execute `{label}`: {err}"),
+                config.tier_budgets.compressor_max_lines,
+                config.tier_budgets.compressor_max_tokens,
+            );
+        }
+    };
+    let code = output.status.code().unwrap_or(1);
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    compress_output(
+        Some(log_root),
+        label,
+        code,
+        &combined,
+        config.tier_budgets.compressor_max_lines,
+        config.tier_budgets.compressor_max_tokens,
+    )
 }

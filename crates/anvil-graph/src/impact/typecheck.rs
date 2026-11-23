@@ -116,6 +116,20 @@ fn run_stacks_in_dir(
             &["compileDebugKotlin"],
         )?);
     }
+    if (stacks.contains(&StackKind::Php) || stacks.contains(&StackKind::Laravel))
+        && (ctx.impacted_files.is_empty()
+            || ctx
+                .impacted_files
+                .iter()
+                .any(|f| f.ends_with(".php") && !f.ends_with(".blade.php")))
+    {
+        results.push(super::typecheck_php::run_php_typecheck(
+            ctx.log_root,
+            ctx.work_dir,
+            ctx.config,
+            ctx.impacted_files,
+        )?);
+    }
     Ok(())
 }
 

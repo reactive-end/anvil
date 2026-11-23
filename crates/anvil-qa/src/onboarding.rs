@@ -42,11 +42,16 @@ pub fn detect_ui_platform(config: &AnvilConfig) -> UiPlatform {
             | StackKind::Vite
             | StackKind::NextJs
             | StackKind::Astro
-            | StackKind::Angular => has_web = true,
+            | StackKind::Angular
+            | StackKind::Laravel => has_web = true,
             StackKind::ExpoReactNative | StackKind::KotlinAndroid | StackKind::FlutterDart => {
                 has_mobile = true;
             }
-            StackKind::TypeScript | StackKind::NestJs | StackKind::Python | StackKind::Rust => {}
+            StackKind::TypeScript
+            | StackKind::NestJs
+            | StackKind::Python
+            | StackKind::Rust
+            | StackKind::Php => {}
         }
     }
 

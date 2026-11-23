@@ -53,6 +53,8 @@ pub enum StackKind {
     KotlinAndroid,
     FlutterDart,
     Rust,
+    Php,
+    Laravel,
 }
 
 /// Supported linters, typecheckers, and QA tools detected in a repository.
@@ -75,6 +77,13 @@ pub enum ToolKind {
     SonarQube,
     Cargo,
     Gradle,
+    Composer,
+    PhpStan,
+    Psalm,
+    Pint,
+    PhpCsFixer,
+    PhpUnit,
+    Pest,
 }
 
 /// Configuration for a single repository or subrepo within a multi-repo workspace.

@@ -1,10 +1,12 @@
 //! Single-pass AST traversal coordinating symbol/edge extraction and Tier 0 rules.
 
 pub mod angular_html;
+pub mod blade;
 pub mod css;
 pub mod dart;
 pub mod http_route;
 pub mod kotlin;
+pub mod php;
 pub mod python;
 pub mod rust;
 pub mod typescript;
@@ -192,11 +194,13 @@ fn dispatch_extractor(node: Node<'_>, state: &mut ExtractState<'_>) {
             typescript::visit_node(node, state);
         }
         Language::Html => angular_html::visit_node(node, state),
+        Language::Blade => blade::visit_node(node, state),
         Language::Css | Language::Scss => css::visit_node(node, state),
         Language::Python => python::visit_node(node, state),
         Language::Kotlin => kotlin::visit_node(node, state),
         Language::Dart => dart::visit_node(node, state),
         Language::Rust => rust::visit_node(node, state),
+        Language::Php => php::visit_node(node, state),
         Language::Json | Language::Yaml | Language::Markdown | Language::Other => {}
     }
 }

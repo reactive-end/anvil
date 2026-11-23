@@ -6,18 +6,28 @@ pub mod grep;
 pub use diff::{CompressedDiff, compress_diff};
 pub use grep::{CompressedGrep, compressed_grep};
 
-const NOISE_EXACT_NAMES: [&str; 8] = [
+const NOISE_EXACT_NAMES: [&str; 10] = [
     "Cargo.lock",
     "package-lock.json",
     "pnpm-lock.yaml",
     "yarn.lock",
     "poetry.lock",
     "pubspec.lock",
+    "composer.lock",
+    ".phpunit.result.cache",
     "graph.json",
     "graph.bin",
 ];
 
-const NOISE_DIR_SEGMENTS: [&str; 5] = ["dist", "build", "node_modules", "target", ".next"];
+const NOISE_DIR_SEGMENTS: [&str; 7] = [
+    "dist",
+    "build",
+    "node_modules",
+    "target",
+    ".next",
+    "vendor",
+    "storage",
+];
 
 /// Returns true for lockfiles, minified/sourcemap files, generated/vendor dirs, and graph artifacts.
 pub fn is_noise_file(rel_path: &str) -> bool {

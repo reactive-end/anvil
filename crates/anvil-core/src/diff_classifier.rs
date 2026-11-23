@@ -182,7 +182,7 @@ fn is_deps_manifest(name: &str, path: &str) -> bool {
         "package.json" | "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock"
             | "cargo.toml" | "cargo.lock" | "pyproject.toml" | "poetry.lock"
             | "uv.lock" | "pubspec.yaml" | "pubspec.lock" | "libs.versions.toml"
-            | "build.gradle" | "build.gradle.kts"
+            | "build.gradle" | "build.gradle.kts" | "composer.json" | "composer.lock"
     ) || (path.ends_with(".txt") && (name.starts_with("requirements") || has_dir_segment(path, "requirements")))
 }
 
@@ -201,6 +201,10 @@ fn is_contract_path(path: &str) -> bool {
         || has_dir_segment(path, "contracts")
         || has_dir_segment(path, "dto")
         || has_dir_segment(path, "interfaces")
+        || has_dir_segment(path, "routes")
+        || has_dir_segment(path, "migrations")
+        || path.contains("/http/requests/")
+        || path.contains("/http/resources/")
 }
 
 fn has_dir_segment(path: &str, seg: &str) -> bool {
@@ -221,11 +225,36 @@ fn is_config_path(path: &str, name: &str) -> bool {
         ]
         .iter()
         .any(|p| name.starts_with(p))
-        || matches!(name, "angular.json" | "nest-cli.json" | "ruff.toml" | ".ruff.toml")
+        || matches!(
+            name,
+            "angular.json"
+                | "nest-cli.json"
+                | "ruff.toml"
+                | ".ruff.toml"
+                | "phpstan.neon"
+                | "phpstan.neon.dist"
+                | "psalm.xml"
+                | "psalm.xml.dist"
+                | "phpunit.xml"
+                | "phpunit.xml.dist"
+                | "pint.json"
+                | ".php-cs-fixer.php"
+                | ".php-cs-fixer.dist.php"
+        )
 }
 
 fn is_ui_path(path: &str) -> bool {
-    [".tsx", ".jsx", ".html", ".vue", ".svelte", "screen.kt", "activity.kt", "_widget.dart"]
-        .iter()
-        .any(|ext| path.ends_with(ext))
+    [
+        ".tsx",
+        ".jsx",
+        ".html",
+        ".vue",
+        ".svelte",
+        ".blade.php",
+        "screen.kt",
+        "activity.kt",
+        "_widget.dart",
+    ]
+    .iter()
+    .any(|ext| path.ends_with(ext))
 }

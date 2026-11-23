@@ -17,13 +17,76 @@ pub fn bin_in_path(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Checks `repo_root/node_modules/.bin/<name>[.cmd|.exe]` first, then `bin_in_path(name)`.
+/// Checks `repo_root/node_modules/.bin`, `repo_root/vendor/bin`, then `bin_in_path(name)`.
 pub fn resolve_local_or_path_bin(repo_root: &Path, name: &str) -> Option<PathBuf> {
-    let local_bin_dir = repo_root.join("node_modules").join(".bin");
-    if let Some(local) = find_bin_in_dir(&local_bin_dir, name.trim()) {
+    let trimmed = name.trim();
+    let local_node_bin = repo_root.join("node_modules").join(".bin");
+    if let Some(local) = find_bin_in_dir(&local_node_bin, trimmed) {
         return Some(local);
     }
-    bin_in_path(name)
+    let local_vendor_bin = repo_root.join("vendor").join("bin");
+    if let Some(local) = find_bin_in_dir(&local_vendor_bin, trimmed) {
+        return Some(local);
+    }
+    bin_in_path(trimmed)
+}
+
+/// Returns the PHP CLI script `repo_root/vendor/bin/<name>` (without `.bat`) if present.
+pub fn resolve_php_vendor_script(repo_root: &Path, name: &str) -> Option<PathBuf> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let script = repo_root.join("vendor").join("bin").join(trimmed);
+    script.is_file().then_some(script)
+}
+
+/// Resolves the PHP runtime binary: `PHP_BINARY`, `PATH`, then common Windows XAMPP/Herd/Laragon paths.
+pub fn resolve_php_bin() -> Option<PathBuf> {
+    if let Some(env_php) = std::env::var_os("PHP_BINARY") {
+        let candidate = PathBuf::from(env_php);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    if let Some(in_path) = bin_in_path("php") {
+        return Some(in_path);
+    }
+    #[cfg(windows)]
+    {
+        if let Some(found) = find_windows_php_bin() {
+            return Some(found);
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn find_windows_php_bin() -> Option<PathBuf> {
+    let mut fixed = vec![PathBuf::from(r"C:\xampp\php\php.exe")];
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let base = PathBuf::from(profile);
+        fixed.push(base.join(r".config\herd\bin\php.exe"));
+        fixed.push(base.join(r".config\herd-lite\bin\php.exe"));
+    }
+    for cand in fixed {
+        if cand.is_file() {
+            return Some(cand);
+        }
+    }
+    let laragon_php = Path::new(r"C:\laragon\bin\php");
+    if let Ok(entries) = std::fs::read_dir(laragon_php) {
+        let mut versions: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path().join("php.exe"))
+            .filter(|p| p.is_file())
+            .collect();
+        versions.sort();
+        if let Some(latest) = versions.pop() {
+            return Some(latest);
+        }
+    }
+    None
 }
 
 fn find_bin_in_dir(dir: &Path, name: &str) -> Option<PathBuf> {

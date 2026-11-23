@@ -19,7 +19,7 @@ pub fn check_comment_escape(node: Node<'_>, state: &mut RuleState<'_>) {
     let Some(re) = COMMENT_ESCAPE_RE
         .get_or_init(|| {
             Regex::new(
-                r"(?i)(@ts-ignore\b|@ts-expect-error\b|eslint-disable(?:-(?:next-)?line)?\b|\bbiome-ignore(?:-(?:all|start|end))?\b|#\s*type\s*:\s*ignore\b|#\s*noqa\b|//\s*ignore(?:_for_file)?\s*:)",
+                r"(?i)(@ts-ignore\b|@ts-expect-error\b|eslint-disable(?:-(?:next-)?line)?\b|\bbiome-ignore(?:-(?:all|start|end))?\b|#\s*type\s*:\s*ignore\b|#\s*noqa\b|//\s*ignore(?:_for_file)?\s*:|@phpstan-ignore(?:-next-line|-line)?\b|@psalm-suppress\b|\bphpcs:(?:ignore(?:File)?|disable)\b)",
             )
             .ok()
         })
@@ -69,13 +69,19 @@ fn classify_comment_escape(matched: &str, lang: Language) -> Option<&'static str
         }
     } else if lower.starts_with("//") {
         (lang == Language::Dart).then_some("no-dart-ignore")
+    } else if lower.starts_with("@phpstan-ignore") {
+        (lang == Language::Php).then_some("no-phpstan-ignore")
+    } else if lower.starts_with("@psalm-suppress") {
+        (lang == Language::Php).then_some("no-psalm-suppress")
+    } else if lower.starts_with("phpcs:") {
+        (lang == Language::Php).then_some("no-phpcs-ignore")
     } else {
         None
     }
 }
 
 /// Checks non-comment AST nodes for language-specific escape hatches (`!important`, `@Suppress`,
-/// Rust `#[allow(...)]` and `unsafe`).
+/// Rust `#[allow(...)]`/`unsafe`, and PHP `@` error suppression).
 pub fn check_ast_escape(node: Node<'_>, state: &mut RuleState<'_>) {
     let kind = node.kind();
     match state.language {
@@ -86,6 +92,9 @@ pub fn check_ast_escape(node: Node<'_>, state: &mut RuleState<'_>) {
             check_kotlin_suppress(node, state);
         }
         Language::Rust => check_rust_escape(node, state),
+        Language::Php if kind == "error_suppression_expression" => {
+            report_if_disallowed(node, state, "no-php-error-suppression", "@");
+        }
         _ => {}
     }
 }

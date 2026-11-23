@@ -1,7 +1,8 @@
-//! Tier 2 dependency health auditing across npm, PyPI, pub.dev, Maven, and Cargo.
+//! Tier 2 dependency health auditing across npm, PyPI, pub.dev, Maven, Cargo, and Composer.
 
 pub mod audit;
 pub mod cargo_toml;
+pub mod composer;
 pub mod maven;
 pub mod model;
 pub mod npm;

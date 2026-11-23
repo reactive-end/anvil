@@ -55,7 +55,33 @@ fn is_sibling_test_dir(src_dir: &str, cand_dir: &str) -> bool {
     {
         return true;
     }
-    false
+    is_php_laravel_test_dir(src_dir, cand_dir)
+}
+
+fn is_php_laravel_test_dir(src_dir: &str, cand_dir: &str) -> bool {
+    let src_lower = src_dir.to_ascii_lowercase();
+    let cand_lower = cand_dir.to_ascii_lowercase();
+    let (src_sub, src_in_app) = split_laravel_subrepo(&src_lower, "app");
+    let (cand_sub, cand_in_tests) = split_laravel_subrepo(&cand_lower, "tests");
+    if src_in_app && cand_in_tests && src_sub == cand_sub {
+        return true;
+    }
+    let (src_sub2, src_in_src) = split_laravel_subrepo(&src_lower, "src");
+    src_in_src && cand_in_tests && src_sub2 == cand_sub
+}
+
+fn split_laravel_subrepo<'a>(dir: &'a str, root_seg: &str) -> (&'a str, bool) {
+    if dir == root_seg || dir.starts_with(&format!("{root_seg}/")) {
+        return ("", true);
+    }
+    let needle = format!("/{root_seg}");
+    if let Some(idx) = dir.find(&needle) {
+        let after = &dir[idx + needle.len()..];
+        if after.is_empty() || after.starts_with('/') {
+            return (&dir[..idx], true);
+        }
+    }
+    ("", false)
 }
 
 fn parent_dir(path: &str) -> &str {
@@ -72,6 +98,7 @@ pub(crate) fn is_test_file(path: &str) -> bool {
         || fname.ends_with("_test.py")
         || fname.ends_with("_test.dart")
         || fname.ends_with("test.kt")
+        || fname.ends_with("test.php")
         || fname.ends_with("_test.rs")
         || fname.ends_with("_tests.rs")
         || (lower.ends_with(".rs") && (lower.contains("/tests/") || lower.starts_with("tests/")))
@@ -82,6 +109,7 @@ pub(crate) fn is_screen_file(path: &str) -> bool {
     lower.contains("screen")
         || lower.contains("page")
         || lower.ends_with(".component.html")
+        || lower.ends_with(".blade.php")
         || lower.contains("/views/")
 }
 
@@ -100,7 +128,14 @@ fn test_base_stem(path: &str) -> Option<String> {
     if let Some(rest) = fname.strip_prefix("test_") {
         return rest.split('.').next().map(str::to_owned);
     }
-    for suffix in ["_test.py", "_test.dart", "test.kt", "_test.rs", "_tests.rs"] {
+    for suffix in [
+        "_test.py",
+        "_test.dart",
+        "test.kt",
+        "test.php",
+        "_test.rs",
+        "_tests.rs",
+    ] {
         if let Some(stem) = fname.strip_suffix(suffix) {
             return Some(stem.to_owned());
         }

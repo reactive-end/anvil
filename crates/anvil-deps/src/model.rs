@@ -15,6 +15,7 @@ pub enum Ecosystem {
     PubDev,
     Maven,
     Cargo,
+    Composer,
 }
 
 impl Ecosystem {
@@ -26,6 +27,7 @@ impl Ecosystem {
             Self::PubDev => "pubdev",
             Self::Maven => "maven",
             Self::Cargo => "cargo",
+            Self::Composer => "composer",
         }
     }
 }

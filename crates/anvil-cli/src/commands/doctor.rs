@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use anvil_adapters::{antigravity, claude_code};
 use anvil_core::circuit_breaker::CircuitBreaker;
-use anvil_core::config::{AnvilConfig, ToolKind};
-use anvil_core::fs_util::{resolve_local_or_path_bin, strip_jsonc};
+use anvil_core::config::{AnvilConfig, StackKind, ToolKind};
+use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin, strip_jsonc};
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author;
@@ -22,6 +22,7 @@ pub fn execute(root: &Path) -> Result<()> {
     let config = check_config(root, &mut failures);
     check_adapters(root, &config, &mut failures);
     check_tsconfig_strict(root, &config, &mut failures);
+    check_phpstan_config(root, &config);
     check_graph_index(root);
     let author = check_identity(root);
     check_memory(root, &author);
@@ -241,35 +242,31 @@ fn check_circuit(root: &Path, limit: u32) {
 
 fn check_stack_tools(root: &Path, config: &AnvilConfig) {
     let mut bins = vec!["git", "gh"];
+    if workspace_has_php(config) {
+        bins.push("php");
+    }
     for tool in &config.tools {
-        let bin = match tool {
-            ToolKind::Tsc => "tsc",
-            ToolKind::Eslint => "eslint",
-            ToolKind::Biome => "biome",
-            ToolKind::Ruff => "ruff",
-            ToolKind::Pyright => "pyright",
-            ToolKind::Mypy => "mypy",
-            ToolKind::Ktlint => "ktlint",
-            ToolKind::Detekt => "detekt",
-            ToolKind::DartAnalyze => "dart",
-            ToolKind::Vitest => "vitest",
-            ToolKind::Jest => "jest",
-            ToolKind::Pytest => "pytest",
-            ToolKind::Cargo => "cargo",
-            ToolKind::Gradle | ToolKind::Roborazzi | ToolKind::SonarQube => continue,
-        };
-        if !bins.contains(&bin) {
+        if let Some(bin) = tool_kind_bin(*tool)
+            && !bins.contains(&bin)
+        {
             bins.push(bin);
         }
     }
+    let search_dirs: Vec<PathBuf> = std::iter::once(root.to_path_buf())
+        .chain(config.subrepos.iter().map(|s| root.join(&s.path)))
+        .filter(|d| d.is_dir())
+        .collect();
     let missing: Vec<&str> = bins
         .into_iter()
         .filter(|b| match *b {
-            "tsc" => {
-                resolve_local_or_path_bin(root, "tsgo").is_none()
-                    && resolve_local_or_path_bin(root, "tsc").is_none()
-            }
-            other => resolve_local_or_path_bin(root, other).is_none(),
+            "tsc" => !search_dirs.iter().any(|d| {
+                resolve_local_or_path_bin(d, "tsgo").is_some()
+                    || resolve_local_or_path_bin(d, "tsc").is_some()
+            }),
+            "php" => resolve_php_bin().is_none(),
+            other => !search_dirs
+                .iter()
+                .any(|d| resolve_local_or_path_bin(d, other).is_some()),
         })
         .collect();
     if missing.is_empty() {
@@ -277,4 +274,96 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
     } else {
         println!("[WARN] tools: not on local/PATH: {}", missing.join(", "));
     }
+}
+
+fn workspace_has_php(config: &AnvilConfig) -> bool {
+    config
+        .stacks
+        .iter()
+        .chain(config.subrepos.iter().flat_map(|s| s.stacks.iter()))
+        .any(|s| matches!(s, StackKind::Php | StackKind::Laravel))
+}
+
+fn tool_kind_bin(tool: ToolKind) -> Option<&'static str> {
+    match tool {
+        ToolKind::Tsc => Some("tsc"),
+        ToolKind::Eslint => Some("eslint"),
+        ToolKind::Biome => Some("biome"),
+        ToolKind::Ruff => Some("ruff"),
+        ToolKind::Pyright => Some("pyright"),
+        ToolKind::Mypy => Some("mypy"),
+        ToolKind::Ktlint => Some("ktlint"),
+        ToolKind::Detekt => Some("detekt"),
+        ToolKind::DartAnalyze => Some("dart"),
+        ToolKind::Vitest => Some("vitest"),
+        ToolKind::Jest => Some("jest"),
+        ToolKind::Pytest => Some("pytest"),
+        ToolKind::Cargo => Some("cargo"),
+        ToolKind::Composer => Some("composer"),
+        ToolKind::PhpStan => Some("phpstan"),
+        ToolKind::Psalm => Some("psalm"),
+        ToolKind::Pint => Some("pint"),
+        ToolKind::PhpCsFixer => Some("php-cs-fixer"),
+        ToolKind::PhpUnit => Some("phpunit"),
+        ToolKind::Pest => Some("pest"),
+        ToolKind::Gradle | ToolKind::Roborazzi | ToolKind::SonarQube => None,
+    }
+}
+
+fn check_phpstan_config(root: &Path, config: &AnvilConfig) {
+    let mut php_dirs = Vec::new();
+    if config
+        .stacks
+        .iter()
+        .any(|s| matches!(s, StackKind::Php | StackKind::Laravel))
+        && root.join("composer.json").is_file()
+    {
+        php_dirs.push(root.to_path_buf());
+    }
+    for sub in &config.subrepos {
+        if sub
+            .stacks
+            .iter()
+            .any(|s| matches!(s, StackKind::Php | StackKind::Laravel))
+        {
+            let dir = root.join(&sub.path);
+            if dir.is_dir() && !php_dirs.contains(&dir) {
+                php_dirs.push(dir);
+            }
+        }
+    }
+    for dir in php_dirs {
+        let neon = ["phpstan.neon", "phpstan.neon.dist"]
+            .into_iter()
+            .map(|n| dir.join(n))
+            .find(|p| p.is_file());
+        if let Some(path) = neon {
+            let level = parse_phpstan_level(&path);
+            match level {
+                Some(lvl) => println!("[OK]   phpstan: level={lvl} ({})", path.display()),
+                None => println!("[WARN] phpstan: no explicit level found ({})", path.display()),
+            }
+        } else if dir.join("psalm.xml").is_file() || dir.join("psalm.xml.dist").is_file() {
+            println!("[OK]   psalm: config present ({})", dir.display());
+        } else {
+            println!(
+                "[WARN] phpstan: missing phpstan.neon/psalm.xml in {} (recommended for PHP/Laravel Tier 1)",
+                dir.display()
+            );
+        }
+    }
+}
+
+fn parse_phpstan_level(path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(path).ok()?;
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("level:") {
+            let val = rest.split('#').next().unwrap_or("").trim();
+            if !val.is_empty() {
+                return Some(val.to_owned());
+            }
+        }
+    }
+    None
 }

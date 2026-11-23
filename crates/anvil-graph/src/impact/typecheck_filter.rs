@@ -113,5 +113,16 @@ fn looks_like_error_line(line: &str) -> bool {
             || trimmed.contains(" - error")
             || trimmed.starts_with("error - ")
             || trimmed.starts_with("error[")
-            || trimmed.starts_with("e: "))
+            || trimmed.starts_with("e: ")
+            || trimmed.contains("Parse error:")
+            || trimmed.contains("Fatal error:")
+            || has_php_file_line_diag(trimmed))
+}
+
+fn has_php_file_line_diag(trimmed: &str) -> bool {
+    let Some(idx) = trimmed.find(".php:") else {
+        return false;
+    };
+    let rest = &trimmed[idx + 5..];
+    rest.chars().next().is_some_and(|c| c.is_ascii_digit())
 }

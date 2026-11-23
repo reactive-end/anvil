@@ -111,6 +111,7 @@ fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
     if config.stacks.contains(&StackKind::Python) {
         extras.extend(["pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"].into_iter().map(str::to_owned));
     }
+    push_php_laravel_allowlist(&config.stacks, &mut extras);
     for sub in &config.subrepos {
         if let Some(top) = sub.path.split('/').next().filter(|s| !s.is_empty() && *s != ".") {
             extras.push(top.to_owned());
@@ -120,6 +121,30 @@ fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
         if !config.root_allowlist.iter().any(|existing| existing == &item) {
             config.root_allowlist.push(item);
         }
+    }
+}
+
+fn push_php_laravel_allowlist(stacks: &[StackKind], extras: &mut Vec<String>) {
+    if stacks.contains(&StackKind::Php) || stacks.contains(&StackKind::Laravel) {
+        extras.extend(
+            [
+                "composer.json", "composer.lock", "phpunit.xml", "phpunit.xml.dist",
+                "phpstan.neon", "phpstan.neon.dist", "psalm.xml", "psalm.xml.dist",
+                "pint.json", ".php-cs-fixer.php", ".php-cs-fixer.dist.php", "src", "tests",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+    }
+    if stacks.contains(&StackKind::Laravel) {
+        extras.extend(
+            [
+                "artisan", "app", "bootstrap", "config", "database",
+                "lang", "public", "resources", "routes", "storage",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
     }
 }
 
@@ -176,7 +201,7 @@ fn is_ignored_dir(path: &Path) -> bool {
     name.starts_with('.')
         || matches!(
             name,
-            "node_modules" | "target" | "dist" | "build" | "venv" | "__pycache__" | "Pods"
+            "node_modules" | "target" | "dist" | "build" | "venv" | "__pycache__" | "Pods" | "vendor" | "storage"
         )
 }
 
@@ -187,6 +212,7 @@ fn inspect_repo_dir(dir: &Path, rel_path: &str) -> Result<Option<DetectedRepo>> 
     ecosystems::detect_js_ts_stacks(dir, &mut stacks, &mut tools)?;
     ecosystems::detect_python_stack(dir, &mut stacks, &mut tools)?;
     ecosystems::detect_kotlin_android_stack(dir, &mut stacks, &mut tools)?;
+    ecosystems::detect_php_laravel_stack(dir, &mut stacks, &mut tools)?;
     ecosystems::detect_flutter_rust_tools(dir, &mut stacks, &mut tools);
 
     let has_git = dir.join(".git").exists();

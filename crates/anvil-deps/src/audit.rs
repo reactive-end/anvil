@@ -12,6 +12,7 @@ use rustc_hash::FxHashSet;
 
 use crate::cache::DepsCache;
 use crate::cargo_toml::{fetch_cargo, parse_cargo_toml};
+use crate::composer::{fetch_composer, parse_composer_json};
 use crate::maven::{
     fetch_maven, parse_build_gradle, parse_build_gradle_kts, parse_libs_versions_toml,
 };
@@ -38,6 +39,7 @@ impl RegistryFetcher for LiveRegistryFetcher {
             Ecosystem::PubDev => fetch_pubdev(package),
             Ecosystem::Maven => fetch_maven(package),
             Ecosystem::Cargo => fetch_cargo(package),
+            Ecosystem::Composer => fetch_composer(package),
         }
     }
 }
@@ -91,6 +93,7 @@ pub fn is_supported_manifest(path: &Path) -> bool {
                     | "build.gradle"
                     | "libs.versions.toml"
                     | "Cargo.toml"
+                    | "composer.json"
             ) || is_requirements_txt_name(name)
         })
 }
@@ -119,6 +122,7 @@ pub fn parse_manifest(repo_root: &Path, path: &Path) -> Result<Vec<DependencySpe
         Some("build.gradle") => parse_build_gradle(&rel, &content),
         Some("libs.versions.toml") => parse_libs_versions_toml(&rel, &content),
         Some("Cargo.toml") => parse_cargo_toml(&rel, &content),
+        Some("composer.json") => parse_composer_json(&rel, &content),
         _ => bail!("unsupported dependency manifest: {}", abs.display()),
     }
 }

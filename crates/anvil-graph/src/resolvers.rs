@@ -7,6 +7,7 @@ pub mod http_routes;
 pub mod kotlin;
 pub mod nestjs;
 mod path;
+pub mod php;
 pub mod python;
 pub mod rust;
 pub(crate) mod rust_cargo;
@@ -21,13 +22,14 @@ use rustc_hash::FxHashMap;
 
 use crate::model::{CodeGraph, GraphEdgeKind, NodeId};
 
-/// Repository-level resolver metadata loaded from `tsconfig.json`, `pubspec.yaml`, Gradle, and Cargo.
+/// Repository-level resolver metadata loaded from `tsconfig.json`, `pubspec.yaml`, Gradle, Cargo, and Composer.
 #[derive(Debug, Clone, Default)]
 pub struct ResolutionContext {
     pub tsconfig: tsconfig::TsConfigRules,
     pub dart_packages: FxHashMap<String, String>,
     pub gradle_subprojects: FxHashMap<String, String>,
     pub rust_crates: FxHashMap<String, String>,
+    pub php_psr4: Vec<php::Psr4Mapping>,
 }
 
 impl ResolutionContext {
@@ -38,6 +40,7 @@ impl ResolutionContext {
             dart_packages: dart::load_dart_packages(repo_root),
             gradle_subprojects: kotlin::load_gradle_subprojects(repo_root),
             rust_crates: rust::load_rust_crates(repo_root),
+            php_psr4: php::load_php_psr4(repo_root),
         }
     }
 }
@@ -202,6 +205,8 @@ pub fn resolve_single_edge(
         }
         Language::Dart => dart::resolve_dart_edge(edge, file_imports, graph, &ctx.dart_packages),
         Language::Rust => rust::resolve_rust_edge(edge, file_imports, graph, &ctx.rust_crates),
+        Language::Php => php::resolve_php_edge(edge, file_imports, graph, &ctx.php_psr4),
+        Language::Blade => php::resolve_blade_edge(edge, graph, &ctx.php_psr4),
         _ => None,
     }
 }

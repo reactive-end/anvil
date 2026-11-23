@@ -4,6 +4,7 @@ pub mod assumptions;
 pub mod barrels;
 pub mod comments;
 pub mod escape_hatches;
+pub mod php_hygiene;
 pub mod root_hygiene;
 pub mod strict_types;
 
@@ -30,6 +31,10 @@ const ESCAPE_RULES: &[&str] = &[
     "no-rust-allow",
     "no-unsafe",
     "no-unverified-permission",
+    "no-phpstan-ignore",
+    "no-psalm-suppress",
+    "no-phpcs-ignore",
+    "no-php-error-suppression",
 ];
 
 /// Per-file state shared across Tier 0 AST rules during a single walk.
@@ -188,12 +193,14 @@ pub fn check_node(node: Node<'_>, state: &mut RuleState<'_>) {
     escape_hatches::check_ast_escape(node, state);
     strict_types::check_node(node, state);
     assumptions::check_node(node, state);
+    php_hygiene::check_node(node, state);
 }
 
-/// Evaluates file-level structural rules (barrels, root hygiene) after or around the AST walk.
+/// Evaluates file-level structural rules (barrels, strict_types, root hygiene) after or around the AST walk.
 pub fn check_file_level(root: Option<Node<'_>>, state: &mut RuleState<'_>) {
     if let Some(root_node) = root {
         barrels::check_barrel(root_node, state);
+        strict_types::check_php_strict_types(root_node, state);
     }
     if let Some(diag) = root_hygiene::check_root_hygiene(state.path, state.file, state.config) {
         state.diagnostics.push(diag);

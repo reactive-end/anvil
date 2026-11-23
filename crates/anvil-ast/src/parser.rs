@@ -17,12 +17,13 @@ pub fn language_for(lang: Language) -> Option<TsLanguage> {
         Language::TypeScript => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
         Language::Tsx => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
         Language::JavaScript | Language::Jsx => Some(tree_sitter_javascript::LANGUAGE.into()),
-        Language::Html => Some(tree_sitter_html::LANGUAGE.into()),
+        Language::Html | Language::Blade => Some(tree_sitter_html::LANGUAGE.into()),
         Language::Css | Language::Scss => Some(tree_sitter_css::LANGUAGE.into()),
         Language::Python => Some(tree_sitter_python::LANGUAGE.into()),
         Language::Kotlin => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
         Language::Dart => Some(tree_sitter_dart::LANGUAGE.into()),
         Language::Rust => Some(tree_sitter_rust::LANGUAGE.into()),
+        Language::Php => Some(tree_sitter_php::LANGUAGE_PHP.into()),
         Language::Json | Language::Yaml | Language::Markdown | Language::Other => None,
     }
 }

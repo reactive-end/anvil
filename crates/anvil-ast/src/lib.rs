@@ -18,6 +18,11 @@ pub fn crate_name() -> &'static str {
 
 /// Detects the programming or markup language from a file path extension.
 pub fn detect_language(path: &Path) -> Language {
+    if let Some(name) = path.file_name().and_then(|n| n.to_str())
+        && name.to_ascii_lowercase().ends_with(".blade.php")
+    {
+        return Language::Blade;
+    }
     let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
         return Language::Other;
     };
@@ -34,6 +39,7 @@ pub fn detect_language(path: &Path) -> Language {
         "kt" | "kts" => Language::Kotlin,
         "dart" => Language::Dart,
         "rs" => Language::Rust,
+        "php" => Language::Php,
         "json" => Language::Json,
         "yaml" | "yml" => Language::Yaml,
         "md" | "mdx" => Language::Markdown,

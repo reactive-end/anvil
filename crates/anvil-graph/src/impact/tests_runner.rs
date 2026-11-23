@@ -10,7 +10,7 @@ use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::traits::CompressedOutput;
 
-use super::tests_native::{run_kotlin_tests, run_rust_tests};
+use super::tests_native::{run_kotlin_tests, run_php_tests, run_rust_tests};
 
 /// Runs targeted test runners for `related_tests`, skipping gracefully when a runner is absent.
 pub fn run_impacted_tests(
@@ -40,6 +40,9 @@ pub fn run_impacted_tests(
     if !buckets.rust.is_empty() {
         results.extend(run_rust_tests(repo_root, config, &buckets.rust)?);
     }
+    if !buckets.php.is_empty() {
+        results.extend(run_php_tests(repo_root, config, &buckets.php)?);
+    }
     Ok(results)
 }
 
@@ -50,6 +53,7 @@ struct TestBuckets<'a> {
     dart: Vec<&'a str>,
     kotlin: Vec<&'a str>,
     rust: Vec<&'a str>,
+    php: Vec<&'a str>,
 }
 
 fn partition_tests<'a>(related_tests: &'a [String]) -> TestBuckets<'a> {
@@ -64,6 +68,8 @@ fn partition_tests<'a>(related_tests: &'a [String]) -> TestBuckets<'a> {
             buckets.kotlin.push(raw.as_str());
         } else if lower.ends_with(".rs") {
             buckets.rust.push(raw.as_str());
+        } else if lower.ends_with(".php") && !lower.ends_with(".blade.php") {
+            buckets.php.push(raw.as_str());
         } else if lower.ends_with(".ts")
             || lower.ends_with(".tsx")
             || lower.ends_with(".js")

@@ -41,6 +41,8 @@ pub enum Language {
     Kotlin,
     Dart,
     Rust,
+    Php,
+    Blade,
     Json,
     Yaml,
     Markdown,

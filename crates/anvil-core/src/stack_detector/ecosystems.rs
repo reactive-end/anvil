@@ -129,6 +129,55 @@ pub(super) fn detect_kotlin_android_stack(
     Ok(())
 }
 
+pub(super) fn detect_php_laravel_stack(
+    dir: &Path,
+    stacks: &mut FxHashSet<StackKind>,
+    tools: &mut FxHashSet<ToolKind>,
+) -> Result<()> {
+    let composer_path = dir.join("composer.json");
+    let has_artisan = dir.join("artisan").is_file();
+    if !composer_path.exists() && !has_artisan {
+        return Ok(());
+    }
+    stacks.insert(StackKind::Php);
+    if composer_path.exists() {
+        tools.insert(ToolKind::Composer);
+    }
+    let composer_text = fs::read_to_string(&composer_path).unwrap_or_default();
+    if has_artisan || composer_text.contains("\"laravel/framework\"") {
+        stacks.insert(StackKind::Laravel);
+    }
+    if has_any_file(dir, &["phpstan.neon", "phpstan.neon.dist"])
+        || composer_text.contains("\"phpstan/phpstan\"")
+        || composer_text.contains("\"larastan/larastan\"")
+        || composer_text.contains("\"nunomaduro/larastan\"")
+    {
+        tools.insert(ToolKind::PhpStan);
+    }
+    if has_any_file(dir, &["psalm.xml", "psalm.xml.dist"])
+        || composer_text.contains("\"vimeo/psalm\"")
+    {
+        tools.insert(ToolKind::Psalm);
+    }
+    if dir.join("pint.json").exists() || composer_text.contains("\"laravel/pint\"") {
+        tools.insert(ToolKind::Pint);
+    }
+    if has_any_file(dir, &[".php-cs-fixer.php", ".php-cs-fixer.dist.php"])
+        || composer_text.contains("\"friendsofphp/php-cs-fixer\"")
+    {
+        tools.insert(ToolKind::PhpCsFixer);
+    }
+    if composer_text.contains("\"pestphp/pest\"") {
+        tools.insert(ToolKind::Pest);
+    }
+    if has_any_file(dir, &["phpunit.xml", "phpunit.xml.dist"])
+        || composer_text.contains("\"phpunit/phpunit\"")
+    {
+        tools.insert(ToolKind::PhpUnit);
+    }
+    Ok(())
+}
+
 pub(super) fn detect_flutter_rust_tools(
     dir: &Path,
     stacks: &mut FxHashSet<StackKind>,

@@ -6,7 +6,7 @@ use anyhow::Result;
 use anvil_core::check_cache::{self, CachedTier1};
 use anvil_core::config::{AnvilConfig, StackKind};
 use anvil_core::diff_classifier::DiffClassification;
-use anvil_core::fs_util::resolve_local_or_path_bin;
+use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin, resolve_php_vendor_script};
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_core::traits::CompressedOutput;
 use anvil_graph::CodeGraphEngine;
@@ -177,7 +177,20 @@ fn has_typechecker_in_dir(dir: &Path, stacks: &[StackKind]) -> bool {
     if stacks.contains(&StackKind::Rust) && resolve_local_or_path_bin(dir, "cargo").is_some() {
         return true;
     }
+    if (stacks.contains(&StackKind::Php) || stacks.contains(&StackKind::Laravel))
+        && has_php_analyzer(dir)
+    {
+        return true;
+    }
     stacks.contains(&StackKind::KotlinAndroid) && has_gradle_bin(dir)
+}
+
+fn has_php_analyzer(dir: &Path) -> bool {
+    resolve_php_vendor_script(dir, "phpstan").is_some()
+        || resolve_php_vendor_script(dir, "psalm").is_some()
+        || resolve_local_or_path_bin(dir, "phpstan").is_some()
+        || resolve_local_or_path_bin(dir, "psalm").is_some()
+        || resolve_php_bin().is_some()
 }
 
 fn has_gradle_bin(dir: &Path) -> bool {

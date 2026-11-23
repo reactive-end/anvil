@@ -6,6 +6,7 @@ mod tests_native;
 mod tests_runner;
 mod typecheck;
 mod typecheck_filter;
+mod typecheck_php;
 mod typecheck_ts;
 
 use std::collections::VecDeque;
