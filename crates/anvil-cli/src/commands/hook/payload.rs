@@ -8,6 +8,16 @@ use anvil_graph::model::CodeGraph;
 use serde_json::Value;
 
 const SHELL_METACHARS: &[&str] = &["&&", "||", "|", ";", ">", "<", "$(", "`", "\n", "\r"];
+const FILE_PATH_KEYS: &[&str] = &[
+    "Path",
+    "TargetFile",
+    "file_path",
+    "path",
+    "AbsolutePath",
+    "target_file",
+    "filePath",
+    "FilePath",
+];
 
 /// Resolves `(effective_root, fallback_workspace_root)` for a hook invocation.
 /// When a tool payload targets a file inside an initialized subproject or external repository
@@ -61,13 +71,31 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
     }
 }
 
-fn extract_target_file_path(tool_input: Option<&Value>, cwd_root: &Path) -> Option<PathBuf> {
+fn extract_raw_file_path(tool_input: Option<&Value>) -> Option<&str> {
     let obj = tool_input?.as_object()?;
-    let raw = ["TargetFile", "file_path", "path", "AbsolutePath", "target_file"]
-        .iter()
-        .find_map(|k| obj.get(*k).and_then(Value::as_str))
-        .map(str::trim)
-        .filter(|s| !s.is_empty())?;
+    for key in FILE_PATH_KEYS {
+        if let Some(val) = obj.get(*key).and_then(Value::as_str) {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed);
+            }
+        }
+    }
+    for (k, v) in obj {
+        if let Some(val) = v.as_str()
+            && FILE_PATH_KEYS.iter().any(|cand| cand.eq_ignore_ascii_case(k))
+        {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed);
+            }
+        }
+    }
+    None
+}
+
+fn extract_target_file_path(tool_input: Option<&Value>, cwd_root: &Path) -> Option<PathBuf> {
+    let raw = extract_raw_file_path(tool_input)?;
     let p = PathBuf::from(raw);
     if p.is_absolute() {
         Some(p)
@@ -134,6 +162,17 @@ pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
         "flutter test",
         "./gradlew",
         "gradlew",
+        "phpstan",
+        "vendor/bin/phpstan",
+        "psalm",
+        "vendor/bin/psalm",
+        "phpunit",
+        "vendor/bin/phpunit",
+        "pest",
+        "vendor/bin/pest",
+        "pint",
+        "vendor/bin/pint",
+        "php artisan test",
     ]
     .iter()
     .any(|p| cmd == *p || cmd.starts_with(&format!("{p} ")))
@@ -181,6 +220,7 @@ pub fn is_mutating_file_tool(tool_name: Option<&str>) -> bool {
         bare,
         "edit_file"
             | "write_file"
+            | "write_to_file"
             | "replace_file_content"
             | "multi_replace_file_content"
             | "Edit"
@@ -223,10 +263,7 @@ pub fn is_circuit_recovery_command(cmd: &str) -> bool {
 
 /// Extracts and normalizes a repository-relative target file path from `tool_input`.
 pub fn extract_rel_file(root: &Path, tool_input: Option<&Value>) -> Option<String> {
-    let obj = tool_input?.as_object()?;
-    let raw = ["TargetFile", "file_path", "path", "AbsolutePath", "target_file"]
-        .iter()
-        .find_map(|k| obj.get(*k).and_then(Value::as_str))?;
+    let raw = extract_raw_file_path(tool_input)?;
     let rel = relativize_path(root, Path::new(raw));
     let norm = CodeGraph::normalize_rel_path(&rel);
     (!norm.is_empty()).then_some(norm)

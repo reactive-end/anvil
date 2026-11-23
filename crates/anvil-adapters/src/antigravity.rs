@@ -62,17 +62,28 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         .last_user_input
         .filter(|s| !s.trim().is_empty())
         .or_else(|| raw.prompt.clone().filter(|s| !s.trim().is_empty()));
+    let tool_input = normalize_tool_value(tool_call.tool_input.or(raw.tool_input));
+    let tool_output = normalize_tool_value(tool_call.tool_output.or(raw.tool_output));
     Ok(NormalizedHookInput {
         adapter: AdapterKind::Antigravity,
         event,
         cwd: raw.cwd,
         session_id: raw.session_id,
         tool_name: tool_call.tool_name.or(raw.tool_name),
-        tool_input: tool_call.tool_input.or(raw.tool_input),
-        tool_output: tool_call.tool_output.or(raw.tool_output),
+        tool_input,
+        tool_output,
         prompt: raw.prompt,
         user_prompt,
     })
+}
+
+fn normalize_tool_value(val: Option<Value>) -> Option<Value> {
+    match val {
+        Some(Value::String(s)) if s.trim_start().starts_with('{') => {
+            serde_json::from_str::<Value>(&s).ok().or(Some(Value::String(s)))
+        }
+        other => other,
+    }
 }
 
 /// Renders a normalized `HookOutcome` into Antigravity's stdout JSON contract.

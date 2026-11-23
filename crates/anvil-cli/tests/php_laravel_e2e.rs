@@ -129,15 +129,87 @@ fn laravel_init_doctor_tier0_strict_types_graph_and_token_guard() {
     assert!(outline.status.success(), "outline failed: {outline_stdout}");
     assert!(outline_stdout.contains("QuoteService"), "outline: {outline_stdout}");
 
-    // Token Guard blocks unbounded read of composer.lock
+    // Token Guard blocks unbounded read of composer.lock (Antigravity 2.0 `Path` key)
     let payload = json!({
-        "hook_event_name": "PreToolUse",
-        "tool_name": "read_file",
-        "tool_input": { "Path": root.join("backend/composer.lock").to_string_lossy() }
+        "hookEventName": "PreToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": {
+            "toolName": "read_file",
+            "input": { "Path": root.join("backend/composer.lock").to_string_lossy() }
+        }
     })
     .to_string();
-    let guard_out = run_anvil_stdin(root, &["hook", "pre-tool-use"], &payload);
-    assert_eq!(guard_out.status.code(), Some(2), "expected token guard deny for composer.lock");
+    let guard_out = run_anvil_stdin(root, &["hook", "PreToolUse", "--adapter", "antigravity"], &payload);
+    let guard_stdout = String::from_utf8_lossy(&guard_out.stdout);
+    assert!(guard_out.status.success(), "hook failed: {guard_stdout}");
+    assert!(guard_stdout.contains("\"decision\":\"deny\""), "expected token guard deny for composer.lock: {guard_stdout}");
+}
+
+#[test]
+fn antigravity_v2_edit_file_with_capital_path_materializes_task_and_gates_stop() {
+    let repo = setup_laravel_git_repo();
+    let root = repo.path();
+    assert!(run_anvil(root, &["init"]).status.success());
+
+    let pre_inv = json!({
+        "hookEventName": "PreInvocation",
+        "cwd": root.to_string_lossy(),
+        "lastUserInput": "Ajusta QuoteService para aplicar redondeo fiscal"
+    })
+    .to_string();
+    assert!(run_anvil_stdin(root, &["hook", "PreInvocation", "--adapter", "antigravity"], &pre_inv).status.success());
+    assert!(root.join(".harness/.state/pending-prompt.json").is_file());
+
+    let edited = root.join("backend/app/Services/QuoteService.php");
+    write_file(
+        &edited,
+        "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Services;\n\nfinal class QuoteService { public function total(int $cents): int { return $cents + 1; } }\n",
+    );
+
+    let post_tool = json!({
+        "hookEventName": "PostToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": {
+            "toolName": "default_api:edit_file",
+            "input": { "Path": edited.to_string_lossy(), "Target": "a", "Replacement": "b" }
+        }
+    })
+    .to_string();
+    assert!(run_anvil_stdin(root, &["hook", "PostToolUse", "--adapter", "antigravity"], &post_tool).status.success());
+    assert!(root.join(".harness/.state/active-task.json").is_file(), "expected lazy task materialization on capital Path");
+
+    let stop_in = json!({ "hookEventName": "Stop", "cwd": root.to_string_lossy() }).to_string();
+    let stop_out = run_anvil_stdin(root, &["hook", "Stop", "--adapter", "antigravity"], &stop_in);
+    let stop_stdout = String::from_utf8_lossy(&stop_out.stdout);
+    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop gate requiring summary: {stop_stdout}");
+    assert!(stop_stdout.contains("anvil tasks done"), "stop output: {stop_stdout}");
+}
+
+#[test]
+fn stop_hook_materializes_task_from_pending_prompt_even_without_file_tool_hook() {
+    let repo = setup_laravel_git_repo();
+    let root = repo.path();
+    assert!(run_anvil(root, &["init"]).status.success());
+
+    let pre_inv = json!({
+        "hookEventName": "PreInvocation",
+        "cwd": root.to_string_lossy(),
+        "lastUserInput": "Actualiza QuoteService via comando externo"
+    })
+    .to_string();
+    assert!(run_anvil_stdin(root, &["hook", "PreInvocation", "--adapter", "antigravity"], &pre_inv).status.success());
+
+    write_file(
+        &root.join("backend/app/Services/QuoteService.php"),
+        "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Services;\n\nfinal class QuoteService { public function total(int $cents): int { return $cents + 2; } }\n",
+    );
+    assert!(!root.join(".harness/.state/active-task.json").exists());
+
+    let stop_in = json!({ "hookEventName": "Stop", "cwd": root.to_string_lossy() }).to_string();
+    let stop_out = run_anvil_stdin(root, &["hook", "Stop", "--adapter", "antigravity"], &stop_in);
+    let stop_stdout = String::from_utf8_lossy(&stop_out.stdout);
+    assert!(root.join(".harness/.state/active-task.json").is_file(), "Stop must materialize task when pending-prompt + git changes exist");
+    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop to block until summary recorded: {stop_stdout}");
 }
 
 #[test]

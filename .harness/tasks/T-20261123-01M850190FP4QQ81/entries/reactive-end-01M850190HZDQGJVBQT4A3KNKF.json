@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M850190HZDQGJVBQT4A3KNKF",
+  "task_id": "T-20261123-01M850190FP4QQ81",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Fix Antigravity 2.0 Path key extraction and Stop task materialization fallback",
+  "files_touched": [],
+  "timestamp": "2026-11-23T20:02:23.924606300Z"
+}

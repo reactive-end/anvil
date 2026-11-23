@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "task_count": 8,
-  "updated_at": "2026-11-23T19:54:21.640487800Z",
+  "task_count": 9,
+  "updated_at": "2026-11-23T20:02:24.024382800Z",
   "tasks": [
     {
       "task_id": "T-20261121-01M7YC7MM5WX2CGP",
@@ -659,6 +659,55 @@
             "crates/anvil-cli/tests/php_laravel_e2e.rs"
           ],
           "timestamp": "2026-11-23T19:54:21.640487800Z"
+        }
+      ]
+    },
+    {
+      "task_id": "T-20261123-01M850190FP4QQ81",
+      "request": "Fix Antigravity 2.0 Path key extraction and Stop task materialization fallback",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "files_touched": [
+        "crates/anvil-adapters/src/antigravity.rs",
+        "crates/anvil-cli/src/commands/hook/payload.rs",
+        "crates/anvil-cli/src/commands/hook/task_auto.rs",
+        "crates/anvil-cli/tests/php_laravel_e2e.rs"
+      ],
+      "summary": "Added case-insensitive Path/FilePath key extraction in hook payload.rs, stringified JSON toolCall input normalization in antigravity.rs, Stop fallback task materialization from pending-prompt.json, PHP/Laravel auto-wrap commands, E2E regression tests, and reinstalled release anvil.exe.",
+      "entry_count": 2,
+      "created_at": "2026-11-23T20:02:23.887776300Z",
+      "updated_at": "2026-11-23T20:02:24.024382800Z",
+      "entries": [
+        {
+          "entry_id": "01M850190HZDQGJVBQT4A3KNKF",
+          "task_id": "T-20261123-01M850190FP4QQ81",
+          "author": "reactive-end",
+          "status": "in_progress",
+          "branch": "main",
+          "summary": "Started task: Fix Antigravity 2.0 Path key extraction and Stop task materialization fallback",
+          "files_touched": [],
+          "timestamp": "2026-11-23T20:02:23.924606300Z"
+        },
+        {
+          "entry_id": "01M850193T87KM6113Q537RG5V",
+          "task_id": "T-20261123-01M850190FP4QQ81",
+          "author": "reactive-end",
+          "status": "done",
+          "branch": "main",
+          "summary": "Added case-insensitive Path/FilePath key extraction in hook payload.rs, stringified JSON toolCall input normalization in antigravity.rs, Stop fallback task materialization from pending-prompt.json, PHP/Laravel auto-wrap commands, E2E regression tests, and reinstalled release anvil.exe.",
+          "files_touched": [
+            "crates/anvil-adapters/src/antigravity.rs",
+            "crates/anvil-cli/src/commands/hook/payload.rs",
+            "crates/anvil-cli/src/commands/hook/task_auto.rs",
+            "crates/anvil-cli/tests/php_laravel_e2e.rs"
+          ],
+          "timestamp": "2026-11-23T20:02:24.024382800Z"
         }
       ]
     }

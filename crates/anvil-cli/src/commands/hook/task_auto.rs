@@ -7,7 +7,8 @@ use std::time::SystemTime;
 use anvil_adapters::contract::{HookOutcome, NormalizedHookInput};
 use anvil_tasks::ledger::tasks_root;
 use anvil_tasks::{
-    TaskStatus, build_root_tasks_json, load_active_task, record_pending_prompt,
+    TaskStatus, build_root_tasks_json, load_active_task, materialize_task_on_edit,
+    pending_prompt_path, record_pending_prompt, record_touched_file,
 };
 
 /// Records a pending user prompt in `.harness/.state/pending-prompt.json` (gitignored) without
@@ -62,16 +63,36 @@ fn is_newer(path: &Path, baseline: SystemTime) -> bool {
 }
 
 /// Blocks `Stop` once if non-harness files changed and the active task lacks a recorded summary.
+/// If files were modified while a pending prompt exists without an active task (e.g. edits via
+/// shell commands or external tools), materializes the task on the spot so no code edit goes untracked.
 pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<HookOutcome> {
-    let has_project_changes = changed
+    let project_changes: Vec<&String> = changed
         .iter()
-        .any(|p| !p.starts_with(".harness/") && p != "tasks.json");
-    if !has_project_changes {
+        .filter(|p| !p.starts_with(".harness/") && *p != "tasks.json")
+        .collect();
+    if project_changes.is_empty() {
         return None;
     }
-    let Ok(Some(state)) = load_active_task(root) else {
-        return None;
+
+    let state = match load_active_task(root).ok().flatten() {
+        Some(existing) if existing.status == TaskStatus::InProgress => existing,
+        Some(existing) if existing.summary_recorded_at.is_some() || existing.status == TaskStatus::Done => {
+            if pending_prompt_path(root).is_file() {
+                materialize_from_stop(root, &project_changes)?
+            } else {
+                return None;
+            }
+        }
+        Some(existing) => existing,
+        None => {
+            if pending_prompt_path(root).is_file() {
+                materialize_from_stop(root, &project_changes)?
+            } else {
+                return None;
+            }
+        }
     };
+
     if state.summary_recorded_at.is_some() || state.status == TaskStatus::Done {
         return None;
     }
@@ -79,4 +100,16 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
         "Files were modified under task {}. Record a concise summary before finishing: anvil tasks done {} \"<1-2 sentence summary of changes>\"",
         state.task_id, state.task_id
     )))
+}
+
+fn materialize_from_stop(
+    root: &Path,
+    project_changes: &[&String],
+) -> Option<anvil_tasks::ActiveTaskState> {
+    let first = project_changes.first()?;
+    let state = materialize_task_on_edit(root, first).ok().flatten()?;
+    for extra in project_changes.iter().skip(1) {
+        let _ = record_touched_file(root, extra);
+    }
+    Some(state)
 }
