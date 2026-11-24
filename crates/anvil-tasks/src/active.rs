@@ -31,6 +31,16 @@ pub struct ActiveTaskState {
     pub skipped: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skip_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_progress_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_command_passed: Option<bool>,
 }
 
 /// Ephemeral prompt snapshot stored in `.harness/.state/pending-prompt.json` (gitignored)
@@ -101,16 +111,7 @@ pub fn ensure_task_for_prompt(
             let author = resolve_author_fast(repo)?;
             let meta = start_task_as(repo, &author, trimmed)?;
             build_root_tasks_json(repo)?;
-            let state = ActiveTaskState {
-                task_id: meta.task_id,
-                prompt_hash,
-                status: TaskStatus::InProgress,
-                summary_recorded_at: None,
-                started_at: meta.created_at,
-                touched_files: Vec::new(),
-                skipped: false,
-                skip_reason: None,
-            };
+            let state = new_active_state(meta.task_id, prompt_hash, meta.created_at, Vec::new());
             save_active_task_unlocked(repo, &state)?;
             Ok(Some((state, true)))
         },
@@ -125,22 +126,37 @@ pub fn activate_task_from_meta(repo: &Path, meta: &TaskMeta) -> Result<()> {
         || {
             let prompt_hash = load_pending_prompt_unlocked(repo)?
                 .map_or_else(|| hash_prompt(meta.request.trim()), |p| p.prompt_hash);
-            let state = ActiveTaskState {
-                task_id: meta.task_id.clone(),
-                prompt_hash,
-                status: TaskStatus::InProgress,
-                summary_recorded_at: None,
-                started_at: meta.created_at,
-                touched_files: Vec::new(),
-                skipped: false,
-                skip_reason: None,
-            };
+            let state =
+                new_active_state(meta.task_id.clone(), prompt_hash, meta.created_at, Vec::new());
             save_active_task_unlocked(repo, &state)?;
             let _ = fs::remove_file(pending_prompt_path(repo));
             clear_untracked_edits(repo);
             Ok(())
         },
     )
+}
+
+pub(crate) fn new_active_state(
+    task_id: String,
+    prompt_hash: String,
+    started_at: DateTime<Utc>,
+    touched_files: Vec<String>,
+) -> ActiveTaskState {
+    ActiveTaskState {
+        task_id,
+        prompt_hash,
+        status: TaskStatus::InProgress,
+        summary_recorded_at: None,
+        started_at,
+        touched_files,
+        skipped: false,
+        skip_reason: None,
+        last_progress_at: Some(started_at),
+        last_summary: None,
+        next_steps: Vec::new(),
+        last_command: None,
+        last_command_passed: None,
+    }
 }
 
 /// Captures a non-trivial user prompt in `.harness/.state/pending-prompt.json` without creating
@@ -220,16 +236,8 @@ pub fn materialize_task_on_edit_with_fallback(
             let author = resolve_author_fast(repo)?;
             let meta = start_task_as(repo, &author, &request)?;
             build_root_tasks_json(repo)?;
-            let state = ActiveTaskState {
-                task_id: meta.task_id,
-                prompt_hash,
-                status: TaskStatus::InProgress,
-                summary_recorded_at: None,
-                started_at: meta.created_at,
-                touched_files: vec![norm.to_owned()],
-                skipped: false,
-                skip_reason: None,
-            };
+            let state =
+                new_active_state(meta.task_id, prompt_hash, meta.created_at, vec![norm.to_owned()]);
             save_active_task_unlocked(repo, &state)?;
             let _ = fs::remove_file(pending_prompt_path(repo));
             Ok(Some(state))
@@ -286,52 +294,124 @@ pub fn mark_summary_recorded_with_files(
     with_file_lock(
         &active_task_lock_path(repo),
         ACTIVE_TASK_LOCK_TIMEOUT_MS,
+        || upsert_active_state_unlocked(repo, task_id, status, None, None, files, true),
+    )
+}
+
+/// Updates `.harness/.state/active-task.json` with incremental progress or final completion.
+/// Keeps `summary_recorded_at = None` while `InProgress` so unfinished sessions can resume cleanly.
+pub fn update_active_task_progress(
+    repo: &Path,
+    task_id: &str,
+    status: TaskStatus,
+    summary: &str,
+    next_steps: &[String],
+    files: &[String],
+) -> Result<()> {
+    with_file_lock(
+        &active_task_lock_path(repo),
+        ACTIVE_TASK_LOCK_TIMEOUT_MS,
         || {
-            let now = Utc::now();
-            let mut next = match load_active_task_unlocked(repo)? {
-                Some(mut existing) if existing.task_id == task_id => {
-                    existing.status = status;
-                    existing.summary_recorded_at = Some(now);
-                    existing
-                }
-                _ => {
-                    let meta_path = task_dir(repo, task_id).join("meta.json");
-                    let (prompt_hash, started_at) = if meta_path.exists() {
-                        let meta: TaskMeta = read_json_file(&meta_path)?;
-                        (hash_prompt(meta.request.trim()), meta.created_at)
-                    } else {
-                        (String::new(), now)
-                    };
-                    ActiveTaskState {
-                        task_id: task_id.to_owned(),
-                        prompt_hash,
-                        status,
-                        summary_recorded_at: Some(now),
-                        started_at,
-                        touched_files: Vec::new(),
-                        skipped: false,
-                        skip_reason: None,
-                    }
-                }
-            };
-            next.skipped = false;
-            next.skip_reason = None;
-            for f in files {
-                let norm = f.trim().replace('\\', "/");
-                if !norm.is_empty() && !next.touched_files.iter().any(|x| x == &norm) {
-                    next.touched_files.push(norm);
-                }
-            }
-            next.touched_files.sort();
-            if let Ok(Some(pending)) = load_pending_prompt_unlocked(repo) {
-                next.prompt_hash = pending.prompt_hash;
-            }
-            save_active_task_unlocked(repo, &next)?;
-            let _ = fs::remove_file(pending_prompt_path(repo));
-            clear_untracked_edits(repo);
-            Ok(())
+            upsert_active_state_unlocked(
+                repo,
+                task_id,
+                status,
+                Some(summary),
+                Some(next_steps),
+                files,
+                status == TaskStatus::Done,
+            )
         },
     )
+}
+
+/// Records the latest build/test command outcome onto the currently active `InProgress` task.
+pub fn record_active_command_outcome(repo: &Path, command: &str, passed: bool) -> Result<()> {
+    let clean = command.trim();
+    if clean.is_empty() {
+        return Ok(());
+    }
+    with_file_lock(
+        &active_task_lock_path(repo),
+        ACTIVE_TASK_LOCK_TIMEOUT_MS,
+        || {
+            let Some(mut state) = load_active_task_unlocked(repo)? else {
+                return Ok(());
+            };
+            if state.skipped || state.status != TaskStatus::InProgress {
+                return Ok(());
+            }
+            state.last_command = Some(clean.to_owned());
+            state.last_command_passed = Some(passed);
+            state.last_progress_at = Some(Utc::now());
+            save_active_task_unlocked(repo, &state)
+        },
+    )
+}
+
+fn upsert_active_state_unlocked(
+    repo: &Path,
+    task_id: &str,
+    status: TaskStatus,
+    summary: Option<&str>,
+    next_steps: Option<&[String]>,
+    files: &[String],
+    mark_summary: bool,
+) -> Result<()> {
+    let now = Utc::now();
+    let mut next = load_or_seed_active_state(repo, task_id, status, now)?;
+    next.status = status;
+    next.summary_recorded_at = if mark_summary { Some(now) } else { None };
+    next.skipped = false;
+    next.skip_reason = None;
+    next.last_progress_at = Some(now);
+    if let Some(text) = summary {
+        next.last_summary = Some(text.to_owned());
+    }
+    if let Some(steps) = next_steps {
+        next.next_steps = steps.to_vec();
+    }
+    merge_active_files(&mut next.touched_files, files);
+    if let Ok(Some(pending)) = load_pending_prompt_unlocked(repo) {
+        next.prompt_hash = pending.prompt_hash;
+    }
+    save_active_task_unlocked(repo, &next)?;
+    let _ = fs::remove_file(pending_prompt_path(repo));
+    clear_untracked_edits(repo);
+    Ok(())
+}
+
+fn load_or_seed_active_state(
+    repo: &Path,
+    task_id: &str,
+    status: TaskStatus,
+    now: DateTime<Utc>,
+) -> Result<ActiveTaskState> {
+    if let Some(existing) = load_active_task_unlocked(repo)?
+        && existing.task_id == task_id
+    {
+        return Ok(existing);
+    }
+    let meta_path = task_dir(repo, task_id).join("meta.json");
+    let (prompt_hash, started_at) = if meta_path.exists() {
+        let meta: TaskMeta = read_json_file(&meta_path)?;
+        (hash_prompt(meta.request.trim()), meta.created_at)
+    } else {
+        (String::new(), now)
+    };
+    let mut seeded = new_active_state(task_id.to_owned(), prompt_hash, started_at, Vec::new());
+    seeded.status = status;
+    Ok(seeded)
+}
+
+fn merge_active_files(dst: &mut Vec<String>, files: &[String]) {
+    for f in files {
+        let norm = f.trim().replace('\\', "/");
+        if !norm.is_empty() && !dst.iter().any(|x| x == &norm) {
+            dst.push(norm);
+        }
+    }
+    dst.sort();
 }
 
 pub(crate) fn load_pending_prompt_unlocked(repo: &Path) -> Result<Option<PendingPrompt>> {

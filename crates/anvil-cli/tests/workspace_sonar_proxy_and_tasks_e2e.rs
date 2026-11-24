@@ -1,5 +1,5 @@
-//! E2E tests for opt-in SonarQube prompts & checks, anti-test-tampering, checkpoints,
-//! worktrees, spec checks, trajectory telemetry, `code exec`, and `mcp --proxy` gateway.
+//! E2E tests for umbrella/monorepo `init`, opt-in SonarQube & anti-test-tampering, checkpoints,
+//! worktrees, specs, trajectories, `mcp --proxy`, and task import/export/verify/groups.
 
 use std::fs;
 use std::io::Write as _;
@@ -308,4 +308,87 @@ fn tasks_import_export_verify_and_status_filtering_work_end_to_end() {
     let exported = assert_ok(&run_anvil(root, &["tasks", "export", "--project", "voz"]), "export");
     let parsed: Value = serde_json::from_str(&exported).unwrap();
     assert_eq!(parsed["features"][0]["status"], json!("done"));
+}
+
+#[test]
+fn grouped_task_imports_keep_identical_ids_isolated() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    fs::write(
+        root.join("avatar_features.json"),
+        r#"{"project":"avatar","features":[{"id":"F001","name":"AVATAR F1","verify":"echo av_ok","status":"not_started","evidence":"dev"}]}"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("llm_features.json"),
+        r#"{"project":"llm","features":[{"id":"F001","name":"LLM F1","verify":null,"status":"not_started","evidence":"dev"}]}"#,
+    )
+    .unwrap();
+    assert_ok(&run_anvil(root, &["tasks", "import", "avatar_features.json", "--group", "avatar"]), "import avatar");
+    assert_ok(&run_anvil(root, &["tasks", "import", "llm_features.json", "--group", "llm"]), "import llm");
+
+    let avatar_list = assert_ok(&run_anvil(root, &["tasks", "list", "--group", "avatar"]), "list avatar");
+    assert!(avatar_list.contains("avatar/F001 [not_started] AVATAR F1 [verify]"));
+    assert!(!avatar_list.contains("llm/F001"));
+
+    let verify_grp = assert_ok(&run_anvil(root, &["tasks", "verify", "avatar/F001", "--record"]), "verify avatar");
+    assert!(verify_grp.contains("PASS avatar/F001"));
+    let exp_av = assert_ok(&run_anvil(root, &["tasks", "export", "--group", "avatar"]), "export avatar");
+    let av_val: Value = serde_json::from_str(&exp_av).unwrap();
+    assert_eq!(av_val["features"][0]["id"], json!("F001"));
+    assert_eq!(av_val["features"][0]["status"], json!("done"));
+}
+
+#[test]
+fn task_progress_resume_and_session_start_lifecycle_e2e() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    fs::write(
+        root.join("core_features.json"),
+        r#"{"project":"core","features":[{"id":"F001","name":"Core discount rule","behavior":"Add volume discount","verify":"echo discount_ok","status":"not_started"}]}"#,
+    )
+    .unwrap();
+    assert_ok(&run_anvil(root, &["tasks", "import", "core_features.json", "--group", "core"]), "import");
+    let started = assert_ok(&run_anvil(root, &["tasks", "start", "core/F001"]), "start existing");
+    assert!(started.contains("started existing task core/F001"));
+    assert!(root.join(".harness/tasks/core/F001/progress.md").is_file());
+
+    let updated = assert_ok(
+        &run_anvil(
+            root,
+            &[
+                "tasks",
+                "update",
+                "core/F001",
+                "Added tier calc",
+                "--done",
+                "Added discount helper",
+                "--next",
+                "Wire subtotal,Run verify",
+                "--files",
+                "src/app.ts",
+            ],
+        ),
+        "update progress",
+    );
+    assert!(updated.contains("progress=.harness/tasks/core/F001/progress.md"));
+
+    let hook_out = assert_ok(
+        &run_anvil_stdin_env(root, &["hook", "SessionStart", "--adapter", "antigravity"], "{}", &[]),
+        "session start",
+    );
+    assert!(hook_out.contains("core/F001"));
+    assert!(hook_out.contains("Wire subtotal"));
+
+    let resumed = assert_ok(&run_anvil(root, &["tasks", "resume"]), "resume");
+    assert!(resumed.contains("core/F001"));
+    assert!(resumed.contains("Added discount helper"));
+    assert!(resumed.contains("Wire subtotal; Run verify"));
+
+    let verified = assert_ok(&run_anvil(root, &["tasks", "verify", "core/F001", "--record"]), "verify");
+    assert!(verified.contains("PASS core/F001"));
 }

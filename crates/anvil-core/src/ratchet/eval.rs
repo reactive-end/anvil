@@ -241,13 +241,21 @@ pub fn test_candidate(repo_root: &Path, candidate_id: &str) -> Result<CandidateT
     }
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
+    let under_budget = elapsed_ms < MAX_RUNTIME_MS;
+    if files_scanned > 0 && match_count == 0 && under_budget && !candidate.fp_checked {
+        let mut updated = candidate.clone();
+        updated.fp_checked = true;
+        updated.false_positives_found = 0;
+        updated.updated_at = chrono::Utc::now();
+        super::save_candidate(&repo_root.join(".harness").join("candidates"), &updated)?;
+    }
     Ok(CandidateTestReport {
         id: candidate.id,
         rule_name: candidate.rule_name,
         files_scanned,
         match_count,
         elapsed_ms,
-        under_budget: elapsed_ms < MAX_RUNTIME_MS,
+        under_budget,
         sample_matches,
     })
 }

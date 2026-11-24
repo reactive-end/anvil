@@ -90,10 +90,27 @@ fn needs_tasks_rebuild(root: &Path, t_root: &Path) -> bool {
         if !dir.is_dir() {
             continue;
         }
-        if is_newer(&dir.join("meta.json"), json_mtime)
-            || is_newer(&dir.join("entries"), json_mtime)
-        {
+        if dir.join("meta.json").is_file() {
+            if is_newer(&dir.join("meta.json"), json_mtime)
+                || is_newer(&dir.join("entries"), json_mtime)
+            {
+                return true;
+            }
+            continue;
+        }
+        if is_newer(&dir, json_mtime) {
             return true;
+        }
+        if let Ok(sub_entries) = fs::read_dir(&dir) {
+            for sub in sub_entries.flatten() {
+                let sdir = sub.path();
+                if sdir.is_dir()
+                    && (is_newer(&sdir.join("meta.json"), json_mtime)
+                        || is_newer(&sdir.join("entries"), json_mtime))
+                {
+                    return true;
+                }
+            }
         }
     }
     false
@@ -125,8 +142,8 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
         && st.summary_recorded_at.is_none()
     {
         return Some(HookOutcome::block_stop(format!(
-            "Task {} is still in_progress. Complete it via MCP `task_done` or `anvil tasks done {} \"<concise summary>\"`.",
-            st.task_id, st.task_id
+            "Task {} is still in_progress. Verify & finish via MCP `task_done` / `anvil tasks done {} \"<summary>\"`, or checkpoint/block via `task_update` / `anvil tasks update {} \"<progress>\" --next \"...\"`.",
+            st.task_id, st.task_id, st.task_id
         )));
     }
 
@@ -137,7 +154,10 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
 
     let baseline = active
         .as_ref()
-        .and_then(|st| st.summary_recorded_at.or(Some(st.started_at)))
+        .and_then(|st| {
+            let progress_ts = (st.status == TaskStatus::Blocked).then_some(st.last_progress_at).flatten();
+            st.summary_recorded_at.or(progress_ts).or(Some(st.started_at))
+        })
         .map(SystemTime::from);
     let fresh_changes: Vec<&String> = match baseline {
         Some(base) => project_changes

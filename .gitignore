@@ -1,4 +1,5 @@
 /target
+/test/
 .harness/.state/
 .harness/.worktrees/
 *.db-wal

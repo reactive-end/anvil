@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::ledger::{compare_task_ids, task_dir, tasks_root};
+use crate::ledger::{
+    compare_task_ids, discover_task_dirs, task_dir, tasks_root, validate_task_id_path,
+};
 use crate::model::{ConsolidatedTask, ConsolidatedTasksFile, TaskEntry, TaskMeta, TaskStatus};
 use crate::{atomic_write_json, read_json_file};
 
@@ -28,31 +30,20 @@ pub fn consolidate_repo_tasks(repo: &Path) -> Result<ConsolidatedTasksFile> {
 
 /// Loads and consolidates a single task ID from `.harness/tasks/<task_id>/`.
 pub fn read_single_task(repo: &Path, task_id: &str) -> Result<ConsolidatedTask> {
-    let dir = task_dir(repo, task_id);
+    let valid_id = validate_task_id_path(task_id)?;
+    let dir = task_dir(repo, &valid_id);
     let meta_path = dir.join("meta.json");
     if !meta_path.is_file() {
-        bail!("task `{task_id}` not found at {}", meta_path.display());
+        bail!("task `{valid_id}` not found at {}", meta_path.display());
     }
     let meta: TaskMeta = read_json_file(&meta_path)?;
     let entries = read_entries_dir(&dir.join("entries"))?;
     Ok(consolidate_single_task(meta, entries))
 }
 
-/// Reads every task directory's `meta.json` and `entries/*.json` from disk.
+/// Reads every task directory's `meta.json` and `entries/*.json` from disk (flat + depth-2 grouped).
 pub(crate) fn read_all_task_records(repo: &Path) -> Result<Vec<(TaskMeta, Vec<TaskEntry>)>> {
-    let root = tasks_root(repo);
-    if !root.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut task_dirs: Vec<PathBuf> = fs::read_dir(&root)
-        .with_context(|| format!("failed to read {}", root.display()))?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_dir() && p.join("meta.json").exists())
-        .collect();
-    task_dirs.sort();
-
+    let task_dirs = discover_task_dirs(&tasks_root(repo))?;
     let mut records = Vec::with_capacity(task_dirs.len());
     for dir in task_dirs {
         let meta: TaskMeta = read_json_file(&dir.join("meta.json"))?;

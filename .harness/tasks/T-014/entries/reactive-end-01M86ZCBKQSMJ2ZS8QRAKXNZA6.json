@@ -1,0 +1,33 @@
+{
+  "entry_id": "01M86ZCBKQSMJ2ZS8QRAKXNZA6",
+  "task_id": "T-014",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Soporte nativo de subdirectorios/grupos de 1 nivel en .harness/tasks/<grupo>/<ID>/ (p. ej. voz/F001, avatar/F001) con prompt interactivo en anvil tasks import, --group/--flat en CLI y filtro group en MCP.",
+  "files_touched": [
+    "Cargo.lock",
+    "crates/anvil-cli/Cargo.toml",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/hook/payload.rs",
+    "crates/anvil-cli/src/commands/hook/task_auto.rs",
+    "crates/anvil-cli/src/commands/tasks.rs",
+    "crates/anvil-cli/src/ui.rs",
+    "crates/anvil-cli/src/ui/file_picker.rs",
+    "crates/anvil-cli/src/ui/prompt.rs",
+    "crates/anvil-cli/tests/phase5_upgrades_e2e.rs",
+    "crates/anvil-mcp/src/schemas.rs",
+    "crates/anvil-mcp/src/tools_codemode.rs",
+    "crates/anvil-mcp/src/tools_tasks.rs",
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "crates/anvil-tasks/src/builder.rs",
+    "crates/anvil-tasks/src/curate.rs",
+    "crates/anvil-tasks/src/import_export.rs",
+    "crates/anvil-tasks/src/ledger.rs",
+    "crates/anvil-tasks/src/lib.rs",
+    "crates/anvil-tasks/src/merge_driver.rs",
+    "crates/anvil-tasks/src/model.rs",
+    "crates/anvil-tasks/tests/tasks_tests.rs"
+  ],
+  "timestamp": "2026-11-24T14:29:27.322587400Z"
+}

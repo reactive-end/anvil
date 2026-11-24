@@ -5,9 +5,10 @@ use std::path::Path;
 
 use anyhow::Result;
 use anvil_core::ratchet::{
-    CandidateInput, evaluate_candidate, list_candidates, list_rules, log_candidate,
-    promote_candidate, test_candidate,
+    CandidateInput, CandidateOptions, evaluate_candidate, list_candidates, list_rules,
+    log_candidate_with_options, promote_candidate_with_severity, test_candidate,
 };
+use anvil_core::traits::Severity;
 
 use crate::cli::subcmds::RatchetSubcmd;
 use crate::commands::ExitCodeError;
@@ -20,11 +21,14 @@ pub fn execute(root: &Path, sub: RatchetSubcmd) -> Result<()> {
             description,
             pattern,
             lang,
+            glob,
+            severity,
             high_impact,
             runtime_ms,
             example,
         } => {
-            let saved = log_candidate(
+            let sev = severity.as_deref().map(parse_severity).transpose()?;
+            let saved = log_candidate_with_options(
                 root,
                 CandidateInput {
                     rule_name: rule,
@@ -36,6 +40,11 @@ pub fn execute(root: &Path, sub: RatchetSubcmd) -> Result<()> {
                     estimated_runtime_ms: runtime_ms,
                     example,
                 },
+                CandidateOptions {
+                    file_globs: glob,
+                    severity: sev,
+                    ..Default::default()
+                },
             )?;
             println!(
                 "logged candidate id={} rule={} recurrence={}",
@@ -45,11 +54,15 @@ pub fn execute(root: &Path, sub: RatchetSubcmd) -> Result<()> {
         RatchetSubcmd::List => cmd_list(root)?,
         RatchetSubcmd::Review { id, samples } => cmd_review(root, &id, &samples)?,
         RatchetSubcmd::Test { id } => cmd_test(root, &id)?,
-        RatchetSubcmd::Promote { id } => {
-            let promoted = promote_candidate(root, &id)?;
+        RatchetSubcmd::Promote { id, severity } => {
+            let sev = severity.as_deref().map(parse_severity).transpose()?;
+            let promoted = promote_candidate_with_severity(root, &id, sev)?;
             println!(
-                "promoted rule {} (`{}`) at recurrence={}",
-                promoted.id, promoted.rule_name, promoted.recurrence_at_promotion
+                "promoted rule {} (`{}`) severity={:?} at recurrence={}",
+                promoted.id,
+                promoted.rule_name,
+                promoted.severity.unwrap_or(Severity::Warning),
+                promoted.recurrence_at_promotion
             );
         }
     }
@@ -122,4 +135,13 @@ fn cmd_test(root: &Path, id: &str) -> Result<()> {
         println!("  {}:{}: {}", m.file, m.line, m.snippet);
     }
     Ok(())
+}
+
+fn parse_severity(raw: &str) -> Result<Severity> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "error" | "err" => Ok(Severity::Error),
+        "warn" | "warning" => Ok(Severity::Warning),
+        "info" => Ok(Severity::Info),
+        _ => anyhow::bail!("invalid severity `{raw}`; expected error|warn|info"),
+    }
 }

@@ -5,7 +5,6 @@ mod tier2;
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use anyhow::Result;
 use anvil_ast::analyze_files_parallel;
@@ -246,23 +245,11 @@ fn collect_test_diffs(
     if test_paths.is_empty() {
         return out;
     }
-    if staged {
-        for rel in test_paths {
-            if let Ok(output) = Command::new("git")
-                .args(["diff", "--cached", "--unified=1", "--", rel])
-                .current_dir(root)
-                .output()
-                && output.status.success()
-            {
-                out.insert(
-                    rel.clone(),
-                    String::from_utf8_lossy(&output.stdout).into_owned(),
-                );
-            }
-        }
-        return out;
-    }
-    let diffs = git::batched_working_tree_diffs(root).unwrap_or_default();
+    let diffs = if staged {
+        git::batched_staged_diffs(root).unwrap_or_default()
+    } else {
+        git::batched_working_tree_diffs(root).unwrap_or_default()
+    };
     for rel in test_paths {
         if let Some(diff_text) = diffs.get(rel) {
             out.insert(rel.clone(), diff_text.clone());

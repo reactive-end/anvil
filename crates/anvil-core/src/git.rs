@@ -2,7 +2,7 @@
 
 mod diff;
 
-pub use diff::batched_working_tree_diffs;
+pub use diff::{batched_staged_diffs, batched_working_tree_diffs};
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};

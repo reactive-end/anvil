@@ -27,7 +27,7 @@ use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
-use anvil_tasks::{list_tasks, resolve_author_fast};
+use anvil_tasks::resolve_author_fast;
 use serde_json::Value;
 
 use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
@@ -103,15 +103,7 @@ fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
     let author = resolve_author_fast(root).unwrap_or_else(|_| "hook".to_owned());
     append_session_memory(root, &author, &mut messages);
     append_session_graph(root, &mut messages);
-    match list_tasks(root) {
-        Ok(tasks) => {
-            if let Some(latest) = tasks.last() {
-                let msg = format!("Latest task {}: {}", latest.task_id, latest.request);
-                messages.push(InboxMessage::new("anvil-tasks", MessageLevel::Info, msg, None));
-            }
-        }
-        Err(err) => error_log::log_hook_error(root, "session-start:tasks", &err),
-    }
+    append_session_task_context(root, &mut messages);
     match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
         Ok(st) if st.is_open() => {
             let msg = "Circuit Breaker is OPEN; run `anvil circuit reset` after fixing.".to_owned();
@@ -165,6 +157,70 @@ fn append_session_graph(root: &Path, messages: &mut Vec<InboxMessage>) {
         }
         Err(err) => error_log::log_hook_error(root, "session-start:graph-header", &err),
     }
+}
+
+fn append_session_task_context(root: &Path, messages: &mut Vec<InboxMessage>) {
+    match anvil_tasks::build_resume_brief(root, None) {
+        Ok(Some(brief)) => {
+            messages.push(InboxMessage::new(
+                "anvil-tasks",
+                MessageLevel::Warning,
+                format_resume_inbox_msg(&brief),
+                None,
+            ));
+            return;
+        }
+        Ok(None) => {}
+        Err(err) => error_log::log_hook_error(root, "session-start:resume-brief", &err),
+    }
+    match anvil_tasks::consolidate_repo_tasks(root) {
+        Ok(consolidated) => {
+            let queued: Vec<_> = consolidated
+                .tasks
+                .iter()
+                .filter(|t| t.status == anvil_tasks::TaskStatus::NotStarted)
+                .collect();
+            if let Some(next) = queued.first() {
+                let msg = format!(
+                    "Queued tasks: {} not_started (next: {} {}). Work STRICTLY one task at a time (complete start -> code -> checkpoint update -> verify -> done on one task before starting the next).",
+                    queued.len(),
+                    next.task_id,
+                    next.request
+                );
+                messages.push(InboxMessage::new("anvil-tasks", MessageLevel::Info, msg, None));
+            } else if let Some(latest) = consolidated.tasks.last() {
+                let msg = format!("Latest task {}: {}", latest.task_id, latest.request);
+                messages.push(InboxMessage::new("anvil-tasks", MessageLevel::Info, msg, None));
+            }
+        }
+        Err(err) => error_log::log_hook_error(root, "session-start:tasks", &err),
+    }
+}
+
+fn format_resume_inbox_msg(brief: &anvil_tasks::TaskResumeBrief) -> String {
+    let mut parts = vec![format!(
+        "RESUME interrupted task {} [{}] \"{}\" ({})",
+        brief.task_id, brief.status, brief.title, brief.progress_file
+    )];
+    if !brief.summary.is_empty() {
+        parts.push(format!("Last: {}", brief.summary));
+    }
+    if !brief.next_steps.is_empty() {
+        parts.push(format!("Next: {}", brief.next_steps.join("; ")));
+    }
+    if !brief.touched_files.is_empty() {
+        parts.push(format!("Touched: {}", brief.touched_files.join(", ")));
+    }
+    if let Some(cmd) = brief.last_command.as_deref() {
+        let status = match brief.last_command_passed {
+            Some(true) => "PASS",
+            Some(false) => "FAIL",
+            None => "UNKNOWN",
+        };
+        parts.push(format!("LastCmd: [{status}] {cmd}"));
+    }
+    parts.push("Run `task_resume` / `anvil tasks resume` before restarting from scratch.".to_owned());
+    parts.join(" | ")
 }
 
 fn run_pre_tool_guards(root: &Path, input: &NormalizedHookInput) -> Option<HookOutcome> {
@@ -247,7 +303,7 @@ fn handle_post_tool_use(
                 messages.push(InboxMessage::new(
                     "anvil-tasks",
                     MessageLevel::Info,
-                    "Edits tracked. Curate task decision before finishing (strict anti-noise bias): MCP `task_record` / `anvil tasks record \"<Clean Title>\" \"<summary>\"` ONLY for real features/refactors/bugfixes, `task_done` for continuations, or `task_skip` / `anvil tasks skip` for minor tweaks.".to_owned(),
+                    "Edits tracked with no active in_progress task. Work strictly 1 task at a time: call `task_start`/`anvil tasks start <ID|title>` first, checkpoint with `task_update` after code edits (before tests), and close with `task_done` — or `task_skip` for trivial tweaks.".to_owned(),
                     None,
                 ));
             }

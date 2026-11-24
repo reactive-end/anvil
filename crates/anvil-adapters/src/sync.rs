@@ -104,7 +104,7 @@ fn render_umbrella_doc(heading: &str, subrepos: &[UmbrellaSubrepo]) -> String {
         ));
     }
     format!(
-        "{MANAGED_START}\n\n# {heading}\n\n> Thin multi-repo workspace root. Each independent repository owns its own `.harness/` and `tasks.json` (no duplicate state at root).\n\n## Subrepositories\n\n{rows}\n## Working Across Subrepositories\n\n- Hooks route edits automatically by target file path into each repo's `.harness/`.\n- Run verification per repo (`anvil --root <subrepo> check`) or query any repo's graph/memory/tasks via its `anvil-<repo>` MCP server.\n\n{MANAGED_END}\n"
+        "{MANAGED_START}\n\n# {heading}\n\n> **Availability Guard**: Only apply this `anvil:managed` block if the `anvil` binary is on `PATH` (or an `anvil-*` MCP server is active). If `anvil` is not installed in this environment, **skip this entire block**—do NOT invoke `anvil` commands or treat `.harness/` as an active workflow/source of truth; use each repo's native tools instead.\n> Thin multi-repo workspace root. Each independent repository owns its own `.harness/` and `tasks.json` (no duplicate state at root).\n\n## Subrepositories\n\n{rows}\n## Working Across Subrepositories\n\n- Hooks route edits automatically by target file path into each repo's `.harness/`.\n- Run verification per repo (`anvil --root <subrepo> check`) or query any repo's graph/memory/tasks via its `anvil-<repo>` MCP server.\n\n{MANAGED_END}\n"
     )
 }
 

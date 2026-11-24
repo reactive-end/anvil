@@ -12,7 +12,7 @@ use anvil_core::fs_util::sanitize_author;
 
 use crate::builder::{build_root_tasks_json, consolidate_repo_tasks};
 use crate::identity::resolve_author;
-use crate::ledger::{append_entry_with_evidence, task_dir};
+use crate::ledger::{append_entry_with_evidence, sanitize_group_name, task_dir};
 use crate::model::{TaskMeta, TaskStatus};
 use crate::{atomic_write_json, read_json_file};
 
@@ -129,24 +129,43 @@ fn parse_feature_status(status_val: Option<&Value>, passes_val: Option<&Value>) 
     }
 }
 
-/// Imports every feature into an isolated `.harness/tasks/<ID>/` folder without overwriting
-/// existing team entries (unless `force` is `true`), then rebuilds root `tasks.json`.
+/// Imports every feature into `.harness/tasks/<ID>/` without overwriting existing team entries.
 pub fn import_feature_list(
     repo: &Path,
     list: &ImportedFeatureList,
     author: Option<&str>,
     force: bool,
 ) -> Result<ImportReport> {
+    import_feature_list_in_group(repo, list, None, author, force)
+}
+
+/// Imports every feature into `.harness/tasks/<group>/<ID>/` (or flat `.harness/tasks/<ID>/` when `group` is `None`).
+pub fn import_feature_list_in_group(
+    repo: &Path,
+    list: &ImportedFeatureList,
+    group: Option<&str>,
+    author: Option<&str>,
+    force: bool,
+) -> Result<ImportReport> {
+    let clean_group = group.map(sanitize_group_name).transpose()?;
     let resolved_author = match author {
         Some(a) => sanitize_author(a),
         None => resolve_author(repo)?,
     };
+    let effective_project = list.project.clone().or_else(|| clean_group.clone());
     let mut imported = 0usize;
     let mut updated = 0usize;
     let mut skipped = 0usize;
 
     for feat in &list.features {
-        match import_one_feature(repo, list.project.as_deref(), feat, &resolved_author, force)? {
+        let scoped = scoped_feature(feat, clean_group.as_deref());
+        match import_one_feature(
+            repo,
+            effective_project.as_deref(),
+            &scoped,
+            &resolved_author,
+            force,
+        )? {
             ImportAction::Imported => imported += 1,
             ImportAction::Updated => updated += 1,
             ImportAction::Skipped => skipped += 1,
@@ -155,12 +174,20 @@ pub fn import_feature_list(
 
     let consolidated = build_root_tasks_json(repo)?;
     Ok(ImportReport {
-        project: list.project.clone(),
+        project: effective_project,
         imported,
         updated,
         skipped,
         total_tasks: consolidated.task_count,
     })
+}
+
+fn scoped_feature(feat: &ImportedFeature, group: Option<&str>) -> ImportedFeature {
+    let mut out = feat.clone();
+    if let Some(g) = group {
+        out.id = format!("{g}/{}", feat.id);
+    }
+    out
 }
 
 enum ImportAction {
@@ -250,32 +277,48 @@ fn update_existing_feature(
         return Ok(ImportAction::Updated);
     }
     if meta_changed {
+        let _ = crate::progress::write_task_progress_md(repo, &feat.id);
         Ok(ImportAction::Updated)
     } else {
         Ok(ImportAction::Skipped)
     }
 }
 
-/// Exports consolidated `.harness/tasks/` back to the single-file `feature_list.json` format.
-pub fn export_feature_list(repo: &Path, project_filter: Option<&str>) -> Result<Value> {
+/// Exports consolidated `.harness/tasks/` back to the single-file `feature_list.json` format,
+/// optionally filtered by group prefix or `project` name (stripping the group prefix from `id`).
+pub fn export_feature_list(repo: &Path, group_or_project_filter: Option<&str>) -> Result<Value> {
     let consolidated = consolidate_repo_tasks(repo)?;
-    let inferred_project = project_filter.map(str::to_owned).or_else(|| {
-        consolidated
-            .tasks
-            .iter()
-            .find_map(|t| t.project.clone())
-    });
-
-    let features: Vec<Value> = consolidated
+    let filter_norm = group_or_project_filter
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let matched: Vec<_> = consolidated
         .tasks
         .into_iter()
         .filter(|t| {
-            project_filter.is_none_or(|p| t.project.as_deref() == Some(p))
+            filter_norm.is_none_or(|f| {
+                t.task_id
+                    .split_once('/')
+                    .is_some_and(|(g, _)| g.eq_ignore_ascii_case(f))
+                    || t.project.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(f))
+            })
         })
+        .collect();
+
+    let inferred_project = filter_norm
+        .map(str::to_owned)
+        .or_else(|| matched.iter().find_map(|t| t.project.clone()));
+
+    let features: Vec<Value> = matched
+        .into_iter()
         .map(|t| {
+            let local_id = t
+                .task_id
+                .split_once('/')
+                .map_or(t.task_id.as_str(), |(_, code)| code)
+                .to_owned();
             let evidence = t.evidence.unwrap_or_else(|| t.summary.clone());
             json!({
-                "id": t.task_id,
+                "id": local_id,
                 "name": t.request,
                 "behavior": t.behavior.unwrap_or_default(),
                 "verify": t.verify,
@@ -385,5 +428,33 @@ mod tests {
         assert_eq!(exported["features"].as_array().unwrap().len(), 2);
         assert_eq!(exported["features"][0]["status"], "done");
         assert!(exported["features"][1]["verify"].is_null());
+    }
+
+    #[test]
+    fn grouped_subdirs_prevent_f001_collisions_and_reject_traversal() {
+        let dir = TempDir::new().unwrap();
+        let make_raw = |proj: &str| {
+            format!(
+                r#"{{"project":"{proj}","features":[{{"id":"F001","name":"{proj} F1","verify":"echo ok","status":"not_started","evidence":"dev"}}]}}"#
+            )
+        };
+        let voz = parse_feature_list_json(&make_raw("voz")).unwrap();
+        let avatar = parse_feature_list_json(&make_raw("avatar")).unwrap();
+
+        import_feature_list_in_group(dir.path(), &voz, Some("voz"), Some("alice"), false).unwrap();
+        import_feature_list_in_group(dir.path(), &avatar, Some("avatar"), Some("bob"), false)
+            .unwrap();
+
+        let fv = read_single_task(dir.path(), "voz/F001").unwrap();
+        let fa = read_single_task(dir.path(), "avatar/F001").unwrap();
+        assert_eq!(fv.request, "voz F1");
+        assert_eq!(fa.request, "avatar F1");
+
+        let exp_voz = export_feature_list(dir.path(), Some("voz")).unwrap();
+        assert_eq!(exp_voz["features"].as_array().unwrap().len(), 1);
+        assert_eq!(exp_voz["features"][0]["id"], "F001");
+
+        assert!(import_feature_list_in_group(dir.path(), &voz, Some("../evil"), Some("a"), false).is_err());
+        assert!(read_single_task(dir.path(), "../evil/F001").is_err());
     }
 }

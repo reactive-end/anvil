@@ -204,3 +204,37 @@ fn ratchet_skips_comments_and_strings_and_supports_multiline_and_web_php_langs()
     assert_eq!(ml_diags[0].line, 2);
     Ok(())
 }
+
+#[test]
+fn test_candidate_sets_fp_checked_and_promote_supports_severity_override() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::write(root.join("src/app.js"), "export const count = 1;\n")?;
+
+    let mut input = sample_input("no-var-decl");
+    input.pattern = r"\bvar\s+".to_owned();
+    input.languages = vec!["js".to_owned()];
+    input.high_impact = true;
+    let cand = log_candidate(root, input)?;
+    assert!(!cand.fp_checked);
+
+    let report = anvil_core::ratchet::test_candidate(root, &cand.id)?;
+    assert_eq!(report.files_scanned, 1);
+    assert_eq!(report.match_count, 0);
+    assert!(report.under_budget);
+
+    // Must promote without calling `evaluate_candidate(..., Some(samples))` manually.
+    let rule = anvil_core::ratchet::promote_candidate_with_severity(
+        root,
+        &cand.id,
+        Some(anvil_core::traits::Severity::Error),
+    )?;
+    assert_eq!(rule.severity, Some(anvil_core::traits::Severity::Error));
+
+    let compiled = compile_promoted_rules(&[rule]);
+    let diags = evaluate_compiled(&compiled, "src/app.js", "var bad = 1;\n");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].severity, anvil_core::traits::Severity::Error);
+    Ok(())
+}

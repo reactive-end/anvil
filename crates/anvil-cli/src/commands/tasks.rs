@@ -12,13 +12,13 @@ use anvil_core::config::AnvilConfig;
 use anvil_core::git::{self, DiffScope};
 use anvil_core::proc_util::{TimedOutput, run_command_with_timeout};
 use anvil_tasks::{
-    TaskStatus, activate_task_from_meta, append_entry, append_entry_as,
-    append_entry_with_evidence, build_root_tasks_json, clear_untracked_edits,
-    consolidate_repo_tasks, export_feature_list, import_feature_list, load_active_task,
-    load_untracked_edits, mark_summary_recorded_with_files, migrate_legacy_task_ids,
-    parse_feature_list_json, read_single_task, record_curated_task_with_id, record_task_skip,
-    resolve_author, resolve_merge, start_task_with_id, validate_curated_task_title,
-    write_task_plan,
+    ImportedFeatureList, ProgressUpdate, TaskStatus, TaskTarget, activate_task_from_meta,
+    begin_existing_task, build_resume_brief, build_root_tasks_json, consolidate_repo_tasks,
+    export_feature_list, import_feature_list_in_group, list_task_groups, load_active_task,
+    load_untracked_edits, migrate_legacy_task_ids, parse_feature_list_json, read_single_task,
+    record_active_command_outcome, record_curated_task_in_group, record_task_progress,
+    record_task_skip, resolve_author, resolve_merge, sanitize_group_name, start_task_in_group,
+    task_progress_rel_path, validate_curated_task_title, write_task_plan,
 };
 
 use crate::cli::subcmds::TasksSubcmd;
@@ -30,27 +30,32 @@ use crate::ui::prompt::{self, PromptOutcome, SelectOption};
 /// Executes `anvil tasks <subcommand>`.
 pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
     match sub {
-        TasksSubcmd::Start { request, id, author } => {
-            cmd_start(root, &request.join(" "), id.as_deref(), author.as_deref())
-        }
-        TasksSubcmd::Record { title, summary, status, id, files, author } => {
-            cmd_record(root, &title, &summary, parse_status(&status)?, id.as_deref(), &files, author.as_deref())
-        }
+        TasksSubcmd::Start { request, group, id, author } => cmd_start(
+            root,
+            &request,
+            group.as_deref(),
+            id.as_deref(),
+            author.as_deref(),
+        ),
+        TasksSubcmd::Record { title, summary, status, group, id, files, author } => cmd_record(
+            root,
+            &title,
+            &summary,
+            parse_status(&status)?,
+            TaskTarget { author: author.as_deref(), group: group.as_deref(), task_id: id.as_deref() },
+            &files,
+        ),
         TasksSubcmd::Skip { reason } => cmd_skip(root, &reason.join(" ")),
-        TasksSubcmd::Update { task_id, summary, status, files, author } => {
-            cmd_append(root, &task_id, &summary, parse_status(&status)?, &files, author.as_deref())
-        }
-        TasksSubcmd::Done { task_id, summary, files, author } => {
-            cmd_append(root, &task_id, &summary, TaskStatus::Done, &files, author.as_deref())
-        }
+        TasksSubcmd::Update { .. } | TasksSubcmd::Done { .. } => execute_progress_cmd(root, sub),
+        TasksSubcmd::Resume { task_id } => cmd_resume(root, task_id.as_deref()),
         TasksSubcmd::Plan { task_id, markdown_or_file, author } => {
             cmd_plan(root, &task_id, &markdown_or_file, author)
         }
-        TasksSubcmd::Import { file, tui, force, author } => {
-            cmd_import(root, file, tui, force, author.as_deref())
+        TasksSubcmd::Import { file, group, flat, tui, force, author } => {
+            cmd_import(root, file, group.as_deref(), flat, tui, force, author.as_deref())
         }
-        TasksSubcmd::Export { output, project } => {
-            cmd_export(root, output.as_deref(), project.as_deref())
+        TasksSubcmd::Export { output, group, project } => {
+            cmd_export(root, output.as_deref(), group.as_deref().or(project.as_deref()))
         }
         TasksSubcmd::Verify { task_id, record } => cmd_verify(root, &task_id, record),
         TasksSubcmd::MigrateIds => cmd_migrate_ids(root),
@@ -59,7 +64,9 @@ pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
             println!("built tasks.json: {} task(s)", consolidated.task_count);
             Ok(())
         }
-        TasksSubcmd::List { status, limit } => cmd_list(root, status.as_deref(), limit),
+        TasksSubcmd::List { group, status, limit } => {
+            cmd_list(root, group.as_deref(), status.as_deref(), limit)
+        }
         TasksSubcmd::MergeDriver { base, current, other } => {
             let consolidated = resolve_merge(&base, &current, &other, root)?;
             println!("merged tasks.json cleanly: {} task(s)", consolidated.task_count);
@@ -68,18 +75,76 @@ pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
     }
 }
 
-fn cmd_start(root: &Path, request: &str, id: Option<&str>, author: Option<&str>) -> Result<()> {
-    let clean_title = validate_curated_task_title(request)?;
+fn execute_progress_cmd(root: &Path, sub: TasksSubcmd) -> Result<()> {
+    match sub {
+        TasksSubcmd::Update {
+            task_id, summary, status, done, next, blocker, evidence, files, author,
+        } => cmd_append(
+            root,
+            &task_id,
+            ProgressUpdate {
+                status: parse_status(&status)?,
+                summary: &summary,
+                done_steps: &done,
+                next_steps: &next,
+                blocker: blocker.as_deref(),
+                evidence: evidence.as_deref(),
+                files: &files,
+            },
+            author.as_deref(),
+        ),
+        TasksSubcmd::Done { task_id, summary, evidence, files, author } => cmd_append(
+            root,
+            &task_id,
+            ProgressUpdate {
+                status: TaskStatus::Done,
+                summary: &summary,
+                evidence: evidence.as_deref(),
+                files: &files,
+                ..ProgressUpdate::default()
+            },
+            author.as_deref(),
+        ),
+        _ => Ok(()),
+    }
+}
+
+fn cmd_start(
+    root: &Path,
+    request: &[String],
+    group: Option<&str>,
+    id: Option<&str>,
+    author: Option<&str>,
+) -> Result<()> {
     let resolved_author = match author {
         Some(a) => a.to_owned(),
         None => resolve_author(root)?,
     };
-    let meta = start_task_with_id(root, &resolved_author, &clean_title, id)?;
+    if request.len() == 1
+        && group.is_none()
+        && id.is_none()
+        && read_single_task(root, &request[0]).is_ok()
+    {
+        let (task, _) = begin_existing_task(root, &request[0], &resolved_author, None)?;
+        println!(
+            "started existing task {} [{}] \"{}\" ({})",
+            task.task_id,
+            task.status,
+            task.request,
+            task_progress_rel_path(&task.task_id)
+        );
+        return Ok(());
+    }
+    let clean_title = validate_curated_task_title(&request.join(" "))?;
+    let meta = start_task_in_group(root, &resolved_author, &clean_title, group, id)?;
     let consolidated = build_root_tasks_json(root)?;
     activate_task_from_meta(root, &meta)?;
     println!(
-        "started task {} by {} (tasks.json total={})",
-        meta.task_id, meta.created_by, consolidated.task_count
+        "started task {} by {} ({}, tasks.json total={})",
+        meta.task_id,
+        meta.created_by,
+        task_progress_rel_path(&meta.task_id),
+        consolidated.task_count
     );
     Ok(())
 }
@@ -89,11 +154,10 @@ fn cmd_record(
     title: &str,
     summary: &str,
     status: TaskStatus,
-    id: Option<&str>,
+    target: TaskTarget<'_>,
     files: &[String],
-    author: Option<&str>,
 ) -> Result<()> {
-    let (meta, entry) = record_curated_task_with_id(root, title, summary, status, files, author, id)?;
+    let (meta, entry) = record_curated_task_in_group(root, title, summary, status, files, target)?;
     println!(
         "recorded task {} [{}] \"{}\" files={}",
         meta.task_id,
@@ -129,6 +193,8 @@ fn cmd_skip(root: &Path, reason: &str) -> Result<()> {
 fn cmd_import(
     root: &Path,
     file: Option<PathBuf>,
+    explicit_group: Option<&str>,
+    flat: bool,
     force_tui: bool,
     force: bool,
     author: Option<&str>,
@@ -144,14 +210,20 @@ fn cmd_import(
         .with_context(|| format!("failed to read {}", src_path.display()))?;
     let list = parse_feature_list_json(&raw)?;
     let target_repo = resolve_import_target_repo(root, list.project.as_deref())?;
-    let report = import_feature_list(&target_repo, &list, author, force)?;
+    let target_group = resolve_import_group(&target_repo, &src_path, &list, explicit_group, flat)?;
+    let report = import_feature_list_in_group(
+        &target_repo,
+        &list,
+        target_group.as_deref(),
+        author,
+        force,
+    )?;
 
-    println!(
-        "{} {} {}",
-        ui::green("✓"),
-        ui::green("imported tasks into"),
-        ui::bold(&target_repo.display().to_string())
-    );
+    let dest_label = match target_group.as_deref() {
+        Some(g) => format!("{}/.harness/tasks/{g}/", target_repo.display()),
+        None => format!("{}/.harness/tasks/", target_repo.display()),
+    };
+    println!("{} {} {}", ui::green("✓"), ui::green("imported tasks into"), ui::bold(&dest_label));
     if let Some(proj) = report.project.as_deref() {
         ui::print_kv("project", &ui::cyan(proj));
     }
@@ -163,6 +235,70 @@ fn cmd_import(
         ),
     );
     Ok(())
+}
+
+fn resolve_import_group(
+    target_repo: &Path,
+    src_path: &Path,
+    list: &ImportedFeatureList,
+    explicit_group: Option<&str>,
+    flat: bool,
+) -> Result<Option<String>> {
+    if flat {
+        return Ok(None);
+    }
+    if let Some(g) = explicit_group {
+        return sanitize_group_name(g).map(Some);
+    }
+    if !prompt::is_interactive_tui() {
+        return Ok(None);
+    }
+
+    let suggested = suggest_group_name(src_path, list);
+    let existing_groups = list_task_groups(target_repo);
+    let default_idx = usize::from(list.project.is_none() && existing_groups.is_empty());
+    let opts = [
+        SelectOption::new(
+            "Subdirectory .harness/tasks/<name>/",
+            format!("grouped by module (default: {suggested})"),
+        ),
+        SelectOption::new(
+            "Directly in .harness/tasks/",
+            "flat root folder (no subdirectory)",
+        ),
+    ];
+    let title = format!("Where should these {} tasks be stored?", list.features.len());
+    match prompt::select(
+        &title,
+        "Task location",
+        Some("Use a subdirectory if multiple modules share IDs like F001"),
+        &opts,
+        default_idx,
+    )? {
+        PromptOutcome::Cancelled => Err(ExitCodeError::silent(130).into()),
+        PromptOutcome::Confirmed(1) => Ok(None),
+        PromptOutcome::Confirmed(_) => {
+            match prompt::text_input("Subdirectory name under .harness/tasks/", "Task group", &suggested)? {
+                PromptOutcome::Confirmed(name) => sanitize_group_name(&name).map(Some),
+                PromptOutcome::Cancelled => Err(ExitCodeError::silent(130).into()),
+            }
+        }
+    }
+}
+
+fn suggest_group_name(src_path: &Path, list: &ImportedFeatureList) -> String {
+    if let Some(proj) = list.project.as_deref()
+        && let Ok(clean) = sanitize_group_name(proj)
+    {
+        return clean;
+    }
+    if let Some(parent) = src_path.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str())
+        && !matches!(parent.to_ascii_lowercase().as_str(), "tasks" | ".harness" | "harness")
+        && let Ok(clean) = sanitize_group_name(parent)
+    {
+        return clean;
+    }
+    "features".to_owned()
 }
 
 fn resolve_import_target_repo(root: &Path, project: Option<&str>) -> Result<PathBuf> {
@@ -278,6 +414,7 @@ fn cmd_verify(root: &Path, task_id: &str, record: bool) -> Result<()> {
         config.tier_budgets.compressor_max_lines,
         config.tier_budgets.compressor_max_tokens,
     )?;
+    let _ = record_active_command_outcome(root, verify_cmd, compressed.passed);
     if record {
         let author = resolve_author(root)?;
         let st = if compressed.passed {
@@ -286,8 +423,17 @@ fn cmd_verify(root: &Path, task_id: &str, record: bool) -> Result<()> {
             TaskStatus::InProgress
         };
         let ev = format!("verify (exit={}): {}", timed.status_code, compressed.summary);
-        let _ = append_entry_with_evidence(root, task_id, &author, st, &ev, Some(&ev), &[])?;
-        let _ = build_root_tasks_json(root)?;
+        let _ = record_task_progress(
+            root,
+            task_id,
+            &author,
+            ProgressUpdate {
+                status: st,
+                summary: &ev,
+                evidence: Some(&ev),
+                ..ProgressUpdate::default()
+            },
+        )?;
     }
     print_verify_result(task_id, &compressed);
     if !compressed.passed {
@@ -331,28 +477,71 @@ fn run_verify_shell(root: &Path, raw_cmd: &str, timeout: Duration) -> Result<Tim
 fn cmd_append(
     root: &Path,
     task_id: &str,
-    summary: &str,
-    status: TaskStatus,
-    files: &[String],
+    update: ProgressUpdate<'_>,
     author: Option<&str>,
 ) -> Result<()> {
-    let resolved_files = resolve_touched_files(root, task_id, files);
-    let entry = match author {
-        Some(a) => append_entry_as(root, task_id, a, status, summary, &resolved_files)?,
-        None => append_entry(root, task_id, status, summary, &resolved_files)?,
+    let resolved_author = match author {
+        Some(a) => a.to_owned(),
+        None => resolve_author(root)?,
     };
-    let consolidated = build_root_tasks_json(root)?;
-    mark_summary_recorded_with_files(root, task_id, status, &entry.files_touched)?;
-    clear_untracked_edits(root);
+    let resolved_files = resolve_touched_files(root, task_id, update.files);
+    let scoped = ProgressUpdate {
+        files: &resolved_files,
+        ..update
+    };
+    let (task, entry) = record_task_progress(root, task_id, &resolved_author, scoped)?;
     println!(
-        "updated {} [{}] entry={} files={} (tasks.json total={})",
-        task_id, entry.status, entry.entry_id, entry.files_touched.len(), consolidated.task_count
+        "updated {} [{}] entry={} files={} progress={}",
+        task.task_id,
+        entry.status,
+        entry.entry_id,
+        task.files_touched.len(),
+        task_progress_rel_path(&task.task_id),
     );
-    if status == TaskStatus::Done && !entry.files_touched.is_empty() && looks_like_learning(summary)
+    if entry.status == TaskStatus::Done
+        && !task.files_touched.is_empty()
+        && looks_like_learning(update.summary)
     {
         println!(
             "memory-hint: consider saving durable root-cause/decision via `anvil mem save` (or MCP `mem_save`) with related_files."
         );
+    }
+    Ok(())
+}
+
+fn cmd_resume(root: &Path, task_id: Option<&str>) -> Result<()> {
+    let Some(brief) = build_resume_brief(root, task_id)? else {
+        println!("no active or in_progress task to resume");
+        return Ok(());
+    };
+    println!("{} {} [{}] {}", ui::accent("resume:"), ui::cyan(&brief.task_id), brief.status, brief.title);
+    ui::print_kv("progress_file", &brief.progress_file);
+    ui::print_kv("summary", &brief.summary);
+    if !brief.done_steps.is_empty() {
+        ui::print_kv("done_steps", &brief.done_steps.join("; "));
+    }
+    if !brief.next_steps.is_empty() {
+        ui::print_kv("next_steps", &brief.next_steps.join("; "));
+    }
+    if let Some(blk) = brief.blocker.as_deref() {
+        ui::print_kv("blocker", blk);
+    }
+    if let Some(verify) = brief.verify.as_deref() {
+        ui::print_kv("verify", verify);
+    }
+    if !brief.touched_files.is_empty() {
+        ui::print_kv("touched_files", &brief.touched_files.join(", "));
+    }
+    if let Some(cmd) = brief.last_command.as_deref() {
+        let tag = match brief.last_command_passed {
+            Some(true) => "PASS",
+            Some(false) => "FAIL",
+            None => "UNKNOWN",
+        };
+        ui::print_kv("last_command", &format!("[{tag}] {cmd}"));
+    }
+    if !brief.dirty_files.is_empty() {
+        ui::print_kv("dirty_files", &brief.dirty_files.join(", "));
     }
     Ok(())
 }
@@ -409,13 +598,27 @@ fn cmd_plan(root: &Path, task_id: &str, markdown_or_file: &str, author: Option<S
     Ok(())
 }
 
-fn cmd_list(root: &Path, status_raw: Option<&str>, limit: usize) -> Result<()> {
+fn cmd_list(
+    root: &Path,
+    group_filter: Option<&str>,
+    status_raw: Option<&str>,
+    limit: usize,
+) -> Result<()> {
     let filter = status_raw.map(parse_status).transpose()?;
+    let g_norm = group_filter.map(str::trim).filter(|s| !s.is_empty());
     let consolidated = consolidate_repo_tasks(root)?;
     let items: Vec<_> = consolidated
         .tasks
         .into_iter()
         .filter(|t| filter.is_none_or(|s| t.status == s))
+        .filter(|t| {
+            g_norm.is_none_or(|g| {
+                t.task_id
+                    .split_once('/')
+                    .is_some_and(|(pfx, _)| pfx.eq_ignore_ascii_case(g))
+                    || t.project.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(g))
+            })
+        })
         .take(limit.max(1))
         .collect();
     if items.is_empty() {

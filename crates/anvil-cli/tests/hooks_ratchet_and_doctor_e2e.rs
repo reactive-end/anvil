@@ -297,3 +297,147 @@ fn impact_typecheck_exits_nonzero_and_qa_run_respects_phase_and_skip() {
     assert!(qa_out.contains("skipping `anvil qa run`"));
 }
 
+#[test]
+fn ratchet_error_severity_blocks_check_and_test_marks_fp_checked() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    let log_out = assert_ok(
+        &run_anvil(
+            root,
+            &[
+                "ratchet",
+                "log",
+                "--rule",
+                "no-var-decl",
+                "--description",
+                "Forbid var declarations",
+                "--pattern",
+                r"\bvar\s+",
+                "--lang",
+                "ts",
+                "--severity",
+                "error",
+                "--high-impact",
+            ],
+        ),
+        "ratchet log --severity error",
+    );
+    let cand_id = log_out
+        .split("id=")
+        .nth(1)
+        .and_then(|s| s.split_whitespace().next())
+        .expect("candidate id in output");
+
+    let test_out = assert_ok(&run_anvil(root, &["ratchet", "test", cand_id]), "ratchet test");
+    assert!(test_out.contains("matches=0"), "unexpected matches in test: {test_out}");
+    assert!(test_out.contains("under_budget=true"), "expected under_budget=true: {test_out}");
+
+    // Must promote directly without manual `ratchet review --samples`.
+    let prom_out = assert_ok(&run_anvil(root, &["ratchet", "promote", cand_id]), "ratchet promote");
+    assert!(prom_out.contains("severity=Error"), "expected Error severity in output: {prom_out}");
+
+    fs::write(
+        root.join("src/core.ts"),
+        "var leaked = 1;\nexport function compute(x: number): number { return x + leaked; }\n",
+    )
+    .unwrap();
+    let check_out = run_anvil(root, &["check", "--tier", "0", "--no-cache"]);
+    assert!(!check_out.status.success(), "expected error ratchet rule to fail anvil check");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&check_out.stdout),
+        String::from_utf8_lossy(&check_out.stderr)
+    );
+    assert!(combined.contains("no-var-decl"), "missing rule name: {combined}");
+    assert!(combined.contains("ERROR"), "missing ERROR severity: {combined}");
+}
+
+#[test]
+fn tier1_runs_node_test_when_configured_in_package_json() {
+    if Command::new("node").arg("--version").output().is_err() {
+        return;
+    }
+    let repo = TempDir::new().unwrap();
+    let root = repo.path();
+    Command::new("git").args(["init"]).current_dir(root).output().unwrap();
+    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(root).output().unwrap();
+    Command::new("git").args(["config", "user.name", "Tester"]).current_dir(root).output().unwrap();
+
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::create_dir_all(root.join("tests")).unwrap();
+    fs::write(
+        root.join("package.json"),
+        "{\"name\":\"node-test-demo\",\"type\":\"module\",\"scripts\":{\"test\":\"node --test\"}}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/math.mjs"),
+        "export function add(a, b) {\n  return a + b;\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("tests/math.test.mjs"),
+        "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add } from '../src/math.mjs';\n\ntest('add sums two numbers', () => {\n  assert.equal(add(2, 3), 5);\n});\n",
+    )
+    .unwrap();
+
+    assert_ok(&run_anvil(root, &["init"]), "init");
+    Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+    Command::new("git").args(["commit", "-m", "initial"]).current_dir(root).output().unwrap();
+
+    fs::write(
+        root.join("src/math.mjs"),
+        "export function add(a, b) {\n  return a + b;\n}\nexport const version = 2;\n",
+    )
+    .unwrap();
+    let out = assert_ok(
+        &run_anvil(root, &["check", "--tier", "1", "--no-cache"]),
+        "anvil check --tier 1 node --test",
+    );
+    assert!(out.contains("PASS (node)"), "expected PASS (node) output, got:\n{out}");
+    assert!(!out.contains("SKIP (vitest/jest)"), "unexpected vitest/jest skip in:\n{out}");
+
+    // Break src/math.mjs and verify Tier 1 actually fails via `node --test`.
+    fs::write(
+        root.join("src/math.mjs"),
+        "export function add(a, b) {\n  return a - b;\n}\n",
+    )
+    .unwrap();
+    let fail_out = run_anvil(root, &["check", "--tier", "1", "--no-cache"]);
+    assert!(!fail_out.status.success(), "expected broken math.mjs to fail node --test");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&fail_out.stdout),
+        String::from_utf8_lossy(&fail_out.stderr)
+    );
+    assert!(combined.contains("FAIL (node)") || combined.contains("add sums two numbers"), "expected failure details: {combined}");
+}
+
+#[test]
+fn staged_check_detects_git_mv_renames_without_false_tampering() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    fs::create_dir_all(root.join("tests")).unwrap();
+    let test_fixture = concat!("import { strict as assert } from 'assert';\nconst marker = \"it.", "skip", "('x', () => {});\";\nassert.ok(marker.length > 0);\n");
+    fs::write(root.join("tests/old_name.test.ts"), test_fixture).unwrap();
+
+    assert_ok(&run_anvil(root, &["init"]), "init");
+    Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+    Command::new("git").args(["commit", "-m", "add test fixture"]).current_dir(root).output().unwrap();
+
+    let mv = Command::new("git")
+        .args(["mv", "tests/old_name.test.ts", "tests/new_name.test.ts"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(mv.status.success(), "git mv failed: {}", String::from_utf8_lossy(&mv.stderr));
+
+    let out = assert_ok(
+        &run_anvil(root, &["check", "--staged", "--tier", "0"]),
+        "staged check after git mv",
+    );
+    assert!(out.contains("anvil check: PASS"), "expected staged tier 0 pass: {out}");
+}
+

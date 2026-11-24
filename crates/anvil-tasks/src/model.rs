@@ -57,6 +57,12 @@ pub struct TaskEntry {
     pub evidence: Option<String>,
     #[serde(default)]
     pub files_touched: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub done_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocker: Option<String>,
     pub timestamp: DateTime<Utc>,
 }
 

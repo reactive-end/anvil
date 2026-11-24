@@ -121,6 +121,9 @@ pub enum TasksSubcmd {
     Start {
         #[arg(required = true)]
         request: Vec<String>,
+        /// Optional subdirectory group (e.g. `voz`), creating `.harness/tasks/voz/T-001`.
+        #[arg(long)]
+        group: Option<String>,
         /// Optional short custom ID (e.g. `F039`); defaults to `T-001`, `T-002`, ...
         #[arg(long)]
         id: Option<String>,
@@ -135,6 +138,9 @@ pub enum TasksSubcmd {
         summary: String,
         #[arg(long, default_value = "done")]
         status: String,
+        /// Optional subdirectory group (e.g. `voz`), creating `.harness/tasks/voz/T-001`.
+        #[arg(long)]
+        group: Option<String>,
         /// Optional short custom ID (e.g. `F039`); defaults to `T-001`, `T-002`, ...
         #[arg(long)]
         id: Option<String>,
@@ -148,25 +154,45 @@ pub enum TasksSubcmd {
         #[arg(required = true)]
         reason: Vec<String>,
     },
-    /// Append a progress entry to an existing task.
+    /// Append a progress checkpoint entry to an existing task (updates `progress.md` and `tasks.json`).
     Update {
         task_id: String,
         summary: String,
         #[arg(long, default_value = "in_progress")]
         status: String,
+        /// Completed milestones so far (comma-separated).
+        #[arg(long, value_delimiter = ',')]
+        done: Vec<String>,
+        /// Remaining next steps for seamless recovery after interruption (comma-separated).
+        #[arg(long, value_delimiter = ',')]
+        next: Vec<String>,
+        /// Optional blocker preventing completion.
+        #[arg(long)]
+        blocker: Option<String>,
+        /// Optional test/check verification note.
+        #[arg(long)]
+        evidence: Option<String>,
         #[arg(long, value_delimiter = ',')]
         files: Vec<String>,
         #[arg(long)]
         author: Option<String>,
     },
-    /// Mark a task as done with a final summary entry.
+    /// Mark a task as done with a final verified summary entry.
     Done {
         task_id: String,
         summary: String,
+        /// Optional test/verification evidence attached to completion.
+        #[arg(long)]
+        evidence: Option<String>,
         #[arg(long, value_delimiter = ',')]
         files: Vec<String>,
         #[arg(long)]
         author: Option<String>,
+    },
+    /// Print the compact crash-recovery brief for an interrupted/in-progress task (or explicit ID).
+    Resume {
+        /// Optional task ID (`T-001` or `voz/F001`); defaults to active `in_progress` task.
+        task_id: Option<String>,
     },
     /// Write an isolated per-author `plan-<user>.md` for a task.
     Plan {
@@ -180,6 +206,12 @@ pub enum TasksSubcmd {
     Import {
         /// Optional path to the JSON file; omit to open the native OS / TUI file browser.
         file: Option<PathBuf>,
+        /// Store imported tasks under `.harness/tasks/<group>/` (asks interactively if omitted).
+        #[arg(long, conflicts_with = "flat")]
+        group: Option<String>,
+        /// Store imported tasks directly in `.harness/tasks/` without a subdirectory prompt.
+        #[arg(long, conflicts_with = "group")]
+        flat: bool,
         /// Use the in-terminal arrow-key TUI file browser instead of the native OS file dialog.
         #[arg(long)]
         tui: bool,
@@ -194,6 +226,9 @@ pub enum TasksSubcmd {
         /// Optional destination JSON file path (prints to stdout when omitted).
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// Filter exported tasks by subdirectory group name (e.g. `voz`).
+        #[arg(long)]
+        group: Option<String>,
         #[arg(long)]
         project: Option<String>,
     },
@@ -208,8 +243,10 @@ pub enum TasksSubcmd {
     MigrateIds,
     /// Deterministically rebuild root `tasks.json`.
     Build,
-    /// List tasks in `.harness/tasks/` (optionally filtered by status).
+    /// List tasks in `.harness/tasks/` (optionally filtered by group or status).
     List {
+        #[arg(long)]
+        group: Option<String>,
         #[arg(long)]
         status: Option<String>,
         #[arg(long, default_value_t = 50)]
@@ -235,6 +272,10 @@ pub enum RatchetSubcmd {
         pattern: String,
         #[arg(long, value_delimiter = ',')]
         lang: Vec<String>,
+        #[arg(long, value_delimiter = ',')]
+        glob: Vec<String>,
+        #[arg(long)]
+        severity: Option<String>,
         #[arg(long)]
         high_impact: bool,
         #[arg(long, default_value_t = 10)]
@@ -254,7 +295,11 @@ pub enum RatchetSubcmd {
     /// Test a candidate regex across matching repository files and measure runtime.
     Test { id: String },
     /// Promote an eligible candidate into `.harness/rules/`.
-    Promote { id: String },
+    Promote {
+        id: String,
+        #[arg(long)]
+        severity: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]

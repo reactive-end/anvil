@@ -197,3 +197,27 @@ fn detects_godot_stack_tools_and_allowlist() -> Result<()> {
     assert!(cfg.root_allowlist.iter().any(|x| x == "project.godot"));
     Ok(())
 }
+
+#[test]
+fn skips_gitignored_child_repositories() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    write_file(&root.join("Cargo.toml"), "[package]\nname = \"root\"\nversion = \"0.1.0\"\n")?;
+    write_file(&root.join(".gitignore"), "/target/\n/test/\n")?;
+    write_file(
+        &root.join("test/sandbox/package.json"),
+        r#"{"name":"sandbox","type":"module","scripts":{"test":"node --test"}}"#,
+    )?;
+
+    let det = detect_workspace(root)?;
+    assert!(!det.is_multi_repo);
+    assert_eq!(det.repos.len(), 1);
+    assert_eq!(det.repos[0].rel_path, ".");
+
+    let mut cfg = AnvilConfig::default();
+    det.apply_to_config(&mut cfg);
+    assert!(cfg.stacks.contains(&StackKind::Rust));
+    assert!(!cfg.stacks.contains(&StackKind::TypeScript));
+    Ok(())
+}

@@ -15,7 +15,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-adapters",
@@ -25,7 +26,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-ast",
@@ -35,7 +37,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-cli",
@@ -45,7 +48,19 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
+    },
+    {
+      "name": "anvil-codemode",
+      "path": "crates/anvil-codemode",
+      "stacks": [
+        "rust"
+      ],
+      "tools": [
+        "cargo"
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-core",
@@ -55,7 +70,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-deps",
@@ -65,7 +81,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-graph",
@@ -75,7 +92,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-mcp",
@@ -85,7 +103,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-memory",
@@ -95,7 +114,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-qa",
@@ -105,7 +125,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     },
     {
       "name": "anvil-tasks",
@@ -115,7 +136,8 @@
       ],
       "tools": [
         "cargo"
-      ]
+      ],
+      "sonar_enabled": false
     }
   ],
   "tier_budgets": {
@@ -144,6 +166,7 @@
     "scripts",
     "tasks.json",
     "templates",
+    "test",
     "tsconfig.json",
     "src"
   ],
@@ -156,5 +179,13 @@
   "adapters": "all",
   "allowed_escapes": [
     "anvil-allow"
-  ]
+  ],
+  "boundaries": [],
+  "forbid_import_cycles": false,
+  "sonar": {
+    "enabled": false,
+    "token_env": "SONAR_TOKEN",
+    "cognitive_complexity_max": 15,
+    "duplication_min_lines": 8
+  }
 }

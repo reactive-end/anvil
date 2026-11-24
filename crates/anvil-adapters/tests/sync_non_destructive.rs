@@ -52,6 +52,9 @@ fn embedded_templates_meet_size_and_content_constraints() {
     let required_tokens = [
         "<!-- anvil:managed:start -->",
         "<!-- anvil:managed:end -->",
+        "Availability Guard",
+        "PATH",
+        "skip this entire block",
         "graph_outline",
         "graph_read_symbol",
         "anvil diff",
@@ -400,4 +403,25 @@ fn infer_default_adapter_detects_single_secondary_ide_and_defaults_empty_to_all(
         AnvilConfig::load(empty_repo.path()).expect("load").adapters,
         AdapterTarget::All
     );
+}
+
+#[test]
+fn umbrella_root_docs_include_availability_guard() {
+    let ws = tempdir().expect("tempdir");
+    let sub_abs = ws.path().join("services/api");
+    fs::create_dir_all(&sub_abs).expect("mkdir subrepo");
+    let subrepos = [sync::UmbrellaSubrepo {
+        rel_path: "services/api".to_owned(),
+        abs_path: sub_abs,
+        stacks: Vec::new(),
+    }];
+
+    sync::init_umbrella_root(ws.path(), Some(AdapterTarget::All), &subrepos)
+        .expect("init_umbrella_root");
+
+    for doc_name in ["AGENTS.md", "CLAUDE.md"] {
+        let content = fs::read_to_string(ws.path().join(doc_name)).expect(doc_name);
+        assert!(content.contains("Availability Guard"), "{doc_name} missing Availability Guard");
+        assert!(content.contains("skip this entire block"), "{doc_name} missing skip instruction");
+    }
 }

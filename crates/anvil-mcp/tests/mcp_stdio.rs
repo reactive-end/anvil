@@ -76,15 +76,27 @@ fn mcp_initialize_and_tools_list() {
     let tools = resps[2].result.as_ref().unwrap()["tools"]
         .as_array()
         .unwrap();
-    assert_eq!(tools.len(), 19);
+    assert_eq!(tools.len(), 22);
     assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
     assert!(tools.iter().any(|t| t["name"] == "context_pack"));
     assert!(tools.iter().any(|t| t["name"] == "code_exec"));
+    assert!(tools.iter().any(|t| t["name"] == "graph_outline"));
+    assert!(tools.iter().all(|t| t["inputSchema"].is_object()));
+}
+
+#[test]
+fn mcp_tools_list_includes_full_task_lifecycle_tools() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(&mut server, &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })]);
+    let tools = resps[0].result.as_ref().unwrap()["tools"].as_array().unwrap();
+    assert!(tools.iter().any(|t| t["name"] == "task_start"));
+    assert!(tools.iter().any(|t| t["name"] == "task_update"));
+    assert!(tools.iter().any(|t| t["name"] == "task_done"));
+    assert!(tools.iter().any(|t| t["name"] == "task_resume"));
     assert!(tools.iter().any(|t| t["name"] == "task_record"));
     assert!(tools.iter().any(|t| t["name"] == "task_get"));
     assert!(tools.iter().any(|t| t["name"] == "task_skip"));
-    assert!(tools.iter().any(|t| t["name"] == "graph_outline"));
-    assert!(tools.iter().all(|t| t["inputSchema"].is_object()));
 }
 
 fn call_req(id: i64, name: &str, arguments: Value) -> Value {
@@ -339,44 +351,63 @@ fn mcp_mem_save_before_read_still_syncs_preexisting_external_chunk() {
 }
 
 #[test]
-fn mcp_curated_task_tools_reject_chatty_titles_and_support_record_and_skip() {
+fn mcp_task_lifecycle_start_update_resume_and_done() {
     let repo = setup_sample_repo();
     let mut server = McpServer::new(repo.path()).unwrap();
     let resps = run_session(
         &mut server,
         &[
-            call_req(
-                1,
-                "task_record",
-                json!({
-                    "title": "¿Cómo vamos con tal proceso?",
-                    "summary": "Should be rejected as conversational"
-                }),
-            ),
-            call_req(
-                2,
-                "task_record",
-                json!({
-                    "title": "Reorganización visual del módulo de cobros",
-                    "summary": "Reestructuradas tarjetas, cabecera y filtros del módulo de cobros",
-                    "files": ["src/app.ts"]
-                }),
-            ),
-            call_req(3, "task_list", json!({ "limit": 5 })),
-            call_req(4, "task_skip", json!({ "reason": "Ajuste menor de padding en botón" })),
+            call_req(1, "task_start", json!({
+                "task_id": "F010", "group": "core",
+                "title": "Reorganización visual del módulo de cobros",
+                "summary": "Analizados componentes existentes"
+            })),
+            call_req(2, "task_update", json!({
+                "task_id": "core/F010",
+                "summary": "Actualizadas tarjetas principales",
+                "done_steps": ["Refactorizadas tarjetas"],
+                "next_steps": ["Actualizar filtros", "Correr tests"],
+                "files": ["src/app.ts"]
+            })),
+            call_req(3, "task_resume", json!({})),
+            call_req(4, "task_done", json!({
+                "task_id": "core/F010",
+                "summary": "Módulo y filtros verificados",
+                "evidence": "Tests verdes"
+            })),
+            call_req(5, "task_list", json!({ "group": "core", "limit": 5 })),
         ],
     );
 
+    let started = parse_tool_json(&resps[0]);
+    assert_eq!(started["task_id"], json!("core/F010"));
+    assert_eq!(started["progress_file"], json!(".harness/tasks/core/F010/progress.md"));
+    assert_eq!(parse_tool_json(&resps[1])["next_steps"], json!(["Actualizar filtros", "Correr tests"]));
+
+    let resumed = parse_tool_json(&resps[2]);
+    assert_eq!(resumed["found"], json!(true));
+    assert_eq!(resumed["brief"]["done_steps"], json!(["Refactorizadas tarjetas"]));
+    assert!(resumed["progress_markdown"].as_str().unwrap().contains("Actualizar filtros"));
+
+    assert_eq!(parse_tool_json(&resps[3])["status"], json!("done"));
+    assert_eq!(parse_tool_json(&resps[4])["tasks"][0]["status"], json!("done"));
+}
+
+#[test]
+fn mcp_task_record_validation_and_skip() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(
+        &mut server,
+        &[
+            call_req(1, "task_record", json!({ "title": "   ", "summary": "Empty title fails" })),
+            call_req(2, "task_record", json!({ "title": "Fix header?", "summary": "Allowed title" })),
+            call_req(3, "task_skip", json!({ "reason": "Ajuste menor de padding" })),
+        ],
+    );
     assert_eq!(resps[0].result.as_ref().unwrap()["isError"], json!(true));
-    let recorded = parse_tool_json(&resps[1]);
-    assert_eq!(recorded["title"], json!("Reorganización visual del módulo de cobros"));
-    assert_eq!(recorded["status"], json!("done"));
-
-    let listed = parse_tool_json(&resps[2]);
-    assert_eq!(listed["tasks"].as_array().unwrap().len(), 1);
-
-    let skipped = parse_tool_json(&resps[3]);
-    assert_eq!(skipped["skipped"], json!(true));
+    assert_eq!(parse_tool_json(&resps[1])["title"], json!("Fix header?"));
+    assert_eq!(parse_tool_json(&resps[2])["skipped"], json!(true));
     assert_eq!(anvil_tasks::list_tasks(repo.path()).unwrap().len(), 1);
 }
 

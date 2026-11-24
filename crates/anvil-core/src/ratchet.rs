@@ -166,6 +166,15 @@ pub fn evaluate_candidate(
 
 /// Promotes an eligible candidate into `.harness/rules/<id>.json` and deletes the candidate file.
 pub fn promote_candidate(repo_root: &Path, id: &str) -> Result<PromotedRule> {
+    promote_candidate_with_severity(repo_root, id, None)
+}
+
+/// Promotes an eligible candidate with an optional severity override (e.g. `Severity::Error`).
+pub fn promote_candidate_with_severity(
+    repo_root: &Path,
+    id: &str,
+    severity_override: Option<crate::traits::Severity>,
+) -> Result<PromotedRule> {
     let eval = evaluate_candidate(repo_root, id, None)?;
     if !eval.eligible {
         bail!("candidate `{id}` failed ratchet triple filter: {}", eval.reasons.join("; "));
@@ -179,7 +188,7 @@ pub fn promote_candidate(repo_root: &Path, id: &str) -> Result<PromotedRule> {
         pattern: candidate.pattern,
         languages: candidate.languages,
         file_globs: candidate.file_globs,
-        severity: candidate.severity,
+        severity: severity_override.or(candidate.severity),
         multiline: candidate.multiline,
         match_comments_and_strings: candidate.match_comments_and_strings,
         recurrence_at_promotion: candidate.recurrence,
@@ -205,7 +214,7 @@ pub(crate) fn load_candidate(repo_root: &Path, id: &str) -> Result<RatchetCandid
     serde_json::from_str(&raw).with_context(|| format!("invalid JSON at {}", path.display()))
 }
 
-fn save_candidate(dir: &Path, candidate: &RatchetCandidate) -> Result<()> {
+pub(crate) fn save_candidate(dir: &Path, candidate: &RatchetCandidate) -> Result<()> {
     let path = dir.join(format!("{}.json", candidate.id));
     let json = serde_json::to_string_pretty(candidate)?;
     atomic_write(&path, format!("{json}\n").as_bytes())

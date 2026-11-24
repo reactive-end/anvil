@@ -16,88 +16,11 @@ use crate::active::{
 };
 use crate::builder::build_root_tasks_json;
 use crate::identity::{resolve_author, resolve_author_fast};
-use crate::ledger::{append_entry_as, start_task_with_id, task_dir};
+use crate::ledger::{append_entry_as, start_task_in_group, task_dir};
 use crate::model::{TaskEntry, TaskMeta, TaskStatus};
 use crate::{atomic_write_json, read_json_file};
 
-const MIN_PROMPT_CHARS: usize = 16;
-const MIN_TITLE_CHARS: usize = 10;
-const MAX_TITLE_CHARS: usize = 110;
-
-const CONVERSATIONAL_PREFIXES: &[&str] = &[
-    "como vamos",
-    "como va ",
-    "que tal",
-    "que solucionan",
-    "que hace",
-    "que es ",
-    "cual es",
-    "por que ",
-    "donde esta",
-    "explicame",
-    "dime ",
-    "cuentame",
-    "muestrame",
-    "analiza ",
-    "revisa y dime",
-    "sube estos cambios",
-    "sube los cambios",
-    "haz commit",
-    "haz push",
-    "hacer commit",
-    "hacer push",
-    "commit and push",
-    "push changes",
-    "si me gustaria",
-    "me gusta",
-    "me encanta",
-    "el primero esta",
-    "el segundo esta",
-    "ese sera",
-    "perfecto",
-    "excelente",
-    "de acuerdo",
-    "dale",
-    "procede",
-    "continua",
-    "siguele",
-    "how are we",
-    "how is ",
-    "what is ",
-    "what does",
-    "why does",
-    "where is",
-    "explain ",
-    "tell me ",
-    "show me ",
-    "status ",
-];
-
-const CHATTY_TITLE_PREFIXES: &[&str] = &[
-    "como vamos",
-    "como va ",
-    "oye ",
-    "hola ",
-    "por favor",
-    "podrias ",
-    "puedes ",
-    "quiero que",
-    "necesito que",
-    "me gustaria",
-    "si me gustaria",
-    "ayudame ",
-    "dime ",
-    "explicame",
-    "sube estos cambios",
-    "sube los cambios",
-    "haz commit",
-    "can you ",
-    "could you ",
-    "please ",
-    "i want ",
-    "i need ",
-    "how are we",
-];
+const MAX_TITLE_CHARS: usize = 200;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct UntrackedEdits {
@@ -112,49 +35,22 @@ pub fn untracked_edits_path(repo: &Path) -> PathBuf {
         .join("untracked-edits.json")
 }
 
-/// Returns `true` when a raw user message is empty, a slash command, a status question,
-/// a conversational reply, a pure git command, or too short to represent a standalone task.
+/// Returns `true` ONLY for structurally non-task inputs (empty strings or CLI/chat `/` commands).
+/// Deciding whether a real request deserves a tracked task belongs to the LLM, not hardcoded phrases.
 pub fn is_conversational_or_trivial_prompt(raw: &str) -> bool {
     let trimmed = raw.trim();
-    if trimmed.is_empty()
-        || trimmed.starts_with('/')
-        || trimmed.chars().count() < MIN_PROMPT_CHARS
-        || trimmed.starts_with('¿')
-        || trimmed.ends_with('?')
-    {
-        return true;
-    }
-    if trimmed.split_whitespace().count() < 3 {
-        return true;
-    }
-    let folded = fold_spanish_lower(trimmed);
-    CONVERSATIONAL_PREFIXES
-        .iter()
-        .any(|prefix| folded == prefix.trim() || folded.starts_with(prefix))
+    trimmed.is_empty() || trimmed.starts_with('/')
 }
 
-/// Validates and normalizes an LLM-curated task title, rejecting raw chat messages and questions.
+/// Validates and normalizes an LLM-curated task title structurally (single non-empty line, <= 200 chars).
 pub fn validate_curated_task_title(raw: &str) -> Result<String> {
     if raw.contains('\n') || raw.contains('\r') {
         bail!("task title must be a single concise line");
     }
     let clean = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     let char_count = clean.chars().count();
-    let word_count = clean.split_whitespace().count();
-    if !(MIN_TITLE_CHARS..=MAX_TITLE_CHARS).contains(&char_count) || !(3..=18).contains(&word_count)
-    {
-        bail!(
-            "rejected task title `{clean}`: must be 3-18 words ({MIN_TITLE_CHARS}-{MAX_TITLE_CHARS} chars), e.g. 'Reorganización visual del módulo X'"
-        );
-    }
-    if clean.starts_with('¿') || clean.ends_with('?') {
-        bail!("rejected task title `{clean}`: questions are not valid engineering task titles");
-    }
-    let folded = fold_spanish_lower(&clean);
-    if CHATTY_TITLE_PREFIXES.iter().any(|p| folded.starts_with(p)) {
-        bail!(
-            "rejected task title `{clean}`: looks like a raw chat message; synthesize a concise engineering title (e.g. 'Reorganización visual del módulo X') or use `task_skip`"
-        );
+    if clean.is_empty() || char_count > MAX_TITLE_CHARS {
+        bail!("rejected task title `{clean}`: must be 1-{MAX_TITLE_CHARS} chars");
     }
     Ok(clean)
 }
@@ -236,12 +132,25 @@ pub fn record_task_skip(repo: &Path, reason: &str) -> Result<ActiveTaskState> {
             touched_files: Vec::new(),
             skipped: true,
             skip_reason: Some(clean_reason.to_owned()),
+            last_progress_at: Some(now),
+            last_summary: Some(clean_reason.to_owned()),
+            next_steps: Vec::new(),
+            last_command: None,
+            last_command_passed: None,
         };
         save_active_task_unlocked(repo, &state)?;
         let _ = fs::remove_file(pending_prompt_path(repo));
         clear_untracked_edits(repo);
         Ok(state)
     })
+}
+
+/// Optional author, group subdirectory, and custom task code for [`record_curated_task_in_group`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TaskTarget<'a> {
+    pub author: Option<&'a str>,
+    pub group: Option<&'a str>,
+    pub task_id: Option<&'a str>,
 }
 
 /// Creates and records an LLM-curated task in a single step after validating `title`.
@@ -253,7 +162,14 @@ pub fn record_curated_task(
     files: &[String],
     author: Option<&str>,
 ) -> Result<(TaskMeta, TaskEntry)> {
-    record_curated_task_with_id(repo, title, summary, status, files, author, None)
+    record_curated_task_in_group(
+        repo,
+        title,
+        summary,
+        status,
+        files,
+        TaskTarget { author, ..TaskTarget::default() },
+    )
 }
 
 /// Same as [`record_curated_task`] with an optional explicit short task ID (`F039`, `T-042`).
@@ -266,17 +182,46 @@ pub fn record_curated_task_with_id(
     author: Option<&str>,
     explicit_id: Option<&str>,
 ) -> Result<(TaskMeta, TaskEntry)> {
+    record_curated_task_in_group(
+        repo,
+        title,
+        summary,
+        status,
+        files,
+        TaskTarget {
+            author,
+            group: None,
+            task_id: explicit_id,
+        },
+    )
+}
+
+/// Records an LLM-curated task optionally scoped under subdirectory `target.group` (`voz`, etc.).
+pub fn record_curated_task_in_group(
+    repo: &Path,
+    title: &str,
+    summary: &str,
+    status: TaskStatus,
+    files: &[String],
+    target: TaskTarget<'_>,
+) -> Result<(TaskMeta, TaskEntry)> {
     let clean_title = validate_curated_task_title(title)?;
     let clean_summary = summary.trim();
     if clean_summary.is_empty() {
         bail!("task summary must not be empty");
     }
-    let resolved_author = match author {
+    let resolved_author = match target.author {
         Some(a) => a.to_owned(),
         None => resolve_author_fast(repo).or_else(|_| resolve_author(repo))?,
     };
     let merged_files = merge_session_files(repo, files);
-    let meta = start_task_with_id(repo, &resolved_author, &clean_title, explicit_id)?;
+    let meta = start_task_in_group(
+        repo,
+        &resolved_author,
+        &clean_title,
+        target.group,
+        target.task_id,
+    )?;
     let entry = append_entry_as(
         repo,
         &meta.task_id,
@@ -306,21 +251,4 @@ fn merge_session_files(repo: &Path, explicit: &[String]) -> Vec<String> {
         }
     }
     set.into_iter().collect()
-}
-
-fn fold_spanish_lower(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars().flat_map(char::to_lowercase) {
-        let mapped = match ch {
-            'á' | 'à' | 'ä' | 'â' => 'a',
-            'é' | 'è' | 'ë' | 'ê' => 'e',
-            'í' | 'ì' | 'ï' | 'î' => 'i',
-            'ó' | 'ò' | 'ö' | 'ô' => 'o',
-            'ú' | 'ù' | 'ü' | 'û' => 'u',
-            'ñ' => 'n',
-            other => other,
-        };
-        out.push(mapped);
-    }
-    out
 }

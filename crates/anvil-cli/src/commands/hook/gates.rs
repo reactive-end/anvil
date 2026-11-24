@@ -126,6 +126,11 @@ pub fn update_circuit_from_output(
         .map(|(_, s)| s)
         .unwrap_or(tool);
     let cb = CircuitBreaker::new(root, config.circuit_breaker_limit);
+    if let Some(c) = code
+        && root.join(".harness").is_dir()
+    {
+        let _ = anvil_tasks::record_active_command_outcome(root, cmd, c == 0);
+    }
     if is_anvil_run_command(cmd) {
         if matches!(code, Some(c) if c != 0)
             && let Ok(st) = cb.status()

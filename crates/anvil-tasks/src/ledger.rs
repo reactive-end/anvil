@@ -14,6 +14,7 @@ use anvil_core::fs_util::{atomic_write, sanitize_author, with_file_lock};
 use crate::active::{load_active_task, save_active_task};
 use crate::identity::resolve_author;
 use crate::model::{TaskEntry, TaskMeta, TaskStatus};
+use crate::progress::{ProgressUpdate, write_task_progress_md};
 use crate::{atomic_write_json, read_json_file};
 
 const ID_LOCK_TIMEOUT_MS: u64 = 5000;
@@ -23,9 +24,62 @@ pub fn tasks_root(repo: &Path) -> PathBuf {
     repo.join(".harness").join("tasks")
 }
 
-/// Returns `.harness/tasks/<task_id>`.
+/// Returns `.harness/tasks/<task_id>`, supporting flat (`T-001`) and 1-level grouped (`voz/F001`) IDs.
 pub fn task_dir(repo: &Path, task_id: &str) -> PathBuf {
-    tasks_root(repo).join(task_id)
+    let mut path = tasks_root(repo);
+    for seg in task_id.replace('\\', "/").split('/') {
+        if !seg.is_empty() && seg != "." && seg != ".." {
+            path.push(seg);
+        }
+    }
+    path
+}
+
+/// Sanitizes a task group subdirectory name (`voz`, `render-voz`, etc.), rejecting traversal/reserved names.
+pub fn sanitize_group_name(raw: &str) -> Result<String> {
+    let trimmed_raw = raw.trim();
+    if trimmed_raw.contains("..") || trimmed_raw.contains('/') || trimmed_raw.contains('\\') {
+        bail!("group name `{raw}` must be a single folder name without path separators or `..`");
+    }
+    let clean: String = trimmed_raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = clean.trim_matches('-');
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("entries") {
+        bail!("invalid task group name `{raw}`");
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// Validates a flat (`F001`) or 1-level grouped (`voz/F001`) task ID against path traversal.
+pub fn validate_task_id_path(task_id: &str) -> Result<String> {
+    let norm = task_id.trim().replace('\\', "/");
+    if norm.is_empty() || norm.starts_with('/') || norm.ends_with('/') {
+        bail!("invalid task ID `{task_id}`");
+    }
+    let parts: Vec<&str> = norm.split('/').collect();
+    if parts.len() > 2 {
+        bail!("task ID `{task_id}` may have at most one group prefix (`group/id`)");
+    }
+    for (idx, seg) in parts.iter().enumerate() {
+        let valid_chars = !seg.is_empty()
+            && *seg != "."
+            && *seg != ".."
+            && seg
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'));
+        if !valid_chars || (idx == 0 && parts.len() == 2 && seg.eq_ignore_ascii_case("entries")) {
+            bail!("invalid task ID segment `{seg}` in `{task_id}`");
+        }
+    }
+    Ok(parts.join("/"))
 }
 
 /// Creates a new task directory, writes `meta.json`, and records the initial entry.
@@ -34,18 +88,29 @@ pub fn start_task(repo: &Path, request: &str) -> Result<TaskMeta> {
     start_task_as(repo, &author, request)
 }
 
-/// Compares two task IDs naturally (`T-002 < T-010`, `F001 < F038`, fallback lexicographic).
+/// Compares two task IDs naturally across optional groups (`T-002 < T-010`, `voz/F002 < voz/F038`).
 pub fn compare_task_ids(a: &str, b: &str) -> Ordering {
-    let (pa, na) = split_id_prefix_num(a);
-    let (pb, nb) = split_id_prefix_num(b);
-    pa.cmp(pb)
-        .then_with(|| match (na, nb) {
-            (Some(x), Some(y)) => x.cmp(&y),
-            (None, Some(_)) => Ordering::Less,
-            (Some(_), None) => Ordering::Greater,
-            (None, None) => Ordering::Equal,
+    let (ga, ca) = split_group_and_code(a);
+    let (gb, cb) = split_group_and_code(b);
+    ga.cmp(&gb)
+        .then_with(|| {
+            let (pa, na) = split_id_prefix_num(ca);
+            let (pb, nb) = split_id_prefix_num(cb);
+            pa.cmp(pb).then_with(|| match (na, nb) {
+                (Some(x), Some(y)) => x.cmp(&y),
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            })
         })
         .then_with(|| a.cmp(b))
+}
+
+fn split_group_and_code(id: &str) -> (Option<&str>, &str) {
+    match id.split_once('/') {
+        Some((g, code)) => (Some(g), code),
+        None => (None, id),
+    }
 }
 
 fn split_id_prefix_num(id: &str) -> (&str, Option<u64>) {
@@ -72,21 +137,24 @@ pub fn start_task_with_id(
     request: &str,
     explicit_id: Option<&str>,
 ) -> Result<TaskMeta> {
+    start_task_in_group(repo, author, request, None, explicit_id)
+}
+
+/// Creates a new task in an optional subdirectory group (`voz`) with an optional explicit ID.
+pub fn start_task_in_group(
+    repo: &Path,
+    author: &str,
+    request: &str,
+    group: Option<&str>,
+    explicit_id: Option<&str>,
+) -> Result<TaskMeta> {
     let clean_author = sanitize_author(author);
+    let clean_group = group.map(sanitize_group_name).transpose()?;
     let now = Utc::now();
     let lock_path = repo.join(".harness/.state/tasks-id.lock");
 
     let meta = with_file_lock(&lock_path, ID_LOCK_TIMEOUT_MS, || {
-        let task_id = match explicit_id {
-            Some(raw) => {
-                let clean = sanitize_explicit_id(raw)?;
-                if task_dir(repo, &clean).join("meta.json").exists() {
-                    bail!("task `{clean}` already exists");
-                }
-                clean
-            }
-            None => next_sequential_task_id(repo)?,
-        };
+        let task_id = resolve_new_task_id(repo, clean_group.as_deref(), explicit_id)?;
         let dir = task_dir(repo, &task_id);
         fs::create_dir_all(dir.join("entries"))
             .with_context(|| format!("failed to create {}", dir.display()))?;
@@ -94,7 +162,7 @@ pub fn start_task_with_id(
             task_id,
             created_by: clean_author.clone(),
             request: request.trim().to_owned(),
-            project: None,
+            project: clean_group.clone(),
             behavior: None,
             verify: None,
             created_at: now,
@@ -115,11 +183,41 @@ pub fn start_task_with_id(
     Ok(meta)
 }
 
+fn resolve_new_task_id(
+    repo: &Path,
+    group: Option<&str>,
+    explicit_id: Option<&str>,
+) -> Result<String> {
+    match explicit_id {
+        Some(raw) => {
+            let clean = sanitize_explicit_id(raw)?;
+            let full = match group {
+                Some(g) => format!("{g}/{clean}"),
+                None => clean,
+            };
+            let valid = validate_task_id_path(&full)?;
+            if task_dir(repo, &valid).join("meta.json").exists() {
+                bail!("task `{valid}` already exists");
+            }
+            Ok(valid)
+        }
+        None => next_sequential_task_id_in(repo, group),
+    }
+}
+
 fn next_sequential_task_id(repo: &Path) -> Result<String> {
-    let root = tasks_root(repo);
+    next_sequential_task_id_in(repo, None)
+}
+
+fn next_sequential_task_id_in(repo: &Path, group: Option<&str>) -> Result<String> {
+    let scan_dir = match group {
+        Some(g) => tasks_root(repo).join(g),
+        None => tasks_root(repo),
+    };
     let mut max_num = 0u32;
-    if root.is_dir() {
-        let rd = fs::read_dir(&root).with_context(|| format!("failed to read {}", root.display()))?;
+    if scan_dir.is_dir() {
+        let rd =
+            fs::read_dir(&scan_dir).with_context(|| format!("failed to read {}", scan_dir.display()))?;
         for entry in rd.flatten() {
             if let Some(name) = entry.file_name().to_str()
                 && let Some(num) = parse_short_seq_id(name)
@@ -128,11 +226,12 @@ fn next_sequential_task_id(repo: &Path) -> Result<String> {
             }
         }
     }
+    let prefix = group.map_or_else(String::new, |g| format!("{g}/"));
     let mut next = max_num.saturating_add(1).max(1);
-    while task_dir(repo, &format!("T-{next:03}")).exists() {
+    while task_dir(repo, &format!("{prefix}T-{next:03}")).exists() {
         next = next.saturating_add(1);
     }
-    Ok(format!("T-{next:03}"))
+    Ok(format!("{prefix}T-{next:03}"))
 }
 
 fn parse_short_seq_id(id: &str) -> Option<u32> {
@@ -195,10 +294,34 @@ pub fn append_entry_with_evidence(
     evidence: Option<&str>,
     files_touched: &[String],
 ) -> Result<TaskEntry> {
-    let dir = task_dir(repo, task_id);
+    append_entry_with_details(
+        repo,
+        task_id,
+        author,
+        &ProgressUpdate {
+            status,
+            summary,
+            done_steps: &[],
+            next_steps: &[],
+            blocker: None,
+            evidence,
+            files: files_touched,
+        },
+    )
+}
+
+/// Appends an immutable entry with structured steps/blocker/evidence and refreshes `progress.md`.
+pub fn append_entry_with_details(
+    repo: &Path,
+    task_id: &str,
+    author: &str,
+    details: &ProgressUpdate<'_>,
+) -> Result<TaskEntry> {
+    let valid_id = validate_task_id_path(task_id)?;
+    let dir = task_dir(repo, &valid_id);
     let meta_path = dir.join("meta.json");
     if !meta_path.exists() {
-        bail!("task `{task_id}` not found at {}", meta_path.display());
+        bail!("task `{valid_id}` not found at {}", meta_path.display());
     }
 
     let clean_author = sanitize_author(author);
@@ -206,13 +329,16 @@ pub fn append_entry_with_evidence(
     let branch = anvil_core::git::current_branch(repo).unwrap_or_else(|_| "HEAD".to_owned());
     let entry = TaskEntry {
         entry_id: entry_id.clone(),
-        task_id: task_id.to_owned(),
+        task_id: valid_id.clone(),
         author: clean_author.clone(),
-        status,
+        status: details.status,
         branch,
-        summary: summary.trim().to_owned(),
-        evidence: evidence.map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned),
-        files_touched: normalize_files(files_touched),
+        summary: details.summary.trim().to_owned(),
+        evidence: opt_trimmed(details.evidence),
+        files_touched: normalize_files(details.files),
+        done_steps: normalize_steps(details.done_steps),
+        next_steps: normalize_steps(details.next_steps),
+        blocker: opt_trimmed(details.blocker),
         timestamp: Utc::now(),
     };
 
@@ -223,7 +349,26 @@ pub fn append_entry_with_evidence(
         bail!("immutable entry already exists at {}", entry_path.display());
     }
     atomic_write_json(&entry_path, &entry)?;
+    write_task_progress_md(repo, &valid_id)?;
     Ok(entry)
+}
+
+fn opt_trimmed(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}
+
+fn normalize_steps(steps: &[String]) -> Vec<String> {
+    let mut seen = FxHashSet::default();
+    let mut out = Vec::new();
+    for raw in steps {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() && seen.insert(trimmed.to_owned()) {
+            out.push(trimmed.to_owned());
+        }
+    }
+    out
 }
 
 /// Writes an isolated per-author plan file `.harness/tasks/<id>/plan-<author>.md`.
@@ -233,9 +378,10 @@ pub fn write_task_plan(
     author: &str,
     markdown: &str,
 ) -> Result<PathBuf> {
-    let dir = task_dir(repo, task_id);
+    let valid_id = validate_task_id_path(task_id)?;
+    let dir = task_dir(repo, &valid_id);
     if !dir.join("meta.json").exists() {
-        bail!("task `{task_id}` not found at {}", dir.display());
+        bail!("task `{valid_id}` not found at {}", dir.display());
     }
     let clean_author = sanitize_author(author);
     let plan_path = dir.join(format!("plan-{clean_author}.md"));
@@ -243,20 +389,66 @@ pub fn write_task_plan(
     Ok(plan_path)
 }
 
-/// Lists all task metadata records under `.harness/tasks/`, sorted by `task_id`.
-pub fn list_tasks(repo: &Path) -> Result<Vec<TaskMeta>> {
-    let root = tasks_root(repo);
+/// Discovers flat (depth-1) and grouped (depth-2) task directories under `.harness/tasks/`.
+pub(crate) fn discover_task_dirs(root: &Path) -> Result<Vec<PathBuf>> {
     if !root.exists() {
         return Ok(Vec::new());
     }
-    let mut dirs: Vec<PathBuf> = fs::read_dir(&root)
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(root)
         .with_context(|| format!("failed to read {}", root.display()))?
         .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir() && path.join("meta.json").exists())
-        .collect();
+    {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        if p.join("meta.json").is_file() {
+            dirs.push(p);
+            continue;
+        }
+        if let Ok(sub_rd) = fs::read_dir(&p) {
+            for sub in sub_rd.flatten() {
+                let sp = sub.path();
+                if sp.is_dir() && sp.join("meta.json").is_file() {
+                    dirs.push(sp);
+                }
+            }
+        }
+    }
     dirs.sort();
+    Ok(dirs)
+}
 
+/// Lists sorted subdirectory group names under `.harness/tasks/` that hold grouped tasks.
+pub fn list_task_groups(repo: &Path) -> Vec<String> {
+    let root = tasks_root(repo);
+    let Ok(rd) = fs::read_dir(&root) else {
+        return Vec::new();
+    };
+    let mut groups = Vec::new();
+    for entry in rd.flatten() {
+        let p = entry.path();
+        if !p.is_dir() || p.join("meta.json").is_file() {
+            continue;
+        }
+        let has_tasks = fs::read_dir(&p)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .any(|s| s.path().is_dir() && s.path().join("meta.json").is_file());
+        if has_tasks && let Some(name) = entry.file_name().to_str() {
+            groups.push(name.to_owned());
+        }
+    }
+    groups.sort();
+    groups
+}
+
+/// Lists all task metadata records under `.harness/tasks/`, sorted naturally by `task_id`.
+pub fn list_tasks(repo: &Path) -> Result<Vec<TaskMeta>> {
+    let dirs = discover_task_dirs(&tasks_root(repo))?;
     let mut metas = Vec::with_capacity(dirs.len());
     for dir in dirs {
         metas.push(read_json_file::<TaskMeta>(&dir.join("meta.json"))?);
@@ -335,6 +527,7 @@ fn migrate_one_legacy_dir(repo: &Path, meta: &TaskMeta) -> Result<String> {
     }
     fs::rename(&old_dir, task_dir(repo, &new_id))
         .with_context(|| format!("failed to rename {} -> {new_id}", old_dir.display()))?;
+    let _ = write_task_progress_md(repo, &new_id);
 
     if let Ok(Some(mut active)) = load_active_task(repo)
         && active.task_id == meta.task_id

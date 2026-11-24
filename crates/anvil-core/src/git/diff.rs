@@ -7,15 +7,21 @@ use anyhow::Result;
 
 use super::{head_commit, run_git_unquoted};
 
-/// Runs ONE `git diff HEAD` call and splits output by `diff --git a/... b/...` into a map by path.
+/// Runs ONE `git diff -M HEAD` call and splits output by `diff --git a/... b/...` into a map by path.
 pub fn batched_working_tree_diffs(repo_root: &Path) -> Result<FxHashMap<String, String>> {
-    let raw = match run_git_unquoted(repo_root, &["diff", "HEAD"]) {
+    let raw = match run_git_unquoted(repo_root, &["diff", "-M", "HEAD"]) {
         Ok(out) => out,
         Err(err) if head_commit(repo_root).is_err() => {
-            run_git_unquoted(repo_root, &["diff", "--cached"]).map_err(|_| err)?
+            run_git_unquoted(repo_root, &["diff", "--cached", "-M"]).map_err(|_| err)?
         }
         Err(err) => return Err(err),
     };
+    Ok(split_batched_diffs(&raw))
+}
+
+/// Runs ONE `git diff --cached -M --unified=1` call and splits output by destination path.
+pub fn batched_staged_diffs(repo_root: &Path) -> Result<FxHashMap<String, String>> {
+    let raw = run_git_unquoted(repo_root, &["diff", "--cached", "-M", "--unified=1"])?;
     Ok(split_batched_diffs(&raw))
 }
 

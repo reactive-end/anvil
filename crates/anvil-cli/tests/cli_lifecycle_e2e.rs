@@ -262,15 +262,16 @@ fn cli_hands_free_task_tracking_hooks_e2e() {
     assert_eq!(blocked["decision"], json!("block"));
     assert!(blocked["reason"].as_str().unwrap().contains("task_record"));
 
-    // Chatty title is rejected; clean curated title succeeds and satisfies Stop.
-    let bad_rec = run_anvil(root, &["tasks", "record", "Oye podrias reorganizar la pagina?", "Cambios visuales"]);
-    assert!(!bad_rec.status.success(), "chatty task title must be rejected");
+    // Empty titles fail structurally; LLM-decided concise titles succeed and satisfy Stop.
+    let empty_rec = run_anvil(root, &["tasks", "record", "   ", "Cambios visuales"]);
+    assert!(!empty_rec.status.success(), "empty task title must be rejected");
 
     assert_ok(
         &run_anvil(root, &["tasks", "record", "Reorganización visual del módulo principal", "Reestructurados componentes core.ts y page.tsx"]),
         "tasks record clean title",
     );
     assert_eq!(anvil_tasks::list_tasks(root).unwrap().len(), 1);
+    assert!(root.join(".harness/tasks/T-001/progress.md").is_file());
     let ok_stop: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "stop after record")).unwrap();
     assert_ne!(ok_stop["decision"], json!("block"));
 

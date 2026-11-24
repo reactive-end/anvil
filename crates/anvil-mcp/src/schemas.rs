@@ -1,8 +1,8 @@
-//! JSON Schema definitions for all 18 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` MCP tools.
+//! JSON Schema definitions for all 22 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` MCP tools.
 
 use serde_json::{Value, json};
 
-/// Returns JSON Schema definitions for all 18 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` tools.
+/// Returns JSON Schema definitions for all 22 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` tools.
 pub fn tool_definitions() -> Vec<Value> {
     let mut tools = graph_core_schemas();
     tools.extend(graph_inspect_schemas());
@@ -210,23 +210,23 @@ fn mem_save_schema() -> Value {
 
 fn task_tool_schemas() -> Vec<Value> {
     vec![
+        task_start_schema(),
+        task_update_schema(),
         task_record_schema(),
+        task_done_schema(),
         tool_schema(
-            "task_done",
-            "Complete an existing task ID or append follow-up edits belonging to that same deliverable instead of creating a duplicate task.",
+            "task_resume",
+            "Load the compact crash-recovery brief (`progress.md`, `done_steps`, `next_steps`, `touched_files`, last command result, dirty files) for an interrupted `in_progress` task or explicit `task_id`.",
             json!({
                 "type": "object",
                 "properties": {
-                    "task_id": { "type": "string" },
-                    "summary": { "type": "string" },
-                    "files": { "type": "array", "items": { "type": "string" } }
-                },
-                "required": ["task_id", "summary"]
+                    "task_id": { "type": "string", "description": "Optional task ID (`voz/F001` or `T-001`); defaults to active/latest `in_progress` task." }
+                }
             }),
         ),
         tool_schema(
             "task_skip",
-            "Explicitly skip task creation for minor tweaks, formatting, exploratory edits, or non-task requests so noise never enters tasks.json.",
+            "Explicitly skip task creation for minor tweaks or non-task work so noise never enters tasks.json.",
             json!({
                 "type": "object",
                 "properties": {
@@ -237,10 +237,11 @@ fn task_tool_schemas() -> Vec<Value> {
         ),
         tool_schema(
             "task_list",
-            "List tasks in `.harness/tasks/` (optionally filtered by status) with compact summaries without loading full feature specs.",
+            "List tasks in `.harness/tasks/` (optionally filtered by group or status) with compact summaries without loading full feature specs.",
             json!({
                 "type": "object",
                 "properties": {
+                    "group": { "type": "string", "description": "Optional group subdirectory/project filter (e.g. `voz`, `avatar`)." },
                     "status": { "type": "string", "enum": ["not_started", "in_progress", "blocked", "done"] },
                     "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 }
                 }
@@ -248,7 +249,7 @@ fn task_tool_schemas() -> Vec<Value> {
         ),
         tool_schema(
             "task_get",
-            "Read full details for a single task/feature ID (`behavior`, `verify` command, `evidence`, status, and recent entries).",
+            "Read full details for a single task/feature ID (`voz/F001` or `T-001`) including `behavior`, `verify`, `evidence`, status, and entries.",
             json!({
                 "type": "object",
                 "properties": {
@@ -260,15 +261,70 @@ fn task_tool_schemas() -> Vec<Value> {
     ]
 }
 
-fn task_record_schema() -> Value {
+fn task_done_schema() -> Value {
     tool_schema(
-        "task_record",
-        "Create and record a genuine engineering task (feature, refactor, or bugfix) with an LLM-curated title (e.g. 'Reorganización visual del módulo X'; NEVER copy raw user chat or questions). Prefer `task_done` to continue an existing task or `task_skip` for minor tweaks.",
+        "task_done",
+        "Complete an existing task ID (updates `progress.md`, `entries/`, and `tasks.json`) or append final verified edits belonging to that deliverable.",
         json!({
             "type": "object",
             "properties": {
+                "task_id": { "type": "string" },
+                "summary": { "type": "string" },
+                "evidence": { "type": "string", "description": "Optional verification command/test result." },
+                "files": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["task_id", "summary"]
+        }),
+    )
+}
+
+fn task_start_schema() -> Value {
+    tool_schema(
+        "task_start",
+        "Mark an existing task (`task_id`) as `in_progress` or create & start a new tracked task (`title`) before making edits. Writes `progress.md` and updates `tasks.json`.",
+        json!({
+            "type": "object",
+            "properties": {
+                "task_id": { "type": "string", "description": "Existing queued ID (`voz/F001`, `T-001`) or custom short ID for a new task." },
+                "title": { "type": "string", "description": "Concise title when creating a new task." },
+                "group": { "type": "string", "description": "Optional subdirectory group under `.harness/tasks/` when creating a new task." },
+                "summary": { "type": "string", "description": "Optional initial scope or plan note." }
+            }
+        }),
+    )
+}
+
+fn task_update_schema() -> Value {
+    tool_schema(
+        "task_update",
+        "Log incremental progress, completed steps, remaining next steps, or blockers onto a task (updates `progress.md`, `entries/`, `tasks.json`, and active crash-recovery state).",
+        json!({
+            "type": "object",
+            "properties": {
+                "task_id": { "type": "string" },
+                "summary": { "type": "string" },
+                "status": { "type": "string", "enum": ["in_progress", "blocked", "done"], "default": "in_progress" },
+                "done_steps": { "type": "array", "items": { "type": "string" } },
+                "next_steps": { "type": "array", "items": { "type": "string" } },
+                "blocker": { "type": "string" },
+                "evidence": { "type": "string" },
+                "files": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["task_id", "summary"]
+        }),
+    )
+}
+
+fn task_record_schema() -> Value {
+    tool_schema(
+        "task_record",
+        "Create and record a task in one step (e.g. 'Reorganización visual del módulo X'). Prefer `task_start` -> `task_update` -> `task_done` for multi-step work, or `task_skip` for trivial tweaks.",
+        json!({
+            "type": "object",
+            "properties": {
+                "group": { "type": "string", "description": "Optional subdirectory group under `.harness/tasks/` (e.g. `voz`)." },
                 "task_id": { "type": "string", "description": "Optional short code like `F039` or `AUTH-01`; auto-generates `T-001`, `T-002`, ... when omitted." },
-                "title": { "type": "string", "description": "Concise 3-18 word engineering title (never raw chat or questions)." },
+                "title": { "type": "string", "description": "Concise single-line task title." },
                 "summary": { "type": "string", "description": "Concise 1-2 sentence technical summary of changes." },
                 "status": { "type": "string", "enum": ["not_started", "done", "in_progress", "blocked"], "default": "done" },
                 "files": { "type": "array", "items": { "type": "string" } }

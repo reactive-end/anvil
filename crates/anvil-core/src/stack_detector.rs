@@ -165,7 +165,8 @@ pub fn detect_workspace(workspace_root: &Path) -> Result<WorkspaceDetection> {
         repos.push(root_repo);
     }
 
-    collect_child_repos(workspace_root, workspace_root, 0, 2, &mut repos)?;
+    let ignored_dirs = load_gitignored_dirs(workspace_root);
+    collect_child_repos(workspace_root, workspace_root, 0, 2, &ignored_dirs, &mut repos)?;
     repos.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
     Ok(WorkspaceDetection {
         is_multi_repo: repos.len() > 1 || repos.iter().any(|r| r.rel_path != "."),
@@ -178,6 +179,7 @@ fn collect_child_repos(
     dir: &Path,
     depth: usize,
     max_depth: usize,
+    gitignored_dirs: &[(String, bool)],
     out: &mut Vec<DetectedRepo>,
 ) -> Result<()> {
     if depth >= max_depth {
@@ -195,13 +197,52 @@ fn collect_child_repos(
             .strip_prefix(root)
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .unwrap_or_default();
+        if is_gitignored_rel(&rel, gitignored_dirs) {
+            continue;
+        }
         if let Some(repo) = inspect_repo_dir(&path, &rel)? {
             out.push(repo);
         } else {
-            collect_child_repos(root, &path, depth + 1, max_depth, out)?;
+            collect_child_repos(root, &path, depth + 1, max_depth, gitignored_dirs, out)?;
         }
     }
     Ok(())
+}
+
+fn load_gitignored_dirs(workspace_root: &Path) -> Vec<(String, bool)> {
+    let Ok(raw) = fs::read_to_string(workspace_root.join(".gitignore")) else {
+        return Vec::new();
+    };
+    raw.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+                return None;
+            }
+            let anchored = trimmed.starts_with('/');
+            let mut pat = trimmed.trim_start_matches('/').trim_end_matches('/').to_owned();
+            if let Some(stripped) = pat.strip_suffix("/**") {
+                pat = stripped.trim_end_matches('/').to_owned();
+            } else if let Some(stripped) = pat.strip_suffix("/*") {
+                pat = stripped.trim_end_matches('/').to_owned();
+            }
+            if pat.is_empty() || pat.contains(['*', '?', '[']) {
+                return None;
+            }
+            let single_segment = !anchored && !pat.contains('/');
+            Some((pat, single_segment))
+        })
+        .collect()
+}
+
+fn is_gitignored_rel(rel: &str, patterns: &[(String, bool)]) -> bool {
+    patterns.iter().any(|(pat, single_segment)| {
+        if *single_segment {
+            rel.split('/').any(|seg| seg == pat)
+        } else {
+            rel == pat || rel.starts_with(&format!("{pat}/"))
+        }
+    })
 }
 
 fn is_ignored_dir(path: &Path) -> bool {

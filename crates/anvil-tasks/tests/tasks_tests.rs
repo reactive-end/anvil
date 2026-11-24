@@ -195,7 +195,7 @@ fn active_task_auto_lifecycle_creates_reuses_and_advances_after_done() {
     init_git_repo(tmp.path(), "alice");
     write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
 
-    for ignored in ["", "   ", "/compact", "/plan auth", "ok", "si", "gracias", "yes"] {
+    for ignored in ["", "   ", "/compact", "/plan auth"] {
         assert!(
             ensure_task_for_prompt(tmp.path(), ignored)
                 .expect("ignored check")
@@ -315,56 +315,85 @@ fn lazy_task_materializes_only_on_real_file_edit() {
 }
 
 #[test]
-fn conversational_prompts_and_chatty_titles_are_strictly_filtered() {
+fn llm_controls_task_titles_with_structural_hygiene_only() {
     let tmp = TempDir::new().expect("tempdir");
     init_git_repo(tmp.path(), "alice");
     write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
 
-    for noisy in [
-        "Como vamos con tal proceso",
-        "¿Cómo vamos con el despliegue?",
-        "Que solucionan esos 10 fix, describemelo",
-        "Si me gustaría, así evitamos recordar comandos",
-        "Sube estos cambios al repositorio",
-        "El primero esta increible, ese sera",
-        "dale sigue",
-    ] {
-        assert!(
-            anvil_tasks::is_conversational_or_trivial_prompt(noisy),
-            "expected `{noisy}` to be classified as conversational noise"
-        );
-        assert!(
-            !anvil_tasks::record_pending_prompt(tmp.path(), noisy).expect("check pending"),
-            "expected `{noisy}` not to record pending prompt"
-        );
-    }
-
-    for bad_title in [
-        "Como vamos con tal proceso",
-        "Oye podrias reorganizar el modulo X",
-        "¿Reorganización del módulo X?",
-        "corto",
-    ] {
-        assert!(
-            anvil_tasks::validate_curated_task_title(bad_title).is_err(),
-            "expected `{bad_title}` to fail curated title validation"
-        );
-    }
-
+    assert!(anvil_tasks::validate_curated_task_title("").is_err());
+    assert!(anvil_tasks::validate_curated_task_title("Line 1\nLine 2").is_err());
+    assert_eq!(
+        anvil_tasks::validate_curated_task_title("Fix UI?").expect("short/question title allowed"),
+        "Fix UI?"
+    );
     let (meta, entry) = anvil_tasks::record_curated_task(
         tmp.path(),
-        "Reorganización visual del módulo X",
-        "Reestructurados paneles, grillas y jerarquía tipográfica del módulo X",
+        "Como vamos?",
+        "Concise summary decided by LLM",
         TaskStatus::Done,
-        &["src/module_x.tsx".to_owned()],
+        &["src/ui.ts".to_owned()],
         Some("alice"),
     )
-    .expect("curated task");
-    assert_eq!(meta.request, "Reorganización visual del módulo X");
+    .expect("LLM title allowed");
+    assert_eq!(meta.request, "Como vamos?");
     assert_eq!(entry.status, TaskStatus::Done);
+}
 
-    let skipped = anvil_tasks::record_task_skip(tmp.path(), "Minor typo adjustment")
-        .expect("skip task");
+#[test]
+fn progress_md_and_resume_brief_track_and_recover_work() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    let json_raw = r#"{"project":"core","features":[{"id":"F001","name":"Implementar alertas","behavior":"Detectar bajo stock","verify":"node --test","status":"not_started"}]}"#;
+    let list = anvil_tasks::parse_feature_list_json(json_raw).expect("parse list");
+    anvil_tasks::import_feature_list_in_group(tmp.path(), &list, Some("core"), Some("alice"), false)
+        .expect("import queued");
+
+    let (started, _) =
+        anvil_tasks::begin_existing_task(tmp.path(), "core/F001", "alice", Some("Analyze ledger"))
+            .expect("begin existing");
+    assert_eq!(started.status, TaskStatus::InProgress);
+    let progress_path = tmp.path().join(".harness/tasks/core/F001/progress.md");
+    assert!(progress_path.is_file());
+
+    let (updated, _) = anvil_tasks::record_task_progress(
+        tmp.path(),
+        "core/F001",
+        "alice",
+        anvil_tasks::ProgressUpdate {
+            status: TaskStatus::InProgress,
+            summary: "Added low-stock detector",
+            done_steps: &["Added detector helper".to_owned()],
+            next_steps: &["Add summary report".to_owned(), "Run node --test".to_owned()],
+            files: &["src/inventory.mjs".to_owned()],
+            ..anvil_tasks::ProgressUpdate::default()
+        },
+    )
+    .expect("record progress");
+    assert_eq!(updated.status, TaskStatus::InProgress);
+    assert!(fs::read_to_string(&progress_path).expect("read").contains("Add summary report"));
+
+    anvil_tasks::record_active_command_outcome(tmp.path(), "node --test", false).expect("cmd");
+    let brief = anvil_tasks::build_resume_brief(tmp.path(), None).expect("brief").expect("some");
+    assert_eq!(brief.task_id, "core/F001");
+    assert_eq!(brief.done_steps, vec!["Added detector helper"]);
+    assert_eq!(brief.next_steps, vec!["Add summary report", "Run node --test"]);
+    assert_eq!(brief.last_command_passed, Some(false));
+
+    let done = anvil_tasks::ProgressUpdate {
+        status: TaskStatus::Done,
+        summary: "Completed feature and tests",
+        evidence: Some("node --test PASS"),
+        files: &["src/inventory.mjs".to_owned()],
+        ..anvil_tasks::ProgressUpdate::default()
+    };
+    let (finished, _) =
+        anvil_tasks::record_task_progress(tmp.path(), "core/F001", "alice", done).expect("done");
+    assert_eq!(finished.status, TaskStatus::Done);
+    assert!(anvil_tasks::build_resume_brief(tmp.path(), None).expect("ok").is_none());
+
+    let skipped = anvil_tasks::record_task_skip(tmp.path(), "Minor typo adjustment").expect("skip");
     assert!(skipped.skipped);
     assert_eq!(list_tasks(tmp.path()).expect("list").len(), 1);
 }

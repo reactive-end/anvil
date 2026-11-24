@@ -1,4 +1,4 @@
-//! E2E tests for Phase 4 CLI upgrades: security guard, run wrapping, `--git-hooks`, `--staged`,
+//! E2E tests for security guard, `anvil run` hook wrapping, `--git-hooks`, `--staged`,
 //! architecture boundaries/cycles, and zero-noise read-only `Stop` turns.
 
 use std::fs;

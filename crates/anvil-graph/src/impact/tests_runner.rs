@@ -116,11 +116,70 @@ fn run_js_tests(
                 "jest --findRelatedTests",
                 &args,
             )?);
+        } else if uses_node_test(&work_dir, repo_root) {
+            if let Some(node) = resolve_bin_subrepo_or_root(&work_dir, repo_root, "node") {
+                let test_refs: Vec<&str> = refs.iter().copied().filter(|p| is_js_test_path(p)).collect();
+                let mut args = vec!["--test"];
+                args.extend_from_slice(&test_refs);
+                outputs.push(exec_compressed(
+                    repo_root,
+                    &work_dir,
+                    config,
+                    &node,
+                    "node --test",
+                    &args,
+                )?);
+            } else {
+                outputs.push(skip_output("node --test", "node binary not found"));
+            }
         } else {
             outputs.push(skip_output("vitest/jest", "test runner binary not found"));
         }
     }
     Ok(outputs)
+}
+
+fn uses_node_test(work_dir: &Path, repo_root: &Path) -> bool {
+    let sub_pkg = work_dir.join("package.json");
+    if sub_pkg.is_file() {
+        return package_uses_node_test(&sub_pkg);
+    }
+    work_dir != repo_root && package_uses_node_test(&repo_root.join("package.json"))
+}
+
+fn package_uses_node_test(pkg_path: &Path) -> bool {
+    let Ok(raw) = fs::read_to_string(pkg_path) else {
+        return false;
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    val.get("scripts")
+        .and_then(|s| s.as_object())
+        .is_some_and(|scripts| {
+            scripts
+                .iter()
+                .filter(|(k, _)| *k == "test" || k.starts_with("test:"))
+                .filter_map(|(_, v)| v.as_str())
+                .any(cmd_uses_node_test)
+        })
+}
+
+fn cmd_uses_node_test(cmd: &str) -> bool {
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    parts.iter().any(|p| *p == "node" || *p == "node.exe")
+        && parts.iter().any(|p| *p == "--test" || p.starts_with("--test="))
+}
+
+fn is_js_test_path(raw: &str) -> bool {
+    let lower = raw.replace('\\', "/").to_ascii_lowercase();
+    let fname = lower.rsplit('/').next().unwrap_or(&lower);
+    lower.starts_with("test/")
+        || lower.starts_with("tests/")
+        || lower.contains("/test/")
+        || lower.contains("/tests/")
+        || fname.contains(".test.")
+        || fname.contains(".spec.")
 }
 
 fn run_dart_flutter_tests(
