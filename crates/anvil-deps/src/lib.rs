@@ -11,6 +11,7 @@ pub mod pypi;
 
 mod cache;
 mod http;
+mod osv;
 
 pub use audit::{
     AuditOptions, LiveRegistryFetcher, audit_changed_files, audit_manifests, is_supported_manifest,

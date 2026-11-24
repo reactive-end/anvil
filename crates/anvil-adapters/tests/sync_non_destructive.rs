@@ -6,6 +6,7 @@ use tempfile::tempdir;
 
 use anvil_adapters::sync;
 use anvil_adapters::templates;
+use anvil_core::config::{AdapterTarget, AnvilConfig};
 
 fn seed_existing_repo_fixtures(root: &Path) {
     fs::write(root.join("package.json"), r#"{"name":"fliiper-demo"}"#).expect("package.json");
@@ -208,4 +209,195 @@ fn sync_updates_only_managed_markdown_section_and_keeps_footer() {
     assert!(updated.starts_with("# Top\n<!-- anvil:managed:start -->"));
     assert!(!updated.contains("\nstale\n"));
     assert!(updated.ends_with("<!-- anvil:managed:end -->\n# Footer\n"));
+}
+
+#[test]
+fn cursor_adapter_syncs_mcp_rules_and_skills_idempotently() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    fs::create_dir_all(root.join(".cursor/rules")).expect("mkdir cursor rules");
+    fs::write(
+        root.join(".cursor/mcp.json"),
+        r#"{"mcpServers":{"postgres":{"command":"pg-mcp","args":[]}}}"#,
+    )
+    .expect("seed cursor mcp");
+    fs::write(
+        root.join(".cursor/rules/anvil.mdc"),
+        "---\ndescription: Custom\nglobs: *.rs\nalwaysApply: true\n---\n\n# Header\n<!-- anvil:managed:start -->\nstale\n<!-- anvil:managed:end -->\n# Footer\n",
+    )
+    .expect("seed cursor rules");
+
+    sync::init_repo_with_adapter(root, Some(AdapterTarget::Cursor)).expect("init cursor");
+
+    let mcp: Value =
+        serde_json::from_str(&fs::read_to_string(root.join(".cursor/mcp.json")).expect("read mcp"))
+            .expect("parse cursor mcp");
+    assert_eq!(mcp["mcpServers"]["postgres"]["command"], "pg-mcp");
+    assert_eq!(mcp["mcpServers"]["anvil"]["command"], "anvil");
+    assert_eq!(mcp["mcpServers"]["anvil"]["args"][0], "mcp");
+
+    let mdc = fs::read_to_string(root.join(".cursor/rules/anvil.mdc")).expect("read mdc");
+    assert!(mdc.contains("globs: *.rs"));
+    assert!(mdc.contains("# Header\n<!-- anvil:managed:start -->"));
+    assert!(!mdc.contains("\nstale\n"));
+    assert!(mdc.ends_with("<!-- anvil:managed:end -->\n# Footer\n"));
+    assert!(root.join(".cursor/skills/subagent-routing/SKILL.md").exists());
+    assert!(!root.join(".agents").exists());
+    assert!(!root.join(".claude").exists());
+
+    let second = sync::sync_repo(root).expect("second sync");
+    assert!(second.written_files.is_empty());
+}
+
+#[test]
+fn cursor_fresh_rules_include_mdc_frontmatter_and_are_idempotent() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+
+    sync::init_repo_with_adapter(root, Some(AdapterTarget::Cursor)).expect("init cursor");
+    let mdc = fs::read_to_string(root.join(".cursor/rules/anvil.mdc")).expect("read mdc");
+    assert!(mdc.starts_with("---\ndescription: Anvil deterministic harness discipline\nglobs:\nalwaysApply: true\n---\n\n<!-- anvil:managed:start -->"));
+
+    let second = sync::sync_repo(root).expect("second sync");
+    assert!(second.written_files.is_empty());
+}
+
+#[test]
+fn windsurf_adapter_syncs_mcp_and_rules_idempotently() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    fs::create_dir_all(root.join(".windsurf/rules")).expect("mkdir windsurf rules");
+    fs::write(
+        root.join(".windsurf/mcp_config.json"),
+        r#"{"mcpServers":{"github":{"command":"gh-mcp","args":[]}}}"#,
+    )
+    .expect("seed windsurf mcp");
+    fs::write(
+        root.join(".windsurf/rules/anvil.md"),
+        "# Team Rules\n<!-- anvil:managed:start -->\nstale\n<!-- anvil:managed:end -->\n# Keep\n",
+    )
+    .expect("seed windsurf rules");
+
+    sync::init_repo_with_adapter(root, Some(AdapterTarget::Windsurf)).expect("init windsurf");
+
+    let mcp: Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".windsurf/mcp_config.json")).expect("read windsurf mcp"),
+    )
+    .expect("parse windsurf mcp");
+    assert_eq!(mcp["mcpServers"]["github"]["command"], "gh-mcp");
+    assert_eq!(mcp["mcpServers"]["anvil"]["command"], "anvil");
+
+    let md = fs::read_to_string(root.join(".windsurf/rules/anvil.md")).expect("read windsurf md");
+    assert!(md.starts_with("# Team Rules\n<!-- anvil:managed:start -->"));
+    assert!(!md.contains("\nstale\n"));
+    assert!(md.ends_with("<!-- anvil:managed:end -->\n# Keep\n"));
+    assert!(!root.join(".agents").exists());
+    assert!(!root.join(".claude").exists());
+
+    let second = sync::sync_repo(root).expect("second sync");
+    assert!(second.written_files.is_empty());
+}
+
+#[test]
+fn codex_adapter_merges_config_toml_and_agents_md_idempotently() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    fs::create_dir_all(root.join(".codex")).expect("mkdir codex");
+    fs::write(
+        root.join(".codex/config.toml"),
+        "model = \"o3\"\n\n[mcp_servers.github]\ncommand = \"gh-mcp\"\n",
+    )
+    .expect("seed codex config");
+
+    sync::init_repo_with_adapter(root, Some(AdapterTarget::Codex)).expect("init codex");
+
+    let toml = fs::read_to_string(root.join(".codex/config.toml")).expect("read config.toml");
+    assert!(toml.contains("model = \"o3\""));
+    assert!(toml.contains("[mcp_servers.github]\ncommand = \"gh-mcp\""));
+    assert!(toml.contains("[mcp_servers.anvil]\ncommand = \"anvil\"\nargs = [\"mcp\"]\n"));
+    assert!(root.join("AGENTS.md").exists());
+    assert!(!root.join(".agents").exists());
+    assert!(!root.join(".claude").exists());
+
+    let second = sync::sync_repo(root).expect("second sync");
+    assert!(second.written_files.is_empty());
+}
+
+#[test]
+fn codex_adapter_updates_existing_anvil_section_without_clobbering_neighbors() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    fs::create_dir_all(root.join(".codex")).expect("mkdir codex");
+    fs::write(
+        root.join(".codex/config.toml"),
+        "[mcp_servers.anvil]\ncommand = \"old\"\nstartup_timeout_sec = 20\n\n[projects.\"/repo\"]\ntrust_level = \"trusted\"\n",
+    )
+    .expect("seed codex config");
+
+    sync::init_repo_with_adapter(root, Some(AdapterTarget::Codex)).expect("init codex");
+
+    let toml = fs::read_to_string(root.join(".codex/config.toml")).expect("read config.toml");
+    assert!(toml.contains("command = \"anvil\""));
+    assert!(toml.contains("args = [\"mcp\"]"));
+    assert!(toml.contains("startup_timeout_sec = 20"));
+    assert!(toml.contains("[projects.\"/repo\"]\ntrust_level = \"trusted\""));
+    assert!(!toml.contains("command = \"old\""));
+
+    let second = sync::sync_repo(root).expect("second sync");
+    assert!(second.written_files.is_empty());
+}
+
+#[test]
+fn all_adapter_auto_syncs_existing_cursor_without_polluting_absent_repos() {
+    let empty_dir = tempdir().expect("empty tempdir");
+    sync::init_repo_with_adapter(empty_dir.path(), Some(AdapterTarget::All)).expect("init all");
+    assert!(!empty_dir.path().join(".cursor").exists());
+    assert!(!empty_dir.path().join(".windsurf").exists());
+    assert!(!empty_dir.path().join(".codex").exists());
+
+    let cursor_dir = tempdir().expect("cursor tempdir");
+    fs::create_dir_all(cursor_dir.path().join(".cursor")).expect("mkdir .cursor");
+    sync::init_repo_with_adapter(cursor_dir.path(), Some(AdapterTarget::All))
+        .expect("init all with .cursor");
+    assert!(cursor_dir.path().join(".cursor/mcp.json").exists());
+    assert!(cursor_dir.path().join(".cursor/rules/anvil.mdc").exists());
+    assert!(cursor_dir.path().join(".cursor/skills/subagent-routing/SKILL.md").exists());
+    assert!(cursor_dir.path().join(".agents/hooks.json").exists());
+    assert!(cursor_dir.path().join(".claude/settings.json").exists());
+    assert!(!cursor_dir.path().join(".windsurf").exists());
+    assert!(!cursor_dir.path().join(".codex").exists());
+}
+
+#[test]
+fn infer_default_adapter_detects_single_secondary_ide_and_defaults_empty_to_all() {
+    let cursor_repo = tempdir().expect("cursor repo");
+    fs::create_dir_all(cursor_repo.path().join(".cursor")).expect("mkdir .cursor");
+    sync::init_repo(cursor_repo.path()).expect("init cursor repo");
+    assert_eq!(
+        AnvilConfig::load(cursor_repo.path()).expect("load").adapters,
+        AdapterTarget::Cursor
+    );
+
+    let windsurf_repo = tempdir().expect("windsurf repo");
+    fs::create_dir_all(windsurf_repo.path().join(".windsurf")).expect("mkdir .windsurf");
+    sync::init_repo(windsurf_repo.path()).expect("init windsurf repo");
+    assert_eq!(
+        AnvilConfig::load(windsurf_repo.path()).expect("load").adapters,
+        AdapterTarget::Windsurf
+    );
+
+    let codex_repo = tempdir().expect("codex repo");
+    fs::create_dir_all(codex_repo.path().join(".codex")).expect("mkdir .codex");
+    sync::init_repo(codex_repo.path()).expect("init codex repo");
+    assert_eq!(
+        AnvilConfig::load(codex_repo.path()).expect("load").adapters,
+        AdapterTarget::Codex
+    );
+
+    let empty_repo = tempdir().expect("empty repo");
+    sync::init_repo(empty_repo.path()).expect("init empty repo");
+    assert_eq!(
+        AnvilConfig::load(empty_repo.path()).expect("load").adapters,
+        AdapterTarget::All
+    );
 }

@@ -49,6 +49,7 @@ pub fn parse_google_maven_metadata_xml(package: &str, xml: &str) -> Result<Packa
         deprecation_message: None,
         archived: false,
         repository_url: Some("https://maven.google.com/".to_owned()),
+        vulnerabilities: Vec::new(),
     })
 }
 

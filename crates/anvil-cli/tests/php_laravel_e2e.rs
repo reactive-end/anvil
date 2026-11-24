@@ -146,7 +146,7 @@ fn laravel_init_doctor_tier0_strict_types_graph_and_token_guard() {
 }
 
 #[test]
-fn antigravity_v2_edit_file_with_capital_path_materializes_task_and_gates_stop() {
+fn antigravity_v2_edit_file_with_capital_path_tracks_edit_and_gates_stop() {
     let repo = setup_laravel_git_repo();
     let root = repo.path();
     assert!(run_anvil(root, &["init"]).status.success());
@@ -165,6 +165,10 @@ fn antigravity_v2_edit_file_with_capital_path_materializes_task_and_gates_stop()
         &edited,
         "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Services;\n\nfinal class QuoteService { public function total(int $cents): int { return $cents + 1; } }\n",
     );
+    write_file(
+        &root.join("backend/app/Services/TaxService.php"),
+        "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Services;\n\nfinal class TaxService { public function rate(): int { return 16; } }\n",
+    );
 
     let post_tool = json!({
         "hookEventName": "PostToolUse",
@@ -176,17 +180,19 @@ fn antigravity_v2_edit_file_with_capital_path_materializes_task_and_gates_stop()
     })
     .to_string();
     assert!(run_anvil_stdin(root, &["hook", "PostToolUse", "--adapter", "antigravity"], &post_tool).status.success());
-    assert!(root.join(".harness/.state/active-task.json").is_file(), "expected lazy task materialization on capital Path");
+    assert!(!root.join(".harness/.state/active-task.json").exists(), "PostToolUse must never auto-materialize raw tasks");
+    let tracked = fs::read_to_string(root.join(".harness/.state/untracked-edits.json")).unwrap_or_default();
+    assert!(tracked.contains("QuoteService.php"), "expected tracked edit for capital Path: {tracked}");
 
     let stop_in = json!({ "hookEventName": "Stop", "cwd": root.to_string_lossy() }).to_string();
     let stop_out = run_anvil_stdin(root, &["hook", "Stop", "--adapter", "antigravity"], &stop_in);
     let stop_stdout = String::from_utf8_lossy(&stop_out.stdout);
-    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop gate requiring summary: {stop_stdout}");
-    assert!(stop_stdout.contains("anvil tasks done"), "stop output: {stop_stdout}");
+    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop gate requiring task decision: {stop_stdout}");
+    assert!(stop_stdout.contains("anvil tasks record"), "stop output: {stop_stdout}");
 }
 
 #[test]
-fn stop_hook_materializes_task_from_pending_prompt_even_without_file_tool_hook() {
+fn stop_hook_gates_substantive_external_edits_without_auto_creating_task() {
     let repo = setup_laravel_git_repo();
     let root = repo.path();
     assert!(run_anvil(root, &["init"]).status.success());
@@ -203,13 +209,18 @@ fn stop_hook_materializes_task_from_pending_prompt_even_without_file_tool_hook()
         &root.join("backend/app/Services/QuoteService.php"),
         "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Services;\n\nfinal class QuoteService { public function total(int $cents): int { return $cents + 2; } }\n",
     );
+    write_file(
+        &root.join("backend/app/Services/TaxService.php"),
+        "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Services;\n\nfinal class TaxService { public function rate(): int { return 16; } }\n",
+    );
     assert!(!root.join(".harness/.state/active-task.json").exists());
 
     let stop_in = json!({ "hookEventName": "Stop", "cwd": root.to_string_lossy() }).to_string();
     let stop_out = run_anvil_stdin(root, &["hook", "Stop", "--adapter", "antigravity"], &stop_in);
     let stop_stdout = String::from_utf8_lossy(&stop_out.stdout);
-    assert!(root.join(".harness/.state/active-task.json").is_file(), "Stop must materialize task when pending-prompt + git changes exist");
-    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop to block until summary recorded: {stop_stdout}");
+    assert!(!root.join(".harness/.state/active-task.json").exists(), "Stop must never auto-materialize raw tasks");
+    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop to gate substantive edits until curated: {stop_stdout}");
+    assert!(stop_stdout.contains("anvil tasks record"), "stop output: {stop_stdout}");
 }
 
 #[test]

@@ -13,13 +13,13 @@ use anvil_tasks::{build_root_tasks_json, install_git_merge_driver};
 use crate::ui;
 
 /// Initializes `anvil` in `root` and any independent child project folders inside `root`.
-pub fn execute(root: &Path, adapter_raw: &str) -> Result<()> {
+pub fn execute(root: &Path, adapter_raw: &str, git_hooks: bool) -> Result<()> {
     ui::print_banner_if_tty("Workspace Initialization");
     fs::create_dir_all(root)
         .with_context(|| format!("failed to create target directory {}", root.display()))?;
 
     let explicit_adapter = AdapterTarget::parse_cli(adapter_raw)?;
-    let root_config = init_single_repo(root, explicit_adapter, "anvil initialized at")?;
+    let root_config = init_single_repo(root, explicit_adapter, git_hooks, "anvil initialized at")?;
 
     let detection = stack_detector::detect_workspace(root)?;
     let root_has_git = root.join(".git").exists();
@@ -29,6 +29,7 @@ pub fn execute(root: &Path, adapter_raw: &str) -> Result<()> {
             init_single_repo(
                 &sub_dir,
                 Some(root_config.adapters),
+                git_hooks,
                 &format!("  - subproject {} initialized at", repo.rel_path),
             )?;
         }
@@ -43,6 +44,7 @@ fn should_init_subrepo(sub_dir: &Path, root_has_git: bool) -> bool {
 fn init_single_repo(
     dir: &Path,
     explicit_adapter: Option<AdapterTarget>,
+    git_hooks: bool,
     banner: &str,
 ) -> Result<AnvilConfig> {
     let report = sync::init_repo_with_adapter(dir, explicit_adapter)?;
@@ -53,6 +55,15 @@ fn init_single_repo(
         "installed"
     } else {
         "skipped (no .git)"
+    };
+    let pre_commit_status = if git_hooks {
+        if crate::commands::hook::git_install::install_pre_commit_hook(dir)? {
+            "installed"
+        } else {
+            "unchanged/skipped"
+        }
+    } else {
+        "not requested"
     };
 
     let engine = CodeGraphEngine::build(dir, config.clone())?;
@@ -73,6 +84,9 @@ fn init_single_repo(
     ui::print_kv("tools", &ui::cyan(&tools_str));
     ui::print_kv("adapters", &format!("{:?}", config.adapters));
     ui::print_kv("merge_driver", merge_driver_status);
+    if git_hooks {
+        ui::print_kv("pre_commit_hook", pre_commit_status);
+    }
     ui::print_kv(
         "graph",
         &format!(

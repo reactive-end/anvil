@@ -76,8 +76,11 @@ fn mcp_initialize_and_tools_list() {
     let tools = resps[2].result.as_ref().unwrap()["tools"]
         .as_array()
         .unwrap();
-    assert_eq!(tools.len(), 12);
+    assert_eq!(tools.len(), 17);
     assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
+    assert!(tools.iter().any(|t| t["name"] == "context_pack"));
+    assert!(tools.iter().any(|t| t["name"] == "task_record"));
+    assert!(tools.iter().any(|t| t["name"] == "task_skip"));
     assert!(tools.iter().any(|t| t["name"] == "graph_outline"));
     assert!(tools.iter().all(|t| t["inputSchema"].is_object()));
 }
@@ -331,4 +334,108 @@ fn mcp_mem_save_before_read_still_syncs_preexisting_external_chunk() {
     );
     assert_eq!(parse_tool_json(&resps[0])["saved"], json!(true));
     assert_eq!(parse_tool_json(&resps[1])["count"], json!(1));
+}
+
+#[test]
+fn mcp_curated_task_tools_reject_chatty_titles_and_support_record_and_skip() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(
+        &mut server,
+        &[
+            call_req(
+                1,
+                "task_record",
+                json!({
+                    "title": "¿Cómo vamos con tal proceso?",
+                    "summary": "Should be rejected as conversational"
+                }),
+            ),
+            call_req(
+                2,
+                "task_record",
+                json!({
+                    "title": "Reorganización visual del módulo de cobros",
+                    "summary": "Reestructuradas tarjetas, cabecera y filtros del módulo de cobros",
+                    "files": ["src/app.ts"]
+                }),
+            ),
+            call_req(3, "task_list", json!({ "limit": 5 })),
+            call_req(4, "task_skip", json!({ "reason": "Ajuste menor de padding en botón" })),
+        ],
+    );
+
+    assert_eq!(resps[0].result.as_ref().unwrap()["isError"], json!(true));
+    let recorded = parse_tool_json(&resps[1]);
+    assert_eq!(recorded["title"], json!("Reorganización visual del módulo de cobros"));
+    assert_eq!(recorded["status"], json!("done"));
+
+    let listed = parse_tool_json(&resps[2]);
+    assert_eq!(listed["tasks"].as_array().unwrap().len(), 1);
+
+    let skipped = parse_tool_json(&resps[3]);
+    assert_eq!(skipped["skipped"], json!(true));
+    assert_eq!(anvil_tasks::list_tasks(repo.path()).unwrap().len(), 1);
+}
+
+#[test]
+fn mcp_context_pack_returns_bounded_graph_and_memory_packet() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(
+        &mut server,
+        &[
+            call_req(
+                1,
+                "mem_save",
+                json!({
+                    "kind": "decision",
+                    "title": "Keep add pure",
+                    "what": "Pure math add helper in src/math.ts",
+                    "why": "Deterministic arithmetic",
+                    "where": "src/math.ts",
+                    "learned": "Avoid IO inside add",
+                    "related_files": ["src/math.ts"],
+                    "related_symbols": ["add"]
+                }),
+            ),
+            call_req(2, "context_pack", json!({ "targets": ["add"], "max_tokens": 1200 })),
+            call_req(3, "context_pack", json!({ "targets": [] })),
+        ],
+    );
+
+    let obs_id = parse_tool_json(&resps[0])["observation"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let pack = parse_tool_json(&resps[1]);
+    assert_eq!(pack["targets"], json!(["add"]));
+    assert!(
+        pack["resolved_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f == "src/math.ts")
+    );
+    let outlines = pack["outlines"].as_array().unwrap();
+    assert!(outlines.iter().any(|o| {
+        o["file"] == "src/math.ts"
+            && o["symbols"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["name"] == "add")
+    }));
+    assert!(!pack["edges"].as_array().unwrap().is_empty());
+    assert!(
+        pack["memories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["id"] == obs_id)
+    );
+    assert!(pack["related_tests"].is_array());
+    let est = pack["estimated_tokens"].as_u64().unwrap();
+    assert!(est > 0 && est <= 1200);
+    assert_eq!(resps[2].result.as_ref().unwrap()["isError"], json!(true));
 }

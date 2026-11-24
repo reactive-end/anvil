@@ -56,6 +56,9 @@ pub enum Command {
         /// Target AI adapter (`auto`, `all`, `antigravity`, `claude`).
         #[arg(long, default_value = "auto")]
         adapter: String,
+        /// Install a non-destructive `.git/hooks/pre-commit` runner (`anvil check --staged --tier 0`).
+        #[arg(long)]
+        git_hooks: bool,
     },
     /// Non-destructively sync skills, config tools, and adapter files.
     Sync {
@@ -65,12 +68,12 @@ pub enum Command {
     },
     /// Audit harness health, strict configs, graph, memory, identity, and stack tools.
     Doctor,
-    /// Execute an Antigravity or Claude Code lifecycle hook reading JSON from stdin.
+    /// Execute an Antigravity or Claude Code lifecycle hook (`install-git` installs pre-commit hook).
     Hook {
-        /// Hook event name (`session-start`, `pre-tool-use`, `post-tool-use`, `pre-invocation`, `stop`).
+        /// Hook event name (`session-start`, `pre-tool-use`, `post-tool-use`, `pre-invocation`, `stop`, `install-git`).
         event: String,
         /// Target adapter (`antigravity` or `claude`).
-        #[arg(long)]
+        #[arg(long, default_value = "antigravity")]
         adapter: String,
     },
     /// Run a command with token-compressed output and Circuit Breaker tracking.
@@ -93,6 +96,9 @@ pub enum Command {
         /// Bypass the Tier 1 content-addressed check cache.
         #[arg(long)]
         no_cache: bool,
+        /// Verify only git staged files (`git diff --cached --name-only`).
+        #[arg(long)]
+        staged: bool,
     },
     /// Analyze reverse-BFS blast radius and upstream origin via `anvil-graph`.
     Impact {

@@ -63,6 +63,7 @@ fn mk_pkg(
         deprecation_message: deprecated.then(|| "use replacement".to_owned()),
         archived,
         repository_url: None,
+        vulnerabilities: Vec::new(),
     }
 }
 
@@ -95,6 +96,7 @@ fn flags_deprecated_archived_and_stale_packages_while_passing_fresh() {
         max_age_months: 24,
         cache_ttl_hours: 24,
         now: Some(now),
+        check_osv: true,
     };
     let manifests = vec![PathBuf::from("package.json"), PathBuf::from("pyproject.toml")];
     let report = audit_manifests(tmp.path(), &manifests, &fetcher, &opts).expect("audit");
@@ -132,6 +134,7 @@ fn repeat_audit_hits_disk_cache_under_two_milliseconds() {
         max_age_months: 24,
         cache_ttl_hours: 24,
         now: Some(now),
+        check_osv: true,
     };
     let changed = vec![PathBuf::from("src/main.dart"), PathBuf::from("pubspec.yaml")];
 
@@ -181,6 +184,7 @@ fn expired_cache_entry_triggers_fresh_fetch() {
         max_age_months: 24,
         cache_ttl_hours: 24,
         now: Some(t0),
+        check_osv: true,
     };
     let r1 = audit_manifests(tmp.path(), &manifests, &fetcher, &first_opts).expect("r1");
     assert_eq!(r1.network_fetches, 1);
@@ -189,6 +193,7 @@ fn expired_cache_entry_triggers_fresh_fetch() {
         max_age_months: 24,
         cache_ttl_hours: 24,
         now: Some(t0 + Duration::hours(25)),
+        check_osv: true,
     };
     let r2 = audit_manifests(tmp.path(), &manifests, &fetcher, &expired_opts).expect("r2");
     assert_eq!(r2.network_fetches, 1);
@@ -240,6 +245,7 @@ impl RegistryFetcher for EcosystemConcurrencyFetcher {
             deprecation_message: None,
             archived: false,
             repository_url: None,
+            vulnerabilities: Vec::new(),
         })
     }
 }
@@ -270,4 +276,96 @@ fn cargo_misses_run_sequentially_while_npm_keeps_parallel_concurrency() {
     assert_eq!(report.checked_packages, 10);
     assert_eq!(fetcher.cargo_max_in_flight.load(Ordering::SeqCst), 1);
     assert!(fetcher.npm_max_in_flight.load(Ordering::SeqCst) >= 2);
+}
+
+struct VulnMockFetcher {
+    base: MockFetcher,
+    vuln_calls: AtomicUsize,
+}
+
+impl VulnMockFetcher {
+    fn new(items: Vec<PackageHealthInfo>) -> Self {
+        Self {
+            base: MockFetcher::new(items),
+            vuln_calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl RegistryFetcher for VulnMockFetcher {
+    fn fetch(&self, ecosystem: Ecosystem, package: &str) -> Result<PackageHealthInfo> {
+        self.base.fetch(ecosystem, package)
+    }
+
+    fn fetch_vulnerabilities(
+        &self,
+        specs: &[anvil_deps::DependencySpec],
+    ) -> FxHashMap<usize, Vec<String>> {
+        self.vuln_calls.fetch_add(1, Ordering::Relaxed);
+        let mut map = FxHashMap::default();
+        for (idx, spec) in specs.iter().enumerate() {
+            if spec.name == "lodash" {
+                map.insert(
+                    idx,
+                    vec![
+                        "GHSA-35jh-r3h4-6jhm".to_owned(),
+                        "CVE-2021-23337".to_owned(),
+                        "GHSA-35jh-r3h4-6jhm".to_owned(),
+                    ],
+                );
+            }
+        }
+        map
+    }
+}
+
+#[test]
+fn audit_manifests_emits_vulnerable_issue_for_uncached_and_cached_packages() {
+    let tmp = TempDir::new().expect("tempdir");
+    let now = Utc::now();
+    let fresh_ts = now - Duration::days(10);
+
+    fs::write(
+        tmp.path().join("package.json"),
+        r#"{ "dependencies": { "lodash": "^4.17.20", "safe-pkg": "^1.0.0" } }"#,
+    )
+    .expect("write package.json");
+
+    let fetcher = VulnMockFetcher::new(vec![
+        mk_pkg(Ecosystem::Npm, "lodash", fresh_ts, false, false),
+        mk_pkg(Ecosystem::Npm, "safe-pkg", fresh_ts, false, false),
+    ]);
+    let manifests = vec![PathBuf::from("package.json")];
+
+    // First run with check_osv=false caches packages without vulnerabilities.
+    let no_osv_opts = AuditOptions {
+        max_age_months: 24,
+        cache_ttl_hours: 24,
+        now: Some(now),
+        check_osv: false,
+    };
+    let first = audit_manifests(tmp.path(), &manifests, &fetcher, &no_osv_opts).expect("first");
+    assert!(first.findings.is_empty());
+    assert_eq!(fetcher.vuln_calls.load(Ordering::Relaxed), 0);
+
+    // Second run hits cache and enables check_osv=true; must still emit Vulnerable finding.
+    let osv_opts = AuditOptions {
+        check_osv: true,
+        ..no_osv_opts
+    };
+    let second = audit_manifests(tmp.path(), &manifests, &fetcher, &osv_opts).expect("second");
+    assert_eq!(second.cache_hits, 2);
+    assert_eq!(second.network_fetches, 0);
+    assert_eq!(fetcher.vuln_calls.load(Ordering::Relaxed), 1);
+    assert_eq!(second.findings.len(), 1);
+    let finding = &second.findings[0];
+    assert_eq!(finding.package, "lodash");
+    assert_eq!(finding.issues, vec![DepIssueKind::Vulnerable]);
+    assert_eq!(
+        finding.vulnerabilities,
+        vec![
+            "GHSA-35jh-r3h4-6jhm".to_owned(),
+            "CVE-2021-23337".to_owned()
+        ]
+    );
 }

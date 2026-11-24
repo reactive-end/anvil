@@ -1,11 +1,13 @@
 //! Reverse-BFS blast radius analysis and test-impact mapping.
 
+mod boundaries;
 mod guard;
 mod sibling;
 mod tests_native;
 mod tests_runner;
 mod typecheck;
 mod typecheck_filter;
+mod typecheck_godot;
 mod typecheck_php;
 mod typecheck_ts;
 
@@ -17,9 +19,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{CodeGraph, GraphEdgeKind, NodeId, NodeKind};
 
+pub use boundaries::check_boundaries;
 pub use guard::{OverengineeringReport, OverengineeringWarning, check_overengineering};
 pub use tests_runner::run_impacted_tests;
-pub use typecheck::{build_ts_typecheck_command, filter_typecheck_output, run_impacted_typecheck};
+pub use typecheck::{
+    build_ts_typecheck_command, build_vue_or_ts_typecheck_command, filter_typecheck_output,
+    run_impacted_typecheck,
+};
 
 /// A consumer file impacted by a change, with BFS depth and causal edges.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

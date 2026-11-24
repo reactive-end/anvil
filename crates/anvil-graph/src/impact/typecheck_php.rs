@@ -2,11 +2,13 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin, resolve_php_vendor_script};
+use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
 
 use super::typecheck_filter::filter_typecheck_output;
@@ -119,23 +121,20 @@ fn run_php_lint_fallback(
             raw_log_path: None,
         });
     }
+    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
     let mut combined = String::new();
     let mut exit_code = 0i32;
     for file in php_files {
-        let out = Command::new(php_bin)
-            .args(["-l", file])
-            .current_dir(work_dir)
-            .output();
-        match out {
-            Ok(res) => {
-                let code = res.status.code().unwrap_or(1);
-                if code != 0 {
-                    exit_code = code;
-                    combined.push_str(&String::from_utf8_lossy(&res.stdout));
-                    combined.push_str(&String::from_utf8_lossy(&res.stderr));
-                    combined.push('\n');
-                }
+        let mut cmd = Command::new(php_bin);
+        cmd.args(["-l", file]).current_dir(work_dir);
+        match run_command_with_timeout(&mut cmd, timeout) {
+            Ok(res) if res.status_code != 0 => {
+                exit_code = res.status_code;
+                combined.push_str(&String::from_utf8_lossy(&res.stdout));
+                combined.push_str(&String::from_utf8_lossy(&res.stderr));
+                combined.push('\n');
             }
+            Ok(_) => {}
             Err(err) => {
                 exit_code = 1;
                 combined.push_str(&format!("{file}:1: failed to run php -l: {err}\n"));
@@ -159,7 +158,8 @@ fn exec_and_filter(
     label: &str,
     impacted_files: &[String],
 ) -> Result<CompressedOutput> {
-    let output = match cmd.output() {
+    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timed = match run_command_with_timeout(cmd, timeout) {
         Ok(out) => out,
         Err(err) => {
             return compress_output(
@@ -172,16 +172,15 @@ fn exec_and_filter(
             );
         }
     };
-    let code = output.status.code().unwrap_or(1);
     let combined = format!(
         "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&timed.stdout),
+        String::from_utf8_lossy(&timed.stderr)
     );
     filter_typecheck_output(
         Some(log_root),
         label,
-        code,
+        timed.status_code,
         &combined,
         impacted_files,
         config.tier_budgets.compressor_max_lines,

@@ -116,6 +116,9 @@ pub(crate) fn evaluate_health(
     if age_months.is_some_and(|months| months > max_age_months) {
         issues.push(DepIssueKind::Stale);
     }
+    if !info.vulnerabilities.is_empty() {
+        issues.push(DepIssueKind::Vulnerable);
+    }
 
     (!issues.is_empty()).then(|| DepFinding {
         ecosystem: spec.ecosystem,
@@ -126,5 +129,6 @@ pub(crate) fn evaluate_health(
         last_publish: info.last_publish,
         deprecation_message: info.deprecation_message.clone(),
         latest_version: info.latest_version.clone(),
+        vulnerabilities: info.vulnerabilities.clone(),
     })
 }

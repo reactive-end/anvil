@@ -147,6 +147,7 @@ pub fn parse_maven_search_json(package: &str, body: &str) -> Result<PackageHealt
         deprecation_message: None,
         archived: false,
         repository_url: Some("https://central.sonatype.com/".to_owned()),
+        vulnerabilities: Vec::new(),
     })
 }
 

@@ -119,6 +119,7 @@ pub fn parse_pubdev_registry_json(package: &str, body: &str) -> Result<PackageHe
         deprecation_message,
         archived: discontinued,
         repository_url,
+        vulnerabilities: Vec::new(),
     })
 }
 

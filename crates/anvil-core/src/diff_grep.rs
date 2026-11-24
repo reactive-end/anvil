@@ -19,12 +19,13 @@ const NOISE_EXACT_NAMES: [&str; 10] = [
     "graph.bin",
 ];
 
-const NOISE_DIR_SEGMENTS: [&str; 7] = [
+const NOISE_DIR_SEGMENTS: [&str; 8] = [
     "dist",
     "build",
     "node_modules",
     "target",
     ".next",
+    ".godot",
     "vendor",
     "storage",
 ];
@@ -71,7 +72,12 @@ pub fn is_noise_file(rel_path: &str) -> bool {
     }
 
     let lower = file_name.to_ascii_lowercase();
-    lower.ends_with(".min.js") || lower.ends_with(".min.css") || lower.ends_with(".map")
+    lower.ends_with(".min.js")
+        || lower.ends_with(".min.css")
+        || lower.ends_with(".map")
+        || lower.ends_with(".import")
+        || lower.ends_with(".scn")
+        || lower.ends_with(".res")
 }
 
 pub(crate) fn normalize_slashed(raw: &str) -> String {

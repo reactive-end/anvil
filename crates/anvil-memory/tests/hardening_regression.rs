@@ -65,17 +65,22 @@ fn pragma_busy_timeout_and_scoped_trigger_upgrade_cleanly() {
 }
 
 #[test]
-fn sync_chunks_skips_already_ingested_files_without_reading_them() {
+fn sync_chunks_skips_unchanged_hash_and_reingests_modified_chunks() {
     let tmp = TempDir::new().expect("tempdir");
     let mut engine = MemoryEngine::open(tmp.path(), "alice").expect("open");
-    engine
+    let saved = engine
         .save(make_input(
             MemoryKind::Decision,
-            "sync/fast-skip",
-            "Fast Chunk Sync",
-            "Skip already-ingested immutable ULID chunks",
+            "sync/hash-check",
+            "Hash Checked Sync v1",
+            "Skip unchanged BLAKE3 hash and re-ingest when modified",
         ))
         .expect("save");
+
+    let resync = engine.sync().expect("unchanged sync is no-op");
+    assert_eq!(resync.files_scanned, 1);
+    assert_eq!(resync.files_ingested, 0);
+    assert_eq!(resync.records_applied, 0);
 
     let chunks_dir = tmp.path().join(".harness/memory/chunks");
     let chunk_path = fs::read_dir(&chunks_dir)
@@ -85,13 +90,13 @@ fn sync_chunks_skips_already_ingested_files_without_reading_them() {
         .expect("entry")
         .path();
 
-    // Overwrite already-ingested chunk with invalid non-JSON bytes; if sync skips it by filename,
-    // no read/hash/parse occurs and sync succeeds with files_ingested == 0.
+    // Appending invalid bytes changes the BLAKE3 hash so sync detects tampering instead of skipping.
     fs::write(&chunk_path, b"\xff\xfe not-json").expect("corrupt ingested file");
-    let resync = engine.sync().expect("second sync skips ingested filename");
-    assert_eq!(resync.files_scanned, 1);
-    assert_eq!(resync.files_ingested, 0);
-    assert_eq!(resync.records_applied, 0);
+    assert!(
+        engine.sync().is_err(),
+        "modified chunk with invalid bytes must fail on hash mismatch"
+    );
+    assert!(engine.get(&saved.id).expect("get").is_some());
 }
 
 #[test]

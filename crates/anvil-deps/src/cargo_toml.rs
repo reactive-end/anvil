@@ -113,6 +113,7 @@ pub fn parse_crates_io_json(package: &str, body: &str) -> Result<PackageHealthIn
         deprecation_message: yanked.then(|| "latest crates.io version is yanked".to_owned()),
         archived: false,
         repository_url,
+        vulnerabilities: Vec::new(),
     })
 }
 

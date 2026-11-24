@@ -28,6 +28,7 @@ impl RegistryFetcher for MockPackagist {
                 deprecation_message: None,
                 archived: false,
                 repository_url: Some("https://github.com/laravel/framework".to_owned()),
+                vulnerabilities: Vec::new(),
             }),
             "swiftmailer/swiftmailer" => Ok(PackageHealthInfo {
                 ecosystem,
@@ -40,6 +41,7 @@ impl RegistryFetcher for MockPackagist {
                 ),
                 archived: false,
                 repository_url: None,
+                vulnerabilities: Vec::new(),
             }),
             other => anyhow::bail!("unexpected package {other}"),
         }
@@ -124,6 +126,7 @@ fn audits_composer_manifest_and_flags_abandoned_and_stale() -> Result<()> {
         max_age_months: 24,
         cache_ttl_hours: 24,
         now: Some(Utc.with_ymd_and_hms(2026, 11, 23, 0, 0, 0).unwrap()),
+        check_osv: true,
     };
     let report = audit_manifests(tmp.path(), &[PathBuf::from("backend/composer.json")], &MockPackagist, &opts)?;
     assert_eq!(report.checked_packages, 2);

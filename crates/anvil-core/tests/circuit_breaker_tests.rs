@@ -4,7 +4,9 @@ use std::thread;
 use anyhow::Result;
 use tempfile::TempDir;
 
-use anvil_core::circuit_breaker::{CircuitBreaker, CircuitState, fingerprint, normalize_error};
+use anvil_core::circuit_breaker::{
+    CircuitBreaker, CircuitState, command_family_key, fingerprint, normalize_error,
+};
 
 #[test]
 fn circuit_breaker_trips_exactly_on_third_consecutive_identical_failure() -> Result<()> {
@@ -100,5 +102,36 @@ fn circuit_breaker_handles_concurrent_updates_via_file_lock() -> Result<()> {
     }
     let final_status = CircuitBreaker::new(&root, 10).status()?;
     assert_eq!(final_status.consecutive_failures, 4);
+    Ok(())
+}
+
+#[test]
+fn command_family_key_and_scoped_command_success() -> Result<()> {
+    assert_eq!(command_family_key("npx vitest run a.ts"), "vitest");
+    assert_eq!(
+        command_family_key("NODE_ENV=test bunx --yes tsc --noEmit"),
+        "tsc"
+    );
+    assert_eq!(
+        command_family_key("C:\\tools\\cargo.exe test -p anvil-core"),
+        "cargo test"
+    );
+    assert_eq!(command_family_key("git status --short"), "git status");
+
+    let tmp = TempDir::new()?;
+    let cb = CircuitBreaker::new(tmp.path(), 3);
+    let f1 = cb.record_failure("cargo", "error[E0308]: mismatched types", "cargo test -p x")?;
+    assert_eq!(f1.consecutive_failures, 1);
+    assert_eq!(f1.last_command_key.as_deref(), Some("cargo test"));
+
+    let unrelated = cb.record_command_success("git status")?;
+    assert_eq!(unrelated.consecutive_failures, 1);
+    assert_eq!(unrelated.last_command_key.as_deref(), Some("cargo test"));
+
+    let matched = cb.record_command_success("cargo test --lib")?;
+    assert_eq!(matched.consecutive_failures, 0);
+    assert!(matched.last_fingerprint.is_none());
+    assert!(matched.last_tool.is_none());
+    assert!(matched.last_command_key.is_none());
     Ok(())
 }

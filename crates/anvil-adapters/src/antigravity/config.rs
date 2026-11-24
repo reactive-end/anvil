@@ -47,8 +47,11 @@ pub fn merge_hooks_config(repo_root: &Path) -> Result<bool> {
 
 /// Non-destructively merges the `anvil mcp` server entry into `.agents/mcp_config.json`.
 pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
-    let path = mcp_config_path(repo_root);
-    let mut root = read_json_object(&path)?;
+    merge_mcp_servers_json(&mcp_config_path(repo_root), ".agents/mcp_config.json")
+}
+
+pub(crate) fn merge_mcp_servers_json(path: &Path, label: &str) -> Result<bool> {
+    let mut root = read_json_object(path)?;
 
     let servers = ensure_object_field(&mut root, "mcpServers")?;
     servers.insert(
@@ -60,8 +63,8 @@ pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
     );
 
     let formatted = serde_json::to_string_pretty(&Value::Object(root))
-        .context("failed to serialize .agents/mcp_config.json")?;
-    write_if_changed(&path, &format!("{formatted}\n"))
+        .with_context(|| format!("failed to serialize {label}"))?;
+    write_if_changed(path, &format!("{formatted}\n"))
 }
 
 fn upsert_anvil_hook_entry(entries: &mut Vec<Value>, command: &str) {

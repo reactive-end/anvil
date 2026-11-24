@@ -4,6 +4,7 @@ pub mod cargo;
 pub mod dart_flutter;
 pub mod eslint_biome;
 pub mod generic;
+pub mod godot;
 pub mod gradle_kotlin;
 pub mod php;
 pub mod pytest_ruff;
@@ -67,7 +68,7 @@ pub fn strip_ansi(input: &str) -> Cow<'_, str> {
 
 /// Selects the most specific parser for `command`, falling back to `generic`.
 pub fn select_parser(command: &str) -> Box<dyn OutputParser> {
-    let parsers: [Box<dyn OutputParser>; 8] = [
+    let parsers: [Box<dyn OutputParser>; 9] = [
         Box::new(cargo::CargoParser),
         Box::new(tsc::TscParser),
         Box::new(eslint_biome::EslintBiomeParser),
@@ -76,6 +77,7 @@ pub fn select_parser(command: &str) -> Box<dyn OutputParser> {
         Box::new(gradle_kotlin::GradleKotlinParser),
         Box::new(dart_flutter::DartFlutterParser),
         Box::new(php::PhpParser),
+        Box::new(godot::GodotParser),
     ];
     for parser in parsers {
         if parser.matches(command) {
@@ -147,5 +149,25 @@ fn write_raw_log(repo_root: &Path, raw_output: &str) -> Result<PathBuf> {
     let path = logs_dir.join(format!("{}.log", Ulid::new()));
     fs::write(&path, raw_output)
         .with_context(|| format!("failed to write raw log at {}", path.display()))?;
+    prune_old_logs(&logs_dir, 50);
     Ok(path)
+}
+
+fn prune_old_logs(logs_dir: &Path, max_keep: usize) {
+    let Ok(entries) = fs::read_dir(logs_dir) else {
+        return;
+    };
+    let mut logs: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("log"))
+        .collect();
+    if logs.len() <= max_keep {
+        return;
+    }
+    logs.sort();
+    let excess = logs.len() - max_keep;
+    for old in logs.into_iter().take(excess) {
+        let _ = fs::remove_file(old);
+    }
 }

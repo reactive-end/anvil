@@ -53,6 +53,7 @@ impl RegistryFetcher for SlowBoundedFetcher {
             deprecation_message: (package == "pkg-19").then(|| "deprecated test".to_owned()),
             archived: false,
             repository_url: None,
+            vulnerabilities: Vec::new(),
         })
     }
 }

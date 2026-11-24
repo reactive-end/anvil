@@ -60,6 +60,8 @@ pub fn log_candidate_with_options(
         if options.severity.is_some() {
             found.severity = options.severity;
         }
+        found.multiline |= options.multiline;
+        found.match_comments_and_strings |= options.match_comments_and_strings;
         found.updated_at = now;
         if let Some(ex) = input.example
             && !found.examples.contains(&ex)
@@ -80,6 +82,8 @@ pub fn log_candidate_with_options(
         languages: input.languages,
         file_globs: options.file_globs,
         severity: options.severity,
+        multiline: options.multiline,
+        match_comments_and_strings: options.match_comments_and_strings,
         recurrence: 1,
         high_impact: input.high_impact,
         deterministic: input.deterministic,
@@ -176,6 +180,8 @@ pub fn promote_candidate(repo_root: &Path, id: &str) -> Result<PromotedRule> {
         languages: candidate.languages,
         file_globs: candidate.file_globs,
         severity: candidate.severity,
+        multiline: candidate.multiline,
+        match_comments_and_strings: candidate.match_comments_and_strings,
         recurrence_at_promotion: candidate.recurrence,
         promoted_at: Utc::now(),
     };

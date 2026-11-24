@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
-use crate::antigravity::config::{ensure_array_field, ensure_object_field, read_json_object};
+use crate::antigravity::config::{
+    ensure_array_field, ensure_object_field, merge_mcp_servers_json, read_json_object,
+};
 use crate::contract::HookEvent;
 use crate::sync::write_if_changed;
 
@@ -52,21 +54,7 @@ pub fn merge_settings_config(repo_root: &Path) -> Result<bool> {
 
 /// Non-destructively merges the `anvil mcp` server entry into root `.mcp.json`.
 pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
-    let path = mcp_config_path(repo_root);
-    let mut root = read_json_object(&path)?;
-
-    let servers = ensure_object_field(&mut root, "mcpServers")?;
-    servers.insert(
-        "anvil".to_owned(),
-        json!({
-            "command": "anvil",
-            "args": ["mcp"]
-        }),
-    );
-
-    let formatted = serde_json::to_string_pretty(&Value::Object(root))
-        .context("failed to serialize .mcp.json")?;
-    write_if_changed(&path, &format!("{formatted}\n"))
+    merge_mcp_servers_json(&mcp_config_path(repo_root), ".mcp.json")
 }
 
 fn upsert_claude_hook_entry(entries: &mut Vec<Value>, command: &str, use_matcher: bool) {

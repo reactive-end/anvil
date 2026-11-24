@@ -43,6 +43,9 @@ pub enum QaViolationKind {
     MobileFatalException,
     MobileAnr,
     RoborazziDiff,
+    Godot3dMissingCamera,
+    Godot3dMissingLighting,
+    GodotMissingCollisionShape,
 }
 
 impl QaViolationKind {
@@ -61,6 +64,9 @@ impl QaViolationKind {
             Self::MobileFatalException => "mobile_fatal_exception",
             Self::MobileAnr => "mobile_anr",
             Self::RoborazziDiff => "roborazzi_diff",
+            Self::Godot3dMissingCamera => "godot-3d-missing-camera",
+            Self::Godot3dMissingLighting => "godot-3d-missing-lighting",
+            Self::GodotMissingCollisionShape => "godot-missing-collision-shape",
         }
     }
 }
@@ -167,4 +173,11 @@ pub struct OnboardingPrompt {
     pub mobile_needed: bool,
     pub web_options: Vec<DriverOption>,
     pub mobile_options: Vec<DriverOption>,
+}
+
+/// Command specification returned by runner builders for deterministic testing and execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunnerCommand {
+    pub program: String,
+    pub args: Vec<String>,
 }

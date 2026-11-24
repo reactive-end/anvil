@@ -1,0 +1,313 @@
+//! LLM-curated task governance, conversational noise filtering, and title hygiene validation.
+
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Result, bail};
+use anvil_core::fs_util::with_file_lock;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+use crate::active::{
+    ACTIVE_TASK_LOCK_TIMEOUT_MS, ActiveTaskState, active_task_lock_path, hash_prompt,
+    load_active_task_unlocked, load_pending_prompt_unlocked, mark_summary_recorded_with_files,
+    pending_prompt_path, save_active_task_unlocked,
+};
+use crate::builder::build_root_tasks_json;
+use crate::identity::{resolve_author, resolve_author_fast};
+use crate::ledger::{append_entry_as, start_task_as, task_dir};
+use crate::model::{TaskEntry, TaskMeta, TaskStatus};
+use crate::{atomic_write_json, read_json_file};
+
+const MIN_PROMPT_CHARS: usize = 16;
+const MIN_TITLE_CHARS: usize = 10;
+const MAX_TITLE_CHARS: usize = 110;
+
+const CONVERSATIONAL_PREFIXES: &[&str] = &[
+    "como vamos",
+    "como va ",
+    "que tal",
+    "que solucionan",
+    "que hace",
+    "que es ",
+    "cual es",
+    "por que ",
+    "donde esta",
+    "explicame",
+    "dime ",
+    "cuentame",
+    "muestrame",
+    "analiza ",
+    "revisa y dime",
+    "sube estos cambios",
+    "sube los cambios",
+    "haz commit",
+    "haz push",
+    "hacer commit",
+    "hacer push",
+    "commit and push",
+    "push changes",
+    "si me gustaria",
+    "me gusta",
+    "me encanta",
+    "el primero esta",
+    "el segundo esta",
+    "ese sera",
+    "perfecto",
+    "excelente",
+    "de acuerdo",
+    "dale",
+    "procede",
+    "continua",
+    "siguele",
+    "how are we",
+    "how is ",
+    "what is ",
+    "what does",
+    "why does",
+    "where is",
+    "explain ",
+    "tell me ",
+    "show me ",
+    "status ",
+];
+
+const CHATTY_TITLE_PREFIXES: &[&str] = &[
+    "como vamos",
+    "como va ",
+    "oye ",
+    "hola ",
+    "por favor",
+    "podrias ",
+    "puedes ",
+    "quiero que",
+    "necesito que",
+    "me gustaria",
+    "si me gustaria",
+    "ayudame ",
+    "dime ",
+    "explicame",
+    "sube estos cambios",
+    "sube los cambios",
+    "haz commit",
+    "can you ",
+    "could you ",
+    "please ",
+    "i want ",
+    "i need ",
+    "how are we",
+];
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct UntrackedEdits {
+    files: Vec<String>,
+    first_edited_at: Option<DateTime<Utc>>,
+}
+
+/// Returns `.harness/.state/untracked-edits.json` (gitignored).
+pub fn untracked_edits_path(repo: &Path) -> PathBuf {
+    repo.join(".harness")
+        .join(".state")
+        .join("untracked-edits.json")
+}
+
+/// Returns `true` when a raw user message is empty, a slash command, a status question,
+/// a conversational reply, a pure git command, or too short to represent a standalone task.
+pub fn is_conversational_or_trivial_prompt(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('/')
+        || trimmed.chars().count() < MIN_PROMPT_CHARS
+        || trimmed.starts_with('¿')
+        || trimmed.ends_with('?')
+    {
+        return true;
+    }
+    if trimmed.split_whitespace().count() < 3 {
+        return true;
+    }
+    let folded = fold_spanish_lower(trimmed);
+    CONVERSATIONAL_PREFIXES
+        .iter()
+        .any(|prefix| folded == prefix.trim() || folded.starts_with(prefix))
+}
+
+/// Validates and normalizes an LLM-curated task title, rejecting raw chat messages and questions.
+pub fn validate_curated_task_title(raw: &str) -> Result<String> {
+    if raw.contains('\n') || raw.contains('\r') {
+        bail!("task title must be a single concise line");
+    }
+    let clean = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let char_count = clean.chars().count();
+    let word_count = clean.split_whitespace().count();
+    if !(MIN_TITLE_CHARS..=MAX_TITLE_CHARS).contains(&char_count) || !(3..=18).contains(&word_count)
+    {
+        bail!(
+            "rejected task title `{clean}`: must be 3-18 words ({MIN_TITLE_CHARS}-{MAX_TITLE_CHARS} chars), e.g. 'Reorganización visual del módulo X'"
+        );
+    }
+    if clean.starts_with('¿') || clean.ends_with('?') {
+        bail!("rejected task title `{clean}`: questions are not valid engineering task titles");
+    }
+    let folded = fold_spanish_lower(&clean);
+    if CHATTY_TITLE_PREFIXES.iter().any(|p| folded.starts_with(p)) {
+        bail!(
+            "rejected task title `{clean}`: looks like a raw chat message; synthesize a concise engineering title (e.g. 'Reorganización visual del módulo X') or use `task_skip`"
+        );
+    }
+    Ok(clean)
+}
+
+/// Tracks a mutated project file in `.harness/.state/` without auto-creating a task on disk.
+/// Returns `Ok(true)` only on the first untracked edit when no `InProgress` task is active.
+pub fn record_session_edit(repo: &Path, rel_path: &str) -> Result<bool> {
+    let norm = rel_path.trim().replace('\\', "/");
+    let norm = norm.strip_prefix("./").unwrap_or(&norm);
+    if norm.is_empty() || norm.starts_with(".harness/") || norm == "tasks.json" {
+        return Ok(false);
+    }
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        if let Some(mut active) = load_active_task_unlocked(repo)?
+            && !active.skipped
+            && active.status == TaskStatus::InProgress
+            && task_dir(repo, &active.task_id).join("meta.json").exists()
+        {
+            if !active.touched_files.iter().any(|f| f == norm) {
+                active.touched_files.push(norm.to_owned());
+                active.touched_files.sort();
+                save_active_task_unlocked(repo, &active)?;
+            }
+            return Ok(false);
+        }
+
+        let path = untracked_edits_path(repo);
+        let mut edits = if path.is_file() {
+            read_json_file::<UntrackedEdits>(&path).unwrap_or_default()
+        } else {
+            UntrackedEdits::default()
+        };
+        let was_empty = edits.files.is_empty();
+        if edits.first_edited_at.is_none() {
+            edits.first_edited_at = Some(Utc::now());
+        }
+        if !edits.files.iter().any(|f| f == norm) {
+            edits.files.push(norm.to_owned());
+            edits.files.sort();
+            atomic_write_json(&path, &edits)?;
+        }
+        Ok(was_empty)
+    })
+}
+
+/// Loads any untracked session edit paths recorded since the last task decision.
+pub fn load_untracked_edits(repo: &Path) -> Vec<String> {
+    let path = untracked_edits_path(repo);
+    if !path.is_file() {
+        return Vec::new();
+    }
+    read_json_file::<UntrackedEdits>(&path)
+        .map(|u| u.files)
+        .unwrap_or_default()
+}
+
+/// Removes `.harness/.state/untracked-edits.json` if present.
+pub fn clear_untracked_edits(repo: &Path) {
+    let _ = fs::remove_file(untracked_edits_path(repo));
+}
+
+/// Records an explicit LLM decision to skip task creation for minor tweaks/chores,
+/// updating only gitignored `.harness/.state/active-task.json` (`0` entries in `tasks.json`).
+pub fn record_task_skip(repo: &Path, reason: &str) -> Result<ActiveTaskState> {
+    let clean_reason = reason.trim();
+    if clean_reason.is_empty() {
+        bail!("skip reason must not be empty");
+    }
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        let now = Utc::now();
+        let prompt_hash = load_pending_prompt_unlocked(repo)?
+            .map_or_else(|| hash_prompt(clean_reason), |p| p.prompt_hash);
+        let state = ActiveTaskState {
+            task_id: "SKIPPED".to_owned(),
+            prompt_hash,
+            status: TaskStatus::Done,
+            summary_recorded_at: Some(now),
+            started_at: now,
+            touched_files: Vec::new(),
+            skipped: true,
+            skip_reason: Some(clean_reason.to_owned()),
+        };
+        save_active_task_unlocked(repo, &state)?;
+        let _ = fs::remove_file(pending_prompt_path(repo));
+        clear_untracked_edits(repo);
+        Ok(state)
+    })
+}
+
+/// Creates and records an LLM-curated task in a single step after validating `title`.
+pub fn record_curated_task(
+    repo: &Path,
+    title: &str,
+    summary: &str,
+    status: TaskStatus,
+    files: &[String],
+    author: Option<&str>,
+) -> Result<(TaskMeta, TaskEntry)> {
+    let clean_title = validate_curated_task_title(title)?;
+    let clean_summary = summary.trim();
+    if clean_summary.is_empty() {
+        bail!("task summary must not be empty");
+    }
+    let resolved_author = match author {
+        Some(a) => a.to_owned(),
+        None => resolve_author_fast(repo).or_else(|_| resolve_author(repo))?,
+    };
+    let merged_files = merge_session_files(repo, files);
+    let meta = start_task_as(repo, &resolved_author, &clean_title)?;
+    let entry = append_entry_as(
+        repo,
+        &meta.task_id,
+        &resolved_author,
+        status,
+        clean_summary,
+        &merged_files,
+    )?;
+    build_root_tasks_json(repo)?;
+    mark_summary_recorded_with_files(repo, &meta.task_id, status, &entry.files_touched)?;
+    clear_untracked_edits(repo);
+    Ok((meta, entry))
+}
+
+fn merge_session_files(repo: &Path, explicit: &[String]) -> Vec<String> {
+    if !explicit.is_empty() {
+        return explicit.to_vec();
+    }
+    let mut set: BTreeSet<String> = load_untracked_edits(repo).into_iter().collect();
+    if let Ok(changed) = anvil_core::git::changed_files(repo, anvil_core::git::DiffScope::WorkingTree)
+    {
+        for f in changed {
+            let norm = f.replace('\\', "/");
+            if !norm.is_empty() && !norm.starts_with(".harness/") && norm != "tasks.json" {
+                set.insert(norm);
+            }
+        }
+    }
+    set.into_iter().collect()
+}
+
+fn fold_spanish_lower(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars().flat_map(char::to_lowercase) {
+        let mapped = match ch {
+            'á' | 'à' | 'ä' | 'â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            'ñ' => 'n',
+            other => other,
+        };
+        out.push(mapped);
+    }
+    out
+}

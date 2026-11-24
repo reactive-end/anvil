@@ -1,16 +1,36 @@
-//! TypeScript (`tsgo` / `tsc`) incremental off-repo command builder and fallback runner.
+//! TypeScript (`tsgo` / `tsc` / `vue-tsc`) incremental off-repo command builder and fallback runner.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_local_or_path_bin;
+use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
 
 use super::typecheck_filter::filter_typecheck_output;
+
+/// Selects `vue-tsc --noEmit` when Vue files or a Vue dependency are present and `vue-tsc` is
+/// available; otherwise falls back to `build_ts_typecheck_command`.
+pub fn build_vue_or_ts_typecheck_command(
+    log_root: &Path,
+    work_dir: &Path,
+    impacted_files: &[String],
+) -> Option<(PathBuf, Vec<String>, &'static str)> {
+    let vue_applies = impacted_files.iter().any(|f| f.ends_with(".vue"))
+        || fs::read_to_string(work_dir.join("package.json"))
+            .is_ok_and(|s| s.contains("\"vue\""));
+    if vue_applies
+        && let Some(vue_tsc) = resolve_local_or_path_bin(work_dir, "vue-tsc")
+    {
+        return Some((vue_tsc, vec!["--noEmit".to_owned()], "vue-tsc"));
+    }
+    build_ts_typecheck_command(log_root, work_dir)
+}
 
 /// Builds a `tsgo`-first (falling back to `tsc`) `--noEmit --incremental` command targeting
 /// `<log_root>/.harness/.state/tsbuildinfo-<work_hash>.tsbuildinfo` so the repo stays clean.
@@ -46,7 +66,9 @@ pub(super) fn run_ts_typecheck(
     config: &AnvilConfig,
     impacted_files: &[String],
 ) -> Result<CompressedOutput> {
-    let Some((bin, args, tool_name)) = build_ts_typecheck_command(log_root, work_dir) else {
+    let Some((bin, args, tool_name)) =
+        build_vue_or_ts_typecheck_command(log_root, work_dir, impacted_files)
+    else {
         return Ok(CompressedOutput {
             tool: "tsc".to_owned(),
             passed: true,
@@ -59,8 +81,9 @@ pub(super) fn run_ts_typecheck(
         });
     };
 
+    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
     let label = format!("{tool_name} --noEmit");
-    let (mut code, mut combined) = match exec_command(&bin, &args, work_dir) {
+    let (mut code, mut combined) = match exec_command(&bin, &args, work_dir, timeout) {
         Ok(res) => res,
         Err(err) => {
             return compress_output(
@@ -76,7 +99,7 @@ pub(super) fn run_ts_typecheck(
 
     if code != 0 && is_incremental_rejected(&combined) {
         let fallback_args = ["--noEmit".to_owned()];
-        if let Ok(res) = exec_command(&bin, &fallback_args, work_dir) {
+        if let Ok(res) = exec_command(&bin, &fallback_args, work_dir, timeout) {
             code = res.0;
             combined = res.1;
         }
@@ -93,15 +116,21 @@ pub(super) fn run_ts_typecheck(
     )
 }
 
-fn exec_command(bin: &Path, args: &[String], work_dir: &Path) -> std::io::Result<(i32, String)> {
-    let output = Command::new(bin).args(args).current_dir(work_dir).output()?;
-    let code = output.status.code().unwrap_or(1);
+fn exec_command(
+    bin: &Path,
+    args: &[String],
+    work_dir: &Path,
+    timeout: Duration,
+) -> Result<(i32, String)> {
+    let mut cmd = Command::new(bin);
+    cmd.args(args).current_dir(work_dir);
+    let timed = run_command_with_timeout(&mut cmd, timeout)?;
     let combined = format!(
         "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&timed.stdout),
+        String::from_utf8_lossy(&timed.stderr)
     );
-    Ok((code, combined))
+    Ok((timed.status_code, combined))
 }
 
 fn is_incremental_rejected(output: &str) -> bool {

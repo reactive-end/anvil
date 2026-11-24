@@ -132,6 +132,7 @@ pub fn parse_npm_registry_json(package: &str, body: &str) -> Result<PackageHealt
         deprecation_message,
         archived: false,
         repository_url,
+        vulnerabilities: Vec::new(),
     })
 }
 

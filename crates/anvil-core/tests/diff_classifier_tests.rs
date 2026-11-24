@@ -98,3 +98,20 @@ fn style_classifier_never_bypasses_onclick_or_background_sync_calls() {
     assert_eq!(d3.primary_category, DiffCategory::StyleOnly);
     assert!(d3.skip_logic_tests);
 }
+
+#[test]
+fn vue_svelte_and_astro_classify_as_ui_or_style_only() {
+    for path in ["src/App.vue", "src/Page.svelte", "src/Layout.astro"] {
+        let ui = classify_files(&[ChangedFile::with_hunks(
+            path,
+            "@@ -1,2 +1,2 @@\n-<button>Old</button>\n+<button on:click={run}>New</button>\n",
+        )]);
+        assert_eq!(ui.primary_category, DiffCategory::Ui, "path={path}");
+
+        let style = classify_files(&[ChangedFile::with_hunks(
+            path,
+            "@@ -1,2 +1,2 @@\n-  color: #111;\n+  color: #222;\n",
+        )]);
+        assert_eq!(style.primary_category, DiffCategory::StyleOnly, "path={path}");
+    }
+}

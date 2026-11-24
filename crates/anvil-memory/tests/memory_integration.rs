@@ -4,7 +4,8 @@ use std::fs;
 use std::time::Instant;
 
 use anvil_core::traits::{FreshnessReport, FreshnessState, SymbolFreshnessProvider};
-use anvil_memory::{MemoryEngine, MemoryKind, ObservationInput};
+use anvil_memory::redactor::redact_text;
+use anvil_memory::{MemoryChunkRecord, MemoryEngine, MemoryKind, ObservationInput};
 use tempfile::TempDir;
 
 struct MockFreshnessProvider {
@@ -327,4 +328,101 @@ fn session_ttl_cleanup_removes_only_expired_sessions() {
     assert!(engine.get(&s1.id).expect("get s1").is_none());
     assert!(engine.get(&s2.id).expect("get s2").is_some());
     assert!(engine.get(&d1.id).expect("get d1").is_some());
+}
+
+#[test]
+fn chunk_sync_reingests_when_appended_or_modified_then_noops() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut engine = MemoryEngine::open(tmp.path(), "alice").expect("open");
+    let initial = engine
+        .save(sample_input(
+            MemoryKind::Decision,
+            "sync/appended-topic",
+            "Initial Chunk Title",
+            "Initial observation body",
+        ))
+        .expect("save initial");
+
+    let chunks_dir = tmp.path().join(".harness/memory/chunks");
+    let chunk_path = fs::read_dir(&chunks_dir)
+        .expect("read chunks")
+        .next()
+        .expect("one chunk")
+        .expect("entry")
+        .path();
+
+    let updated_record = MemoryChunkRecord {
+        id: initial.id.clone(),
+        topic_key: initial.topic_key.clone(),
+        kind: MemoryKind::Decision,
+        title: "Updated Chunk Title".to_owned(),
+        what: "Appended observation update".to_owned(),
+        why: initial.why.clone(),
+        location: initial.location.clone(),
+        learned: initial.learned.clone(),
+        related_files: vec![],
+        related_symbols: vec![],
+        author: "alice".to_owned(),
+        created_at: initial.created_at,
+        updated_at: initial.updated_at + 10,
+        expires_at: None,
+    };
+    let mut contents = fs::read_to_string(&chunk_path).expect("read chunk");
+    contents.push_str(&serde_json::to_string(&updated_record).expect("serialize update"));
+    contents.push('\n');
+    fs::write(&chunk_path, contents).expect("append to chunk");
+
+    let resync = engine.sync().expect("sync after append");
+    assert_eq!(resync.files_scanned, 1);
+    assert_eq!(resync.files_ingested, 1);
+    assert_eq!(resync.records_applied, 2);
+    let reloaded = engine
+        .get_by_topic("sync/appended-topic")
+        .expect("get")
+        .expect("exists");
+    assert_eq!(reloaded.title, "Updated Chunk Title");
+    assert_eq!(reloaded.what, "Appended observation update");
+
+    let noop = engine.sync().expect("second sync after update");
+    assert_eq!(noop.files_scanned, 1);
+    assert_eq!(noop.files_ingested, 0);
+    assert_eq!(noop.records_applied, 0);
+}
+
+#[test]
+fn redactor_redacts_pem_keys_userless_uris_stripe_slack_and_app_key() {
+    let rsa_pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA123456\n-----END RSA PRIVATE KEY-----";
+    let openssh_pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjE=\n-----END OPENSSH PRIVATE KEY-----";
+    let ec_pem = "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEI123456\n-----END EC PRIVATE KEY-----";
+
+    let raw = format!(
+        "{rsa_pem}\n{openssh_pem}\n{ec_pem}\n\
+         redis://:mysecret@127.0.0.1:6379\n\
+         amqps://:brokerpass@mq.internal:5672/vhost\n\
+         APP_KEY=base64:YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=\n\
+         stripe_a=sk_live_51N9xAbCdEfGhIjKlMnOpQrSt stripe_b=rk_live_51N9xAbCdEfGhIjKlMnOpQrSt\n\
+         slack_a=xoxb-1234567890-1234567890-AbCdEfGhIjKl slack_b=xoxp-1234567890-1234567890-AbCdEfGhIjKl"
+    );
+    let clean = redact_text(&raw);
+
+    for leaked in [
+        "MIIEowIBAAKCAQEA123456",
+        "b3BlbnNzaC1rZXktdjE=",
+        "MHcCAQEEI123456",
+        "mysecret",
+        "brokerpass",
+        "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=",
+        "sk_live_51N9xAbCdEfGhIjKlMnOpQrSt",
+        "rk_live_51N9xAbCdEfGhIjKlMnOpQrSt",
+        "xoxb-1234567890-1234567890-AbCdEfGhIjKl",
+        "xoxp-1234567890-1234567890-AbCdEfGhIjKl",
+    ] {
+        assert!(!clean.contains(leaked), "secret leaked: {leaked}\n{clean}");
+    }
+    assert_eq!(clean.matches("[REDACTED_PRIVATE_KEY]").count(), 3);
+    assert!(clean.contains("redis://:[REDACTED]@127.0.0.1:6379"));
+    assert!(clean.contains("amqps://:[REDACTED]@mq.internal:5672/vhost"));
+    assert!(clean.contains("APP_KEY=[REDACTED]"));
+    assert_eq!(clean.matches("[REDACTED_STRIPE_KEY]").count(), 2);
+    assert_eq!(clean.matches("[REDACTED_SLACK_TOKEN]").count(), 2);
 }

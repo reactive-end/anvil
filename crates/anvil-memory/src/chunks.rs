@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use anvil_core::fs_util::{atomic_write, sanitize_author};
 use chrono::Utc;
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 
 use crate::model::{MemoryChunkRecord, SyncStats};
 use crate::redactor;
@@ -36,7 +36,7 @@ struct PendingChunk {
     records: Vec<MemoryChunkRecord>,
 }
 
-/// Idempotently ingests all new `*.jsonl` chunks in a single SQLite transaction, skipping known files.
+/// Idempotently ingests new or modified `*.jsonl` chunks in a single SQLite transaction, skipping unchanged hashes.
 pub fn sync_chunks(chunks_dir: &Path, store: &mut MemoryStore) -> Result<SyncStats> {
     if !chunks_dir.exists() {
         return Ok(SyncStats::default());
@@ -44,8 +44,8 @@ pub fn sync_chunks(chunks_dir: &Path, store: &mut MemoryStore) -> Result<SyncSta
 
     let now_ms = Utc::now().timestamp_millis();
     let chunk_files = list_sorted_chunk_files(chunks_dir)?;
-    let ingested_names = store.ingested_chunk_filenames()?;
-    let pending = collect_pending_chunks(&chunk_files, &ingested_names, now_ms)?;
+    let ingested_hashes = store.ingested_chunk_hashes()?;
+    let pending = collect_pending_chunks(&chunk_files, &ingested_hashes, now_ms)?;
 
     let mut stats = SyncStats {
         files_scanned: chunk_files.len(),
@@ -93,7 +93,7 @@ fn list_sorted_chunk_files(chunks_dir: &Path) -> Result<Vec<PathBuf>> {
 
 fn collect_pending_chunks(
     files: &[PathBuf],
-    ingested_names: &FxHashSet<String>,
+    ingested_hashes: &FxHashMap<String, String>,
     now_ms: i64,
 ) -> Result<Vec<PendingChunk>> {
     let mut pending = Vec::new();
@@ -101,12 +101,12 @@ fn collect_pending_chunks(
         let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if ingested_names.contains(filename) {
-            continue;
-        }
         let bytes =
             fs::read(path).with_context(|| format!("failed to read chunk {}", path.display()))?;
         let hash = blake3::hash(&bytes).to_hex().to_string();
+        if ingested_hashes.get(filename).is_some_and(|h| h == &hash) {
+            continue;
+        }
         let records = parse_jsonl_records(&bytes, path, now_ms)?;
         pending.push(PendingChunk {
             filename: filename.to_owned(),

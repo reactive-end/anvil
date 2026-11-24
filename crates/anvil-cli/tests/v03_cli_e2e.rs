@@ -215,7 +215,29 @@ fn pre_tool_use_token_guard_blocks_unbounded_noise_read_and_warns_heavy_file() {
     );
     assert_eq!(serde_json::from_str::<Value>(&allow_out).unwrap()["decision"], json!("allow"));
 
-    // > 800-line source file is allowed with a queued advisory InboxMessage.
+    // Wide bounded read on a noise file (> 200 lines) is also blocked.
+    let wide_noise = json!({
+        "hookEventName": "PreToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": {
+            "toolName": "read_file",
+            "toolInput": { "path": "package-lock.json", "StartLine": 1, "EndLine": 50000 }
+        }
+    });
+    let wide_out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &wide_noise.to_string()),
+        "token guard deny wide noise read",
+    );
+    assert_eq!(serde_json::from_str::<Value>(&wide_out).unwrap()["decision"], json!("deny"));
+}
+
+#[test]
+fn pre_tool_use_token_guard_blocks_heavy_source_and_allows_bounded_slice() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    // > 800-line unbounded source file is denied with a compact graph outline suggestion.
     let heavy = (0..820).map(|i| format!("export const v{i} = {i};")).collect::<Vec<_>>().join("\n");
     fs::write(root.join("src/heavy.ts"), heavy).unwrap();
     let heavy_read = json!({
@@ -228,17 +250,30 @@ fn pre_tool_use_token_guard_blocks_unbounded_noise_read_and_warns_heavy_file() {
     });
     let heavy_out = assert_ok(
         &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &heavy_read.to_string()),
-        "token guard heavy file allow + warn",
+        "token guard deny unbounded heavy file",
     );
-    assert_eq!(serde_json::from_str::<Value>(&heavy_out).unwrap()["decision"], json!("allow"));
+    let heavy_json: Value = serde_json::from_str(&heavy_out).unwrap();
+    assert_eq!(heavy_json["decision"], json!("deny"));
+    assert!(heavy_json["reason"].as_str().unwrap_or("").contains("800 lines"));
 
-    let pre_inv = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy() });
-    let inv_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &pre_inv.to_string()),
-        "drain heavy file warning",
+    // Bounded <= 400-line slice on the same heavy file is allowed.
+    let bounded_heavy = json!({
+        "hookEventName": "PreToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": {
+            "toolName": "view_file",
+            "toolInput": {
+                "AbsolutePath": root.join("src/heavy.ts").to_string_lossy(),
+                "StartLine": 1,
+                "EndLine": 40
+            }
+        }
+    });
+    let bounded_heavy_out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &bounded_heavy.to_string()),
+        "token guard allow bounded heavy file",
     );
-    assert!(inv_out.contains("token-guard"));
-    assert!(inv_out.contains("800 lines"));
+    assert_eq!(serde_json::from_str::<Value>(&bounded_heavy_out).unwrap()["decision"], json!("allow"));
 }
 
 #[test]

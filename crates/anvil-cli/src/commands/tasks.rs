@@ -8,8 +8,9 @@ use anyhow::{Result, bail};
 use anvil_core::git::{self, DiffScope};
 use anvil_tasks::{
     TaskStatus, activate_task_from_meta, append_entry, append_entry_as, build_root_tasks_json,
-    list_tasks, load_active_task, mark_summary_recorded_with_files, resolve_author, resolve_merge,
-    start_task, start_task_as, write_task_plan,
+    clear_untracked_edits, list_tasks, load_active_task, load_untracked_edits,
+    mark_summary_recorded_with_files, record_curated_task, record_task_skip, resolve_author,
+    resolve_merge, start_task, start_task_as, validate_curated_task_title, write_task_plan,
 };
 
 use crate::cli::subcmds::TasksSubcmd;
@@ -18,6 +19,10 @@ use crate::cli::subcmds::TasksSubcmd;
 pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
     match sub {
         TasksSubcmd::Start { request, author } => cmd_start(root, &request.join(" "), author.as_deref()),
+        TasksSubcmd::Record { title, summary, status, files, author } => {
+            cmd_record(root, &title, &summary, parse_status(&status)?, &files, author.as_deref())
+        }
+        TasksSubcmd::Skip { reason } => cmd_skip(root, &reason.join(" ")),
         TasksSubcmd::Update { task_id, summary, status, files, author } => {
             cmd_append(root, &task_id, &summary, parse_status(&status)?, &files, author.as_deref())
         }
@@ -42,15 +47,44 @@ pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
 }
 
 fn cmd_start(root: &Path, request: &str, author: Option<&str>) -> Result<()> {
+    let clean_title = validate_curated_task_title(request)?;
     let meta = match author {
-        Some(a) => start_task_as(root, a, request)?,
-        None => start_task(root, request)?,
+        Some(a) => start_task_as(root, a, &clean_title)?,
+        None => start_task(root, &clean_title)?,
     };
     let consolidated = build_root_tasks_json(root)?;
     activate_task_from_meta(root, &meta)?;
     println!(
         "started task {} by {} (tasks.json total={})",
         meta.task_id, meta.created_by, consolidated.task_count
+    );
+    Ok(())
+}
+
+fn cmd_record(
+    root: &Path,
+    title: &str,
+    summary: &str,
+    status: TaskStatus,
+    files: &[String],
+    author: Option<&str>,
+) -> Result<()> {
+    let (meta, entry) = record_curated_task(root, title, summary, status, files, author)?;
+    println!(
+        "recorded task {} [{}] \"{}\" files={}",
+        meta.task_id,
+        entry.status,
+        meta.request,
+        entry.files_touched.len()
+    );
+    Ok(())
+}
+
+fn cmd_skip(root: &Path, reason: &str) -> Result<()> {
+    let state = record_task_skip(root, reason)?;
+    println!(
+        "skipped task creation: {}",
+        state.skip_reason.unwrap_or_default()
     );
     Ok(())
 }
@@ -70,6 +104,7 @@ fn cmd_append(
     };
     let consolidated = build_root_tasks_json(root)?;
     mark_summary_recorded_with_files(root, task_id, status, &entry.files_touched)?;
+    clear_untracked_edits(root);
     println!(
         "updated {} [{}] entry={} files={} (tasks.json total={})",
         task_id,
@@ -100,7 +135,7 @@ fn resolve_touched_files(root: &Path, task_id: &str, explicit: &[String]) -> Vec
     if !explicit.is_empty() {
         return explicit.to_vec();
     }
-    let mut set = BTreeSet::new();
+    let mut set: BTreeSet<String> = load_untracked_edits(root).into_iter().collect();
     if let Ok(Some(active)) = load_active_task(root)
         && active.task_id == task_id
     {

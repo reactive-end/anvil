@@ -4,6 +4,7 @@ pub mod router;
 mod schemas;
 pub mod tools_graph;
 pub mod tools_memory;
+pub mod tools_tasks;
 pub mod transport;
 
 use std::fs;

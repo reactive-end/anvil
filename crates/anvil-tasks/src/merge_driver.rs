@@ -14,7 +14,9 @@ use crate::model::{ConsolidatedTasksFile, TaskEntry, TaskMeta};
 use crate::{atomic_write_json, read_json_file};
 
 const GITATTR_ENTRY: &str = "tasks.json merge=anvil-tasks";
-const DEFAULT_DRIVER_CMD: &str = "anvil tasks merge-driver %O %A %B";
+/// Default Git merge driver command with POSIX `sh` fallback to `git merge-file`
+/// when `anvil` is unavailable on `PATH`.
+pub const DEFAULT_DRIVER_CMD: &str = "if command -v anvil >/dev/null 2>&1; then anvil tasks merge-driver %O %A %B; else git merge-file %A %O %B; fi";
 
 /// Installs `.gitattributes` and Git's `merge.anvil-tasks` driver in `repo`.
 pub fn install_git_merge_driver(repo: &Path) -> Result<()> {
@@ -191,5 +193,17 @@ fn merge_task_into(
         None => {
             map.insert(key, (meta, entries));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_driver_cmd_includes_git_merge_file_fallback() {
+        assert!(DEFAULT_DRIVER_CMD.contains("command -v anvil"));
+        assert!(DEFAULT_DRIVER_CMD.contains("anvil tasks merge-driver %O %A %B"));
+        assert!(DEFAULT_DRIVER_CMD.contains("git merge-file %A %O %B"));
     }
 }

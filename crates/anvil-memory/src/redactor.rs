@@ -17,9 +17,19 @@ fn private_block_re() -> Option<&'static Regex> {
         .as_ref()
 }
 
+fn pem_private_key_re() -> Option<&'static Regex> {
+    static RE: OnceLock<Option<Regex>> = OnceLock::new();
+    RE.get_or_init(|| {
+        compile_regex(
+            r"(?is)-----BEGIN [A-Z0-9 _-]*PRIVATE KEY-----.*?-----END [A-Z0-9 _-]*PRIVATE KEY-----",
+        )
+    })
+    .as_ref()
+}
+
 fn conn_password_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"(?i)([a-z][a-z0-9+.-]*://[^:/\s@]+:)([^@\s]+)(@)"))
+    RE.get_or_init(|| compile_regex(r"(?i)([a-z][a-z0-9+.-]*://[^:/\s@]*:)([^@\s]+)(@)"))
         .as_ref()
 }
 
@@ -57,6 +67,18 @@ fn gcp_key_re() -> Option<&'static Regex> {
         .as_ref()
 }
 
+fn stripe_key_re() -> Option<&'static Regex> {
+    static RE: OnceLock<Option<Regex>> = OnceLock::new();
+    RE.get_or_init(|| compile_regex(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b"))
+        .as_ref()
+}
+
+fn slack_token_re() -> Option<&'static Regex> {
+    static RE: OnceLock<Option<Regex>> = OnceLock::new();
+    RE.get_or_init(|| compile_regex(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"))
+        .as_ref()
+}
+
 fn api_key_prefix_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
     RE.get_or_init(|| compile_regex(r"\bsk-[A-Za-z0-9_\-]{20,}\b"))
@@ -67,7 +89,7 @@ fn secret_kv_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
     RE.get_or_init(|| {
         compile_regex(
-            r#"(?i)\b(aws_secret_access_key|api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd|pwd)\b(\s*[:=]\s*["']?)([^\s"'`,;]{4,})(["']?)"#,
+            r#"(?i)\b(aws_secret_access_key|app[_-]?key|api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd|pwd)\b(\s*[:=]\s*["']?)([^\s"'`,;]{4,})(["']?)"#,
         )
     })
     .as_ref()
@@ -87,12 +109,15 @@ fn apply_replace<'a>(text: Cow<'a, str>, re: Option<&Regex>, rep: &str) -> Cow<'
 pub fn redact_text(input: &str) -> String {
     let mut current: Cow<'_, str> = Cow::Borrowed(input);
     current = apply_replace(current, private_block_re(), "");
+    current = apply_replace(current, pem_private_key_re(), "[REDACTED_PRIVATE_KEY]");
     current = apply_replace(current, conn_password_re(), "${1}[REDACTED]${3}");
     current = apply_replace(current, bearer_re(), "Bearer [REDACTED_TOKEN]");
     current = apply_replace(current, jwt_re(), "[REDACTED_JWT]");
     current = apply_replace(current, github_token_re(), "[REDACTED_GITHUB_TOKEN]");
     current = apply_replace(current, aws_key_re(), "[REDACTED_AWS_KEY]");
     current = apply_replace(current, gcp_key_re(), "[REDACTED_GCP_KEY]");
+    current = apply_replace(current, stripe_key_re(), "[REDACTED_STRIPE_KEY]");
+    current = apply_replace(current, slack_token_re(), "[REDACTED_SLACK_TOKEN]");
     current = apply_replace(current, api_key_prefix_re(), "[REDACTED_API_KEY]");
     current = apply_replace(current, secret_kv_re(), "${1}${2}[REDACTED]${4}");
     current.into_owned()

@@ -201,6 +201,12 @@ fn dispatch_extractor(node: Node<'_>, state: &mut ExtractState<'_>) {
         Language::Dart => dart::visit_node(node, state),
         Language::Rust => rust::visit_node(node, state),
         Language::Php => php::visit_node(node, state),
-        Language::Json | Language::Yaml | Language::Markdown | Language::Other => {}
+        Language::GdScript
+        | Language::GodotScene
+        | Language::GdShader
+        | Language::Json
+        | Language::Yaml
+        | Language::Markdown
+        | Language::Other => {}
     }
 }

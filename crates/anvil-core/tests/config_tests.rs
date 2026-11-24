@@ -2,7 +2,7 @@ use anyhow::Result;
 use tempfile::TempDir;
 
 use anvil_core::config::{
-    AnvilConfig, MobileQaDriver, QaDriverConfig, StackKind, ToolKind, WebQaDriver,
+    AdapterTarget, AnvilConfig, MobileQaDriver, QaDriverConfig, StackKind, ToolKind, WebQaDriver,
 };
 use anvil_core::traits::Language;
 
@@ -92,5 +92,27 @@ fn config_load_strips_utf8_bom_and_kotlin_allowlist_populated() -> Result<()> {
     assert!(cfg.root_allowlist.iter().any(|x| x == "app"));
     assert!(cfg.root_allowlist.iter().any(|x| x == "gradlew.bat"));
     assert!(cfg.root_allowlist.iter().any(|x| x == "build.gradle.kts"));
+    Ok(())
+}
+
+#[test]
+fn adapter_target_parses_cursor_windsurf_codex() -> Result<()> {
+    let cursor = AdapterTarget::parse_cli("cursor")?.expect("cursor");
+    assert_eq!(cursor, AdapterTarget::Cursor);
+    assert!(cursor.includes_cursor());
+    assert!(!cursor.includes_windsurf());
+
+    let windsurf = AdapterTarget::parse_cli("Windsurf")?.expect("windsurf");
+    assert_eq!(windsurf, AdapterTarget::Windsurf);
+    assert!(windsurf.includes_windsurf());
+
+    let codex = AdapterTarget::parse_cli("CODEX")?.expect("codex");
+    assert_eq!(codex, AdapterTarget::Codex);
+    assert!(codex.includes_codex());
+
+    assert!(!AdapterTarget::All.includes_cursor());
+    assert!(!AdapterTarget::All.includes_windsurf());
+    assert!(!AdapterTarget::All.includes_codex());
+    assert!(AdapterTarget::parse_cli("unknown-ide").is_err());
     Ok(())
 }

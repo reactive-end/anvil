@@ -2,18 +2,20 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::{AnvilConfig, StackKind};
 use anvil_core::fs_util::resolve_local_or_path_bin;
+use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::stack_detector::detect_workspace;
 use anvil_core::traits::CompressedOutput;
 
 use crate::model::CodeGraph;
 
 pub use super::typecheck_filter::filter_typecheck_output;
-pub use super::typecheck_ts::build_ts_typecheck_command;
+pub use super::typecheck_ts::{build_ts_typecheck_command, build_vue_or_ts_typecheck_command};
 
 struct TypecheckCtx<'a> {
     log_root: &'a Path,
@@ -91,6 +93,14 @@ fn run_stacks_in_dir(
     if stacks.contains(&StackKind::FlutterDart) {
         run_ext_typecheck(ctx, ".dart", "dart", &["analyze"], results)?;
     }
+    run_native_stacks_in_dir(ctx, stacks, results)
+}
+
+fn run_native_stacks_in_dir(
+    ctx: &TypecheckCtx<'_>,
+    stacks: &[StackKind],
+    results: &mut Vec<CompressedOutput>,
+) -> Result<()> {
     if stacks.contains(&StackKind::Rust)
         && (ctx.impacted_files.is_empty() || ctx.impacted_files.iter().any(|f| f.ends_with(".rs")))
     {
@@ -124,6 +134,16 @@ fn run_stacks_in_dir(
                 .any(|f| f.ends_with(".php") && !f.ends_with(".blade.php")))
     {
         results.push(super::typecheck_php::run_php_typecheck(
+            ctx.log_root,
+            ctx.work_dir,
+            ctx.config,
+            ctx.impacted_files,
+        )?);
+    }
+    if stacks.contains(&StackKind::Godot)
+        && (ctx.impacted_files.is_empty() || ctx.impacted_files.iter().any(|f| f.ends_with(".gd")))
+    {
+        results.push(super::typecheck_godot::run_godot_check(
             ctx.log_root,
             ctx.work_dir,
             ctx.config,
@@ -182,6 +202,8 @@ fn is_ts_stack(stack: &StackKind) -> bool {
             | StackKind::Vite
             | StackKind::NextJs
             | StackKind::Astro
+            | StackKind::Vue
+            | StackKind::Svelte
             | StackKind::Angular
             | StackKind::NestJs
             | StackKind::ExpoReactNative
@@ -232,7 +254,10 @@ fn run_resolved_and_filter(
         });
     };
 
-    let output = match Command::new(&bin_path).args(args).current_dir(ctx.work_dir).output() {
+    let timeout = Duration::from_secs(ctx.config.tier_budgets.tier1_secs.max(5));
+    let mut cmd = Command::new(&bin_path);
+    cmd.args(args).current_dir(ctx.work_dir);
+    let timed = match run_command_with_timeout(&mut cmd, timeout) {
         Ok(out) => out,
         Err(err) => {
             return compress_output(
@@ -246,16 +271,15 @@ fn run_resolved_and_filter(
         }
     };
 
-    let code = output.status.code().unwrap_or(1);
     let combined = format!(
         "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&timed.stdout),
+        String::from_utf8_lossy(&timed.stderr)
     );
     filter_typecheck_output(
         Some(ctx.log_root),
         label,
-        code,
+        timed.status_code,
         &combined,
         ctx.impacted_files,
         ctx.config.tier_budgets.compressor_max_lines,

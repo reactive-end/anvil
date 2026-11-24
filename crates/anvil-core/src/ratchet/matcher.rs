@@ -34,6 +34,11 @@ fn matches_language(rel_path: &str, languages: &[String]) -> bool {
             "dart" => ext == "dart",
             "css" | "scss" => matches!(ext.as_str(), "css" | "scss"),
             "html" => matches!(ext.as_str(), "html" | "htm"),
+            "vue" => ext == "vue",
+            "svelte" => ext == "svelte",
+            "astro" => ext == "astro",
+            "php" => matches!(ext.as_str(), "php" | "phtml"),
+            "blade" => rel_path.to_ascii_lowercase().ends_with(".blade.php"),
             _ => false,
         }
     })
@@ -161,6 +166,50 @@ fn has_closing_single_quote(rest: &[u8]) -> bool {
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+pub(super) fn is_match_in_comment_or_string(line: &str, match_start: usize) -> bool {
+    let bytes = line.as_bytes();
+    let limit = match_start.min(bytes.len());
+    let mut i = 0usize;
+    let mut in_quote: Option<u8> = None;
+    let mut escaped = false;
+
+    while i < limit {
+        if let Some(q) = in_quote {
+            if escaped {
+                escaped = false;
+            } else if bytes[i] == b'\\' {
+                escaped = true;
+            } else if bytes[i] == q {
+                in_quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if bytes[i..].starts_with(b"//") || bytes[i..].starts_with(b"--") || bytes[i] == b'#' {
+            return true;
+        }
+        if bytes[i..].starts_with(b"/*") {
+            let Some(p) = bytes[i + 2..].windows(2).position(|w| w == b"*/") else {
+                return true;
+            };
+            let end = i + 4 + p;
+            if end > limit {
+                return true;
+            }
+            i = end;
+            continue;
+        }
+        if bytes[i] == b'"'
+            || bytes[i] == b'`'
+            || (bytes[i] == b'\'' && has_closing_single_quote(&bytes[i + 1..]))
+        {
+            in_quote = Some(bytes[i]);
+        }
+        i += 1;
+    }
+    in_quote.is_some()
 }
 
 pub(super) fn collect_repo_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {

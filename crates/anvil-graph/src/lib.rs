@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use anvil_core::config::AnvilConfig;
-use anvil_core::traits::CompressedOutput;
+use anvil_core::traits::{CompressedOutput, Diagnostic};
 
 use crate::analytics::{CommunitySummary, GodNode};
 use crate::builder::IncrementalStats;
@@ -204,6 +204,11 @@ impl CodeGraphEngine {
     /// Runs targeted test runners for `related_tests` via `anvil-core` compressor.
     pub fn run_impacted_tests(&self, related_tests: &[String]) -> Result<Vec<CompressedOutput>> {
         impact::run_impacted_tests(&self.repo_root, &self.config, related_tests)
+    }
+
+    /// Checks architecture boundary rules and optional import cycle constraints.
+    pub fn check_boundaries(&self, scope_files: &[String]) -> Vec<Diagnostic> {
+        impact::check_boundaries(&self.graph, &self.config, scope_files)
     }
 
     /// Computes communities and generates a compact `GRAPH_REPORT.md` string.

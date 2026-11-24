@@ -2,6 +2,7 @@
 
 pub mod active;
 pub mod builder;
+pub mod curate;
 pub mod identity;
 pub mod ledger;
 pub mod merge_driver;
@@ -23,6 +24,11 @@ pub use active::{
     record_touched_file, save_active_task,
 };
 pub use builder::build_root_tasks_json;
+pub use curate::{
+    clear_untracked_edits, is_conversational_or_trivial_prompt, load_untracked_edits,
+    record_curated_task, record_session_edit, record_task_skip, untracked_edits_path,
+    validate_curated_task_title,
+};
 pub use identity::{resolve_author, resolve_author_fast};
 pub use ledger::{
     append_entry, append_entry_as, list_tasks, start_task, start_task_as, write_task_plan,

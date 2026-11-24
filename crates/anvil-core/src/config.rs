@@ -14,6 +14,9 @@ pub enum AdapterTarget {
     All,
     Antigravity,
     Claude,
+    Cursor,
+    Windsurf,
+    Codex,
 }
 
 impl AdapterTarget {
@@ -24,7 +27,12 @@ impl AdapterTarget {
             "all" | "both" => Ok(Some(Self::All)),
             "antigravity" | "agy" => Ok(Some(Self::Antigravity)),
             "claude" | "claude_code" | "claude-code" => Ok(Some(Self::Claude)),
-            other => bail!("unsupported adapter target `{other}` (expected auto|all|antigravity|claude)"),
+            "cursor" => Ok(Some(Self::Cursor)),
+            "windsurf" => Ok(Some(Self::Windsurf)),
+            "codex" => Ok(Some(Self::Codex)),
+            other => bail!(
+                "unsupported adapter target `{other}` (expected auto|all|antigravity|claude|cursor|windsurf|codex)"
+            ),
         }
     }
 
@@ -35,6 +43,18 @@ impl AdapterTarget {
     pub fn includes_claude(self) -> bool {
         matches!(self, Self::All | Self::Claude)
     }
+
+    pub fn includes_cursor(self) -> bool {
+        matches!(self, Self::Cursor)
+    }
+
+    pub fn includes_windsurf(self) -> bool {
+        matches!(self, Self::Windsurf)
+    }
+
+    pub fn includes_codex(self) -> bool {
+        matches!(self, Self::Codex)
+    }
 }
 
 /// Supported project technology stacks detected in target repositories.
@@ -42,6 +62,8 @@ impl AdapterTarget {
 #[serde(rename_all = "snake_case")]
 pub enum StackKind {
     React,
+    Vue,
+    Svelte,
     Vite,
     NextJs,
     Astro,
@@ -55,6 +77,7 @@ pub enum StackKind {
     Rust,
     Php,
     Laravel,
+    Godot,
 }
 
 /// Supported linters, typecheckers, and QA tools detected in a repository.
@@ -65,6 +88,7 @@ pub enum ToolKind {
     Biome,
     Ruff,
     Tsc,
+    VueTsc,
     Pyright,
     Mypy,
     Ktlint,
@@ -84,6 +108,10 @@ pub enum ToolKind {
     PhpCsFixer,
     PhpUnit,
     Pest,
+    Godot,
+    GdLint,
+    GdUnit4,
+    Gut,
 }
 
 /// Configuration for a single repository or subrepo within a multi-repo workspace.
@@ -154,6 +182,16 @@ pub struct QaDriverConfig {
     pub mobile: MobileQaDriver,
 }
 
+/// Architecture boundary rule forbidding imports from `from_glob` into `forbid_glob`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoundaryRule {
+    pub name: String,
+    pub from_glob: String,
+    pub forbid_glob: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 /// Top-level `.harness/config.json` configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnvilConfig {
@@ -179,6 +217,10 @@ pub struct AnvilConfig {
     pub adapters: AdapterTarget,
     #[serde(default = "default_allowed_escapes")]
     pub allowed_escapes: Vec<String>,
+    #[serde(default)]
+    pub boundaries: Vec<BoundaryRule>,
+    #[serde(default)]
+    pub forbid_import_cycles: bool,
 }
 
 impl Default for AnvilConfig {
@@ -195,6 +237,8 @@ impl Default for AnvilConfig {
             qa_driver: QaDriverConfig::default(),
             adapters: AdapterTarget::default(),
             allowed_escapes: default_allowed_escapes(),
+            boundaries: Vec::new(),
+            forbid_import_cycles: false,
         }
     }
 }

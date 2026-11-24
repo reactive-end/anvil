@@ -24,7 +24,13 @@ pub fn language_for(lang: Language) -> Option<TsLanguage> {
         Language::Dart => Some(tree_sitter_dart::LANGUAGE.into()),
         Language::Rust => Some(tree_sitter_rust::LANGUAGE.into()),
         Language::Php => Some(tree_sitter_php::LANGUAGE_PHP.into()),
-        Language::Json | Language::Yaml | Language::Markdown | Language::Other => None,
+        Language::GdScript
+        | Language::GodotScene
+        | Language::GdShader
+        | Language::Json
+        | Language::Yaml
+        | Language::Markdown
+        | Language::Other => None,
     }
 }
 

@@ -140,3 +140,60 @@ fn detects_monorepo_subrepos_even_when_root_has_manifest() -> Result<()> {
     assert!(cfg.subrepos.iter().any(|s| s.path == "services/ml"));
     Ok(())
 }
+
+#[test]
+fn detects_vue_and_svelte_stacks_and_vue_tsc() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    write_file(
+        &root.join("vue-app/package.json"),
+        r#"{"dependencies":{"vue":"3.5.0"},"devDependencies":{"vue-tsc":"2.1.0"}}"#,
+    )?;
+    write_file(&root.join("vue-app/tsconfig.json"), "{}")?;
+
+    write_file(
+        &root.join("svelte-app/package.json"),
+        r#"{"dependencies":{"svelte":"5.0.0","@sveltejs/kit":"2.0.0"}}"#,
+    )?;
+
+    let det = detect_workspace(root)?;
+    assert!(det.is_multi_repo);
+    let vue_repo = det
+        .repos
+        .iter()
+        .find(|r| r.rel_path == "vue-app")
+        .expect("vue repo");
+    assert!(vue_repo.stacks.contains(&StackKind::Vue));
+    assert!(vue_repo.tools.contains(&ToolKind::VueTsc));
+
+    let svelte_repo = det
+        .repos
+        .iter()
+        .find(|r| r.rel_path == "svelte-app")
+        .expect("svelte repo");
+    assert!(svelte_repo.stacks.contains(&StackKind::Svelte));
+    Ok(())
+}
+
+#[test]
+fn detects_godot_stack_tools_and_allowlist() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    write_file(&root.join("project.godot"), "config_version=5\n")?;
+    write_file(&root.join(".gdlintrc.yaml"), "max-line-length: 100\n")?;
+    fs::create_dir_all(root.join("addons/gut"))?;
+    fs::create_dir_all(root.join("addons/gdUnit4"))?;
+
+    let det = detect_workspace(root)?;
+    let mut cfg = AnvilConfig::default();
+    det.apply_to_config(&mut cfg);
+    assert!(cfg.stacks.contains(&StackKind::Godot));
+    assert!(cfg.tools.contains(&ToolKind::Godot));
+    assert!(cfg.tools.contains(&ToolKind::GdLint));
+    assert!(cfg.tools.contains(&ToolKind::Gut));
+    assert!(cfg.tools.contains(&ToolKind::GdUnit4));
+    assert!(cfg.root_allowlist.iter().any(|x| x == "project.godot"));
+    Ok(())
+}

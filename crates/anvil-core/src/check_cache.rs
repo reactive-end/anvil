@@ -13,11 +13,21 @@ use crate::fs_util::{atomic_write, with_file_lock};
 
 const MAX_CACHE_ENTRIES: usize = 64;
 const LOCK_TIMEOUT_MS: u64 = 2_000;
-const ROOT_MANIFESTS: [&str; 4] = [
+const MANIFEST_FILES: [&str; 14] = [
     "Cargo.toml",
     "package.json",
     "pyproject.toml",
     "tsconfig.json",
+    "tsconfig.app.json",
+    "tsconfig.node.json",
+    "composer.json",
+    "phpstan.neon",
+    "phpstan.neon.dist",
+    "psalm.xml",
+    "pubspec.yaml",
+    "build.gradle.kts",
+    "build.gradle",
+    "project.godot",
 ];
 
 /// Cached result of a Tier 1 verification pass keyed by content-addressed scope hash.
@@ -36,20 +46,25 @@ struct CheckCacheStore {
 }
 
 /// Computes a deterministic `blake3` hex digest over sorted `(rel_path, blake3_bytes)` for
-/// `scope_files`, root manifests (`tsconfig.json`, `Cargo.toml`, `package.json`, `pyproject.toml`),
-/// and `extra_salt`.
+/// `scope_files`, root manifests, `.harness/rules/*.json`, and `extra_salt`.
 pub fn compute_scope_key(
     repo_root: &Path,
     scope_files: &[String],
     extra_salt: &str,
 ) -> Result<String> {
-    let mut normalized = BTreeSet::new();
-    for raw in scope_files {
-        let norm = normalize_rel_path(raw);
-        if !norm.is_empty() {
-            normalized.insert(norm);
-        }
-    }
+    compute_scope_key_with_subrepos(repo_root, scope_files, &[], extra_salt)
+}
+
+/// Computes a deterministic `blake3` hex digest over sorted `(rel_path, blake3_bytes)` for
+/// `scope_files`, root manifests, subrepo manifests, promoted ratchet rules, and `extra_salt`.
+pub fn compute_scope_key_with_subrepos(
+    repo_root: &Path,
+    scope_files: &[String],
+    subrepo_paths: &[String],
+    extra_salt: &str,
+) -> Result<String> {
+    let normalized = normalize_set(scope_files);
+    let subrepos = normalize_subrepos(subrepo_paths);
 
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"anvil-tier1-cache-v1\0salt:");
@@ -59,11 +74,57 @@ pub fn compute_scope_key(
     for rel in &normalized {
         hash_named_file(&mut hasher, b"file:", repo_root, rel)?;
     }
-    for manifest in ROOT_MANIFESTS {
+    for manifest in MANIFEST_FILES {
         hash_named_file(&mut hasher, b"manifest:", repo_root, manifest)?;
     }
+    for sub in &subrepos {
+        for manifest in MANIFEST_FILES {
+            let sub_manifest = format!("{sub}/{manifest}");
+            hash_named_file(&mut hasher, b"submanifest:", repo_root, &sub_manifest)?;
+        }
+    }
+    hash_ratchet_rules(&mut hasher, repo_root)?;
 
     Ok(hasher.finalize().to_hex().to_string())
+}
+
+fn normalize_set(paths: &[String]) -> BTreeSet<String> {
+    paths
+        .iter()
+        .map(|raw| normalize_rel_path(raw))
+        .filter(|norm| !norm.is_empty())
+        .collect()
+}
+
+fn normalize_subrepos(subrepo_paths: &[String]) -> BTreeSet<String> {
+    subrepo_paths
+        .iter()
+        .map(|raw| normalize_rel_path(raw).trim_end_matches('/').to_owned())
+        .filter(|norm| !norm.is_empty() && norm != ".")
+        .collect()
+}
+
+fn hash_ratchet_rules(hasher: &mut blake3::Hasher, repo_root: &Path) -> Result<()> {
+    let rules_dir = repo_root.join(".harness").join("rules");
+    if !rules_dir.is_dir() {
+        return Ok(());
+    }
+    let mut names: Vec<String> = fs::read_dir(&rules_dir)
+        .with_context(|| format!("failed to read {}", rules_dir.display()))?
+        .flatten()
+        .filter(|entry| {
+            let path = entry.path();
+            entry.file_type().is_ok_and(|ft| ft.is_file())
+                && path.extension().and_then(|e| e.to_str()) == Some("json")
+        })
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    for name in names {
+        let rel = format!(".harness/rules/{name}");
+        hash_named_file(hasher, b"rule:", repo_root, &rel)?;
+    }
+    Ok(())
 }
 
 /// Looks up a previously stored Tier 1 result by `key`.

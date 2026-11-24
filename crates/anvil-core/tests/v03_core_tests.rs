@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use anvil_core::check_cache::{CachedTier1, compute_scope_key, lookup, store};
+use anvil_core::check_cache::{
+    CachedTier1, compute_scope_key, compute_scope_key_with_subrepos, lookup, store,
+};
 use anvil_core::diff_grep::{compress_diff, compressed_grep, is_noise_file};
 use anvil_core::stats::{StatsEvent, estimate_tokens, load_stats, record_event, reset_stats};
 use anvil_core::traits::{EdgeKind, SymbolDef, SymbolKind};
@@ -70,6 +72,37 @@ fn check_cache_hits_and_invalidates_on_edit() {
     )
     .expect("compute key after manifest edit");
     assert_ne!(k2, k3);
+}
+
+#[test]
+fn check_cache_with_subrepos_invalidates_on_subrepo_manifests_and_rules() {
+    let tmp = TempDir::new().expect("tempdir");
+    let root = tmp.path();
+    let files = vec!["apps/web/src/App.vue".to_owned()];
+    let subrepos = vec![".".to_owned(), "apps/web".to_owned(), "services/api/".to_owned()];
+
+    let base = compute_scope_key_with_subrepos(root, &files, &subrepos, "salt")
+        .expect("compute base subrepo key");
+
+    write_file(root, "apps/web/tsconfig.app.json", b"{\"strict\":true}\n");
+    let after_ts = compute_scope_key_with_subrepos(root, &files, &subrepos, "salt")
+        .expect("key after tsconfig.app.json");
+    assert_ne!(base, after_ts);
+
+    write_file(root, "services/api/phpstan.neon", b"parameters:\n  level: 8\n");
+    let after_phpstan = compute_scope_key_with_subrepos(root, &files, &subrepos, "salt")
+        .expect("key after phpstan.neon");
+    assert_ne!(after_ts, after_phpstan);
+
+    write_file(root, ".harness/rules/r1.json", b"{\"id\":\"r1\"}\n");
+    let after_rule_add = compute_scope_key_with_subrepos(root, &files, &subrepos, "salt")
+        .expect("key after rule add");
+    assert_ne!(after_phpstan, after_rule_add);
+
+    write_file(root, ".harness/rules/r1.json", b"{\"id\":\"r1\",\"v\":2}\n");
+    let after_rule_edit = compute_scope_key_with_subrepos(root, &files, &subrepos, "salt")
+        .expect("key after rule edit");
+    assert_ne!(after_rule_add, after_rule_edit);
 }
 
 #[test]
@@ -252,4 +285,37 @@ fn traits_symbol_def_and_route_edges_serde_compat() {
     let exposes = serde_json::to_string(&EdgeKind::ExposesRoute).expect("serialize ExposesRoute");
     let calls = serde_json::to_string(&EdgeKind::CallsRoute).expect("serialize CallsRoute");
     assert_eq!((exposes.as_str(), calls.as_str()), ("\"exposes_route\"", "\"calls_route\""));
+}
+
+#[test]
+fn godot_parser_log_rotation_and_tier0_cache_work() {
+    let tmp = TempDir::new().expect("tempdir");
+    let root = tmp.path();
+
+    let raw = "Godot Engine v4.3.stable\nSCRIPT ERROR: Parse Error: Identifier not found\n   at: GDScript::reload (res://player.gd:12)\n";
+    let compressed = anvil_core::compressor::compress_output(Some(root), "godot --headless --check-only", 1, raw, 50, 1200)
+        .expect("compress godot output");
+    assert!(!compressed.passed);
+    assert_eq!(compressed.tool, "godot");
+    assert!(compressed.lines.iter().any(|l| l.contains("SCRIPT ERROR:")));
+
+    for i in 0..54 {
+        let _ = anvil_core::compressor::compress_output(Some(root), "godot", 1, &format!("ERROR: {i}"), 50, 1200);
+    }
+    let log_count = fs::read_dir(root.join(".harness/.state/logs")).expect("logs dir").count();
+    assert_eq!(log_count, 50, "raw logs should rotate at max 50");
+
+    write_file(root, "src/ok.ts", b"export const a: number = 1;\n");
+    let cfg = anvil_core::config::AnvilConfig::default();
+    let rules_hash = anvil_core::tier0_cache::compute_rules_hash(root, &cfg);
+    let mut cache = anvil_core::tier0_cache::Tier0Cache::load(root);
+    assert!(!cache.is_clean_hit(&root.join("src/ok.ts"), "src/ok.ts", &rules_hash));
+    cache.record_clean(&root.join("src/ok.ts"), "src/ok.ts", &rules_hash);
+    cache.save(root).expect("save tier0 cache");
+
+    let reloaded = anvil_core::tier0_cache::Tier0Cache::load(root);
+    assert!(reloaded.is_clean_hit(&root.join("src/ok.ts"), "src/ok.ts", &rules_hash));
+    assert!(!reloaded.is_clean_hit(&root.join("src/ok.ts"), "src/ok.ts", "different-hash"));
+    assert!(is_noise_file(".godot/imported/icon.ctex"));
+    assert!(is_noise_file("assets/hero.png.import"));
 }

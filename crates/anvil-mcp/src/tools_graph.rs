@@ -1,13 +1,20 @@
-//! MCP tool handlers for `anvil-graph`: impact, origin, query, path, explain, read_symbol, outline.
+//! MCP tool handlers for `anvil-graph`: impact, origin, query, path, explain, read_symbol, outline, context_pack.
+
+use std::collections::HashSet;
 
 use anyhow::{Context, Result, bail};
 use anvil_core::git::{self, DiffScope};
-use anvil_core::stats::{StatsEvent, record_event};
+use anvil_core::stats::{StatsEvent, estimate_tokens, record_event};
+use anvil_graph::CodeGraphEngine;
+use anvil_graph::query::{ExplainResult, FileOutline};
+use anvil_memory::MemoryEngine;
+use anvil_memory::model::SearchHit;
+use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::McpServer;
 
-/// Dispatches a `graph_*` MCP tool call using the server's cached/fresh code graph.
+/// Dispatches a `graph_*` or `context_pack` MCP tool call using the server's cached/fresh code graph.
 pub fn call_graph_tool(server: &mut McpServer, name: &str, args: &Value) -> Result<Value> {
     match name {
         "graph_impact" => handle_impact(server, args),
@@ -17,6 +24,7 @@ pub fn call_graph_tool(server: &mut McpServer, name: &str, args: &Value) -> Resu
         "graph_explain" => handle_explain(server, args),
         "graph_read_symbol" => handle_read_symbol(server, args),
         "graph_outline" => handle_outline(server, args),
+        "context_pack" => handle_context_pack(server, args),
         _ => bail!("unknown graph tool: {name}"),
     }
 }
@@ -144,6 +152,149 @@ fn handle_outline(server: &mut McpServer, args: &Value) -> Result<Value> {
         );
     }
     Ok(json!({ "outline": outline }))
+}
+
+#[derive(Serialize)]
+struct ContextPacket {
+    targets: Vec<String>,
+    resolved_files: Vec<String>,
+    outlines: Vec<FileOutline>,
+    edges: Vec<String>,
+    memories: Vec<SearchHit>,
+    related_tests: Vec<String>,
+    estimated_tokens: u64,
+}
+
+struct GraphContext {
+    resolved_files: Vec<String>,
+    outlines: Vec<FileOutline>,
+    edges: Vec<String>,
+    related_tests: Vec<String>,
+}
+
+fn handle_context_pack(server: &mut McpServer, args: &Value) -> Result<Value> {
+    let targets = string_array_arg(args, "targets");
+    if targets.is_empty() {
+        bail!("context_pack requires non-empty `targets` array");
+    }
+    let max_tokens = args
+        .get("max_tokens")
+        .and_then(Value::as_u64)
+        .map_or(1200, |m| m.clamp(200, 8000) as usize);
+
+    let graph_ctx = collect_graph_context(server.ensure_graph()?, &targets, max_tokens);
+    let memories = collect_memory_context(server.ensure_memory()?, &targets)?;
+    let mut packet = ContextPacket {
+        targets,
+        resolved_files: graph_ctx.resolved_files,
+        outlines: graph_ctx.outlines,
+        edges: graph_ctx.edges,
+        memories,
+        related_tests: graph_ctx.related_tests,
+        estimated_tokens: 0,
+    };
+    fit_packet_to_budget(&mut packet, max_tokens)?;
+    Ok(serde_json::to_value(&packet)?)
+}
+
+fn collect_graph_context(
+    engine: &CodeGraphEngine,
+    targets: &[String],
+    max_tokens: usize,
+) -> GraphContext {
+    let mut resolved_files = Vec::new();
+    let mut seen_files = HashSet::new();
+    let mut edges = Vec::new();
+    let mut seen_edges = HashSet::new();
+
+    for target in targets {
+        let explained = engine.explain(target);
+        if engine.graph.file_hashes.contains_key(target) {
+            push_unique(&mut resolved_files, &mut seen_files, target.clone());
+        } else if let Some(ref exp) = explained {
+            push_unique(&mut resolved_files, &mut seen_files, exp.node.file.clone());
+        }
+        if let Some(ref exp) = explained {
+            push_explain_edges(exp, &mut edges, &mut seen_edges);
+        }
+    }
+
+    let blast = engine.blast_radius(&resolved_files, 1);
+    let outline_budget = (max_tokens / 3).max(150);
+    let mut outlines = Vec::new();
+    for file in resolved_files.iter().take(5) {
+        outlines.extend(engine.outline(Some(file), outline_budget).files);
+    }
+
+    GraphContext {
+        resolved_files,
+        outlines,
+        edges,
+        related_tests: blast.related_tests,
+    }
+}
+
+fn push_explain_edges(exp: &ExplainResult, edges: &mut Vec<String>, seen: &mut HashSet<String>) {
+    for inc in exp.incoming.iter().take(4) {
+        let entry = format!("<- {:?} {} ({}:{})", inc.kind, inc.node_id, inc.file, inc.line);
+        push_unique(edges, seen, entry);
+    }
+    for out in exp.outgoing.iter().take(4) {
+        let entry = format!("-> {:?} {} ({}:{})", out.kind, out.node_id, out.file, out.line);
+        push_unique(edges, seen, entry);
+    }
+}
+
+fn push_unique(items: &mut Vec<String>, seen: &mut HashSet<String>, value: String) {
+    if seen.insert(value.clone()) {
+        items.push(value);
+    }
+}
+
+fn collect_memory_context(mem: &MemoryEngine, targets: &[String]) -> Result<Vec<SearchHit>> {
+    let mut hits = Vec::new();
+    let mut seen_ids = HashSet::new();
+    for target in targets {
+        for hit in mem.search(target, None, 2)? {
+            if seen_ids.insert(hit.id.clone()) {
+                hits.push(hit);
+                if hits.len() >= 6 {
+                    return Ok(hits);
+                }
+            }
+        }
+    }
+    Ok(hits)
+}
+
+fn fit_packet_to_budget(packet: &mut ContextPacket, max_tokens: usize) -> Result<()> {
+    loop {
+        let tokens = estimate_tokens(serde_json::to_string(packet)?.len());
+        if tokens as usize <= max_tokens {
+            packet.estimated_tokens = tokens;
+            return Ok(());
+        }
+        let trimmed = packet.edges.pop().is_some()
+            || packet.memories.pop().is_some()
+            || packet.related_tests.pop().is_some()
+            || shrink_one_outline(&mut packet.outlines);
+        if !trimmed {
+            packet.estimated_tokens = tokens;
+            return Ok(());
+        }
+    }
+}
+
+fn shrink_one_outline(outlines: &mut Vec<FileOutline>) -> bool {
+    let Some(last) = outlines.last_mut() else {
+        return false;
+    };
+    if last.symbols.len() > 1 {
+        last.symbols.pop();
+    } else {
+        outlines.pop();
+    }
+    true
 }
 
 fn required_str<'a>(args: &'a Value, key: &str) -> Result<&'a str> {

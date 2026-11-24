@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::fs_util::relativize_path;
 use crate::traits::{Diagnostic, Severity};
 
-use super::matcher::{collect_repo_files, is_suppressed, matches_target};
+use super::matcher::{
+    collect_repo_files, is_match_in_comment_or_string, is_suppressed, matches_target,
+};
 use super::{MAX_RUNTIME_MS, PromotedRule, list_rules, load_candidate};
 
 const MAX_SCAN_FILE_BYTES: u64 = 512 * 1024;
@@ -51,6 +53,8 @@ struct CompiledRule {
     file_globs: Vec<String>,
     languages: Vec<String>,
     severity: Severity,
+    multiline: bool,
+    match_comments_and_strings: bool,
     regex: Regex,
 }
 
@@ -88,6 +92,8 @@ pub fn compile_promoted_rules(rules: &[PromotedRule]) -> CompiledPromotedRules {
             file_globs: rule.file_globs.clone(),
             languages: rule.languages.clone(),
             severity: rule.severity.unwrap_or(Severity::Warning),
+            multiline: rule.multiline || pat.starts_with("(?s)") || pat.contains("\\n"),
+            match_comments_and_strings: rule.match_comments_and_strings,
             regex,
         });
     }
@@ -114,28 +120,76 @@ pub fn evaluate_compiled(
     let lines: Vec<&str> = source.lines().collect();
     let mut diagnostics = Vec::new();
     for rule in matching {
-        for (idx, line) in lines.iter().enumerate() {
-            let Some(m) = rule.regex.find(line) else {
-                continue;
-            };
-            if is_suppressed(&lines, idx, &rule.id, &rule.rule_name) {
-                continue;
-            }
-            diagnostics.push(Diagnostic {
-                rule: rule.rule_name.clone(),
-                severity: rule.severity,
-                file: norm_path.clone(),
-                line: (idx + 1) as u32,
-                column: (m.start() + 1) as u32,
-                message: rule.description.clone(),
-                suggestion: Some(format!(
-                    "Remove or suppress with `anvil-allow({}): <reason>`",
-                    rule.id
-                )),
-            });
+        if rule.multiline {
+            eval_multiline_rule(rule, &norm_path, source, &lines, &mut diagnostics);
+        } else {
+            eval_single_line_rule(rule, &norm_path, &lines, &mut diagnostics);
         }
     }
     diagnostics
+}
+
+fn eval_multiline_rule(
+    rule: &CompiledRule,
+    norm_path: &str,
+    source: &str,
+    lines: &[&str],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for m in rule.regex.find_iter(source) {
+        let prefix = &source[..m.start()];
+        let line_idx = prefix.bytes().filter(|&b| b == b'\n').count();
+        let line_start = prefix.rfind('\n').map_or(0, |p| p + 1);
+        let col = (m.start() - line_start + 1) as u32;
+        if line_idx < lines.len() && is_suppressed(lines, line_idx, &rule.id, &rule.rule_name) {
+            continue;
+        }
+        diagnostics.push(build_diagnostic(
+            rule,
+            norm_path,
+            (line_idx + 1) as u32,
+            col,
+        ));
+    }
+}
+
+fn eval_single_line_rule(
+    rule: &CompiledRule,
+    norm_path: &str,
+    lines: &[&str],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for (idx, line) in lines.iter().enumerate() {
+        if is_suppressed(lines, idx, &rule.id, &rule.rule_name) {
+            continue;
+        }
+        for m in rule.regex.find_iter(line) {
+            if !rule.match_comments_and_strings && is_match_in_comment_or_string(line, m.start()) {
+                continue;
+            }
+            diagnostics.push(build_diagnostic(
+                rule,
+                norm_path,
+                (idx + 1) as u32,
+                (m.start() + 1) as u32,
+            ));
+        }
+    }
+}
+
+fn build_diagnostic(rule: &CompiledRule, norm_path: &str, line: u32, column: u32) -> Diagnostic {
+    Diagnostic {
+        rule: rule.rule_name.clone(),
+        severity: rule.severity,
+        file: norm_path.to_owned(),
+        line,
+        column,
+        message: rule.description.clone(),
+        suggestion: Some(format!(
+            "Remove or suppress with `anvil-allow({}): <reason>`",
+            rule.id
+        )),
+    }
 }
 
 /// Evaluates `rules` against a single file's `source`, honoring `anvil-allow(<rule_id>):`.

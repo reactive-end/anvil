@@ -1,8 +1,10 @@
 //! Embedded `tree-sitter` AST parsing, symbol/edge extraction, and Tier 0 rules.
 
 pub mod extractors;
+pub mod godot;
 pub mod parser;
 pub mod rules;
+pub mod sfc;
 
 use std::path::Path;
 
@@ -40,6 +42,9 @@ pub fn detect_language(path: &Path) -> Language {
         "dart" => Language::Dart,
         "rs" => Language::Rust,
         "php" => Language::Php,
+        "gd" => Language::GdScript,
+        "tscn" | "tres" => Language::GodotScene,
+        "gdshader" => Language::GdShader,
         "json" => Language::Json,
         "yaml" | "yml" => Language::Yaml,
         "md" | "mdx" => Language::Markdown,
@@ -50,9 +55,27 @@ pub fn detect_language(path: &Path) -> Language {
 /// Parses `source` ONCE with a thread-local `tree-sitter` parser and extracts
 /// symbols, dependency edges, and Tier 0 diagnostics in a single AST walk.
 pub fn analyze_file(path: &Path, source: &str, config: &AnvilConfig) -> Result<FileAstFacts> {
-    let language = detect_language(path);
     let blake3_hash = blake3::hash(source.as_bytes()).to_hex().to_string();
     let normalized_file = normalize_path(path);
+    if sfc::is_sfc_path(path) {
+        return sfc::analyze_sfc(path, &normalized_file, source, blake3_hash, config);
+    }
+
+    let language = detect_language(path);
+    if matches!(
+        language,
+        Language::GdScript | Language::GodotScene | Language::GdShader
+    ) {
+        return Ok(godot::analyze_godot(
+            path,
+            &normalized_file,
+            source,
+            blake3_hash,
+            language,
+            config,
+        ));
+    }
+
     let tree = parser::parse_source(language, source)?;
 
     Ok(extractors::collect_file_facts(

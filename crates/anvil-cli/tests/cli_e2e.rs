@@ -237,41 +237,51 @@ fn cli_hands_free_task_tracking_hooks_e2e() {
     Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
     Command::new("git").args(["commit", "-m", "initial"]).current_dir(root).output().unwrap();
 
-    // Prompt hook records pending prompt lazily without creating a task on disk yet.
-    let prompt1 = json!({ "hook_event_name": "UserPromptSubmit", "cwd": root.to_string_lossy(), "prompt": "Implement automatic task tracking" });
-    assert_ok(&run_anvil_stdin(root, &["hook", "user-prompt-submit", "--adapter", "claude"], &prompt1.to_string()), "prompt1");
+    // 1. Conversational status prompt + trivial 1-file edit (<= 12 lines) NEVER creates a task or blocks Stop!
+    let status_prompt = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "cwd": root.to_string_lossy(),
+        "prompt": "Como vamos con tal proceso"
+    });
+    assert_ok(&run_anvil_stdin(root, &["hook", "user-prompt-submit", "--adapter", "claude"], &status_prompt.to_string()), "status prompt");
+    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 3;\n}\n").unwrap();
+    let _ = fire_claude_edit(root, "src/core.ts");
+    assert!(anvil_tasks::list_tasks(root).unwrap().is_empty(), "PostToolUse must never auto-create raw-chat tasks");
+
+    let stop_req = json!({ "hook_event_name": "Stop", "cwd": root.to_string_lossy() });
+    let trivial_stop: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "trivial stop")).unwrap();
+    assert_ne!(trivial_stop["decision"], json!("block"), "trivial <=12-line 1-file edit must not block Stop");
     assert!(anvil_tasks::list_tasks(root).unwrap().is_empty());
 
-    // First mutating PostToolUse materializes the task lazily and records the touched file.
-    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 3;\n}\n").unwrap();
-    let json1 = fire_claude_edit(root, "src/core.ts");
-    let ctx1 = json1["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
-    assert!(ctx1.contains("Auto-registered task T-"));
-    let task_id1 = ctx1.split_whitespace().find(|t| t.starts_with("T-")).unwrap().trim_end_matches('.').to_owned();
+    // 2. Substantive multi-file edit triggers LLM curation prompt at Stop (without writing raw prompt to tasks.json).
+    fs::write(root.join("src/page.tsx"), "export function Page(): string {\n  return 'reorganized';\n}\n").unwrap();
+    let _ = fire_claude_edit(root, "src/page.tsx");
+    assert!(anvil_tasks::list_tasks(root).unwrap().is_empty());
 
-    // Follow-up prompt reuses the same in-progress task without creating a duplicate.
-    let prompt2 = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy(), "lastUserInput": "Also add edge case checks" });
-    let out2 = assert_ok(&run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt2.to_string()), "prompt2");
-    assert_eq!(serde_json::from_str::<Value>(&out2).unwrap(), json!({}));
-
-    // Stop blocks once until `anvil tasks done` is recorded.
-    let stop_req = json!({ "hook_event_name": "Stop", "cwd": root.to_string_lossy() });
-    let blocked: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "stop1")).unwrap();
+    let blocked: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "substantive stop")).unwrap();
     assert_eq!(blocked["decision"], json!("block"));
-    assert!(blocked["reason"].as_str().unwrap().contains(&format!("anvil tasks done {task_id1}")));
+    assert!(blocked["reason"].as_str().unwrap().contains("task_record"));
 
-    assert_ok(&run_anvil(root, &["tasks", "done", &task_id1, "Updated compute multiplier"]), "tasks done");
-    let ok_json: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "stop2")).unwrap();
-    assert!(ok_json["systemMessage"].as_str().unwrap().contains("1 impacted file(s)"));
+    // Chatty title is rejected; clean curated title succeeds and satisfies Stop.
+    let bad_rec = run_anvil(root, &["tasks", "record", "Oye podrias reorganizar la pagina?", "Cambios visuales"]);
+    assert!(!bad_rec.status.success(), "chatty task title must be rejected");
 
-    // Next prompt after Done stays lazy until a file is actually edited.
-    let prompt3 = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy(), "lastUserInput": "Add unit tests for page module" });
-    assert_ok(&run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt3.to_string()), "prompt3");
+    assert_ok(
+        &run_anvil(root, &["tasks", "record", "Reorganización visual del módulo principal", "Reestructurados componentes core.ts y page.tsx"]),
+        "tasks record clean title",
+    );
     assert_eq!(anvil_tasks::list_tasks(root).unwrap().len(), 1);
+    let ok_stop: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "stop after record")).unwrap();
+    assert_ne!(ok_stop["decision"], json!("block"));
 
-    let json3 = fire_claude_edit(root, "src/page.tsx");
-    let ctx3 = json3["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
-    assert!(ctx3.contains("Auto-registered task T-") && !ctx3.contains(&task_id1));
+    // 3. Subsequent multi-file housekeeping can be explicitly skipped (`tasks skip`) with 0 noise added to tasks.json.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 4;\n}\n").unwrap();
+    fs::write(root.join("src/page.tsx"), "export function Page(): string {\n  return 'spaced';\n}\n").unwrap();
+    assert_ok(&run_anvil(root, &["tasks", "skip", "Ajuste menor de espaciado"]), "tasks skip");
+    let skip_stop: Value = serde_json::from_str(&assert_ok(&run_anvil_stdin(root, &["hook", "stop", "--adapter", "claude"], &stop_req.to_string()), "stop after skip")).unwrap();
+    assert_ne!(skip_stop["decision"], json!("block"));
+    assert_eq!(anvil_tasks::list_tasks(root).unwrap().len(), 1);
 }
 
 #[test]
@@ -358,7 +368,7 @@ fn multi_subproject_init_and_umbrella_hook_routing_work_like_centinela() {
     assert!(be.join(".harness/config.json").exists() && be.join(".agents/hooks.json").exists());
     assert!(mv.join(".harness/config.json").exists() && !mv.join(".claude").exists());
 
-    // Prompt arrives in umbrella root; edit targets centinela-movil -> lazy task materializes inside movil.
+    // Edit from umbrella root routes session edit tracking to centinela-movil without raw-prompt noise.
     let prompt = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy(), "lastUserInput": "Fix Android build in movil" });
     assert_ok(&run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &prompt.to_string()), "prompt");
     let target = mv.join("app/Main.kt");
@@ -370,7 +380,13 @@ fn multi_subproject_init_and_umbrella_hook_routing_work_like_centinela() {
     });
     assert_ok(&run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "antigravity"], &edit.to_string()), "edit");
 
+    assert_eq!(anvil_tasks::load_untracked_edits(&mv), vec!["app/Main.kt"]);
+    assert!(anvil_tasks::list_tasks(&mv).unwrap().is_empty());
+    assert_ok(
+        &run_anvil(&mv, &["tasks", "record", "Fix Android Gradle build in movil", "Updated Main.kt entry point"]),
+        "curated record in movil",
+    );
     let tasks = anvil_tasks::list_tasks(&mv).unwrap();
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].request, "Fix Android build in movil");
+    assert_eq!(tasks[0].request, "Fix Android Gradle build in movil");
 }

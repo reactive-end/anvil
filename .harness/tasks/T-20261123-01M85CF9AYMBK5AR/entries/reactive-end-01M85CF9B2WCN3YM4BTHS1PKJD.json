@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M85CF9B2WCN3YM4BTHS1PKJD",
+  "task_id": "T-20261123-01M85CF9AYMBK5AR",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Harden Anvil P0-P2 audit issues via Hydrogen subagents",
+  "files_touched": [],
+  "timestamp": "2026-11-23T23:39:45.942277Z"
+}

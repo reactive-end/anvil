@@ -101,6 +101,12 @@ pub(crate) fn is_test_file(path: &str) -> bool {
         || fname.ends_with("test.php")
         || fname.ends_with("_test.rs")
         || fname.ends_with("_tests.rs")
+        || fname.ends_with("_test.gd")
+        || (lower.ends_with(".gd")
+            && (lower.starts_with("test/")
+                || lower.starts_with("tests/")
+                || lower.contains("/test/")
+                || lower.contains("/tests/")))
         || (lower.ends_with(".rs") && (lower.contains("/tests/") || lower.starts_with("tests/")))
 }
 
@@ -135,6 +141,7 @@ fn test_base_stem(path: &str) -> Option<String> {
         "test.php",
         "_test.rs",
         "_tests.rs",
+        "_test.gd",
     ] {
         if let Some(stem) = fname.strip_suffix(suffix) {
             return Some(stem.to_owned());

@@ -173,6 +173,22 @@ pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
         "pint",
         "vendor/bin/pint",
         "php artisan test",
+        "cargo test",
+        "cargo check",
+        "cargo clippy",
+        "cargo build",
+        "npm test",
+        "npm run build",
+        "npm run lint",
+        "npm run typecheck",
+        "pnpm test",
+        "pnpm build",
+        "bun test",
+        "composer test",
+        "vue-tsc",
+        "npx vue-tsc",
+        "godot",
+        "godot4",
     ]
     .iter()
     .any(|p| cmd == *p || cmd.starts_with(&format!("{p} ")))

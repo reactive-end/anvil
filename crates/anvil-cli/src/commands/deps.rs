@@ -46,8 +46,13 @@ pub fn execute(root: &Path, all: bool, manifests: &[PathBuf]) -> Result<()> {
         report.errors.len()
     );
     for finding in &report.findings {
+        let vuln_suffix = if finding.vulnerabilities.is_empty() {
+            String::new()
+        } else {
+            format!(" vulns={:?}", finding.vulnerabilities)
+        };
         println!(
-            "  {} {}:{} {} issues={:?} age={:?}mo",
+            "  {} {}:{} {} issues={:?} age={:?}mo{vuln_suffix}",
             ui::warn_badge(),
             finding.ecosystem,
             ui::bold(&finding.package),

@@ -18,11 +18,13 @@ pub struct CandidateInput {
     pub example: Option<String>,
 }
 
-/// Optional glob targeting and severity overrides when logging a ratchet candidate.
+/// Optional glob targeting, severity, and matching mode overrides when logging a ratchet candidate.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CandidateOptions {
     pub file_globs: Vec<String>,
     pub severity: Option<Severity>,
+    pub multiline: bool,
+    pub match_comments_and_strings: bool,
 }
 
 /// Candidate rule stored in `.harness/candidates/<id>.json` before promotion.
@@ -38,6 +40,10 @@ pub struct RatchetCandidate {
     pub file_globs: Vec<String>,
     #[serde(default)]
     pub severity: Option<Severity>,
+    #[serde(default)]
+    pub multiline: bool,
+    #[serde(default)]
+    pub match_comments_and_strings: bool,
     pub recurrence: u32,
     pub high_impact: bool,
     pub deterministic: bool,
@@ -77,6 +83,10 @@ pub struct PromotedRule {
     pub file_globs: Vec<String>,
     #[serde(default)]
     pub severity: Option<Severity>,
+    #[serde(default)]
+    pub multiline: bool,
+    #[serde(default)]
+    pub match_comments_and_strings: bool,
     pub recurrence_at_promotion: u32,
     pub promoted_at: DateTime<Utc>,
 }

@@ -129,6 +129,7 @@ fn compiled_rules_and_comment_context_allow_and_options_work() -> Result<()> {
     let opts = CandidateOptions {
         file_globs: vec!["src/**/*.ts".to_owned()],
         severity: Some(Severity::Error),
+        ..Default::default()
     };
     let c1 = log_candidate_with_options(root, sample_input("no-console-log"), opts.clone())?;
     let c2 = log_candidate_with_options(root, sample_input("no-console-log"), opts)?;
@@ -157,5 +158,49 @@ fn compiled_rules_and_comment_context_allow_and_options_work() -> Result<()> {
 
     let sql_allowed = "-- anvil-allow(no-console-log): sql-style comment\nconsole.log('ok');\n";
     assert!(evaluate_compiled(&compiled, "src/a.ts", sql_allowed).is_empty());
+    Ok(())
+}
+
+#[test]
+fn ratchet_skips_comments_and_strings_and_supports_multiline_and_web_php_langs() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    let c1 = log_candidate(root, sample_input("no-console-log"))?;
+    log_candidate(root, sample_input("no-console-log"))?;
+    evaluate_candidate(root, &c1.id, Some(&["logger.info('ok')"]))?;
+    let mut rule = promote_candidate(root, &c1.id)?;
+    rule.languages = vec!["vue".to_owned(), "svelte".to_owned(), "astro".to_owned()];
+    let compiled = compile_promoted_rules(&[rule]);
+
+    let mixed = concat!(
+        "// console.log('in line comment')\n",
+        "/* console.log('in block comment') */\n",
+        "const s = \"console.log()\"; console.log('real');\n",
+        "const t = `console.log('template')`;\n",
+    );
+    let diags = evaluate_compiled(&compiled, "src/App.vue", mixed);
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].line, 3);
+    assert_eq!(diags[0].column, 28);
+
+    let mut ml_input = sample_input("no-empty-catch");
+    ml_input.pattern = r"try\s*\{[\s\S]*?\}\s*catch\s*\([^)]*\)\s*\{\s*\}".to_owned();
+    ml_input.languages = vec!["php".to_owned(), "blade".to_owned()];
+    ml_input.high_impact = true;
+    let ml_opts = CandidateOptions {
+        multiline: true,
+        ..Default::default()
+    };
+    let ml_cand = log_candidate_with_options(root, ml_input, ml_opts)?;
+    assert!(ml_cand.multiline);
+    evaluate_candidate(root, &ml_cand.id, Some(&["try { run(); } catch (e) { log(e); }"]))?;
+    let ml_rule = promote_candidate(root, &ml_cand.id)?;
+    let ml_compiled = compile_promoted_rules(&[ml_rule]);
+
+    let php_src = "<?php\ntry {\n  doWork();\n} catch (Exception $e) {\n}\n";
+    let ml_diags = evaluate_compiled(&ml_compiled, "resources/views/home.blade.php", php_src);
+    assert_eq!(ml_diags.len(), 1);
+    assert_eq!(ml_diags[0].line, 2);
     Ok(())
 }

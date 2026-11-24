@@ -36,6 +36,7 @@ fn build_and_print_packet(root: &Path, targets: &[String], max_tokens: usize) ->
     let mut packet = String::with_capacity(max_tokens.saturating_mul(4).min(8192));
     append_scope_section(&mut packet, targets, &target_files, &blast.impacted_files);
     append_neighbors_section(&mut packet, &engine, targets);
+    append_outlines_section(&mut packet, &engine, &target_files);
     append_memory_section(&mut packet, &memories);
     append_done_section(&mut packet, &blast.related_tests);
 
@@ -118,6 +119,28 @@ fn append_neighbors_section(out: &mut String, engine: &CodeGraphEngine, targets:
             for edge in exp.outgoing.iter().take(4) {
                 let _ = writeln!(out, "  -> {:?} {} ({})", edge.kind, edge.node_id, edge.file);
             }
+        }
+    }
+}
+
+fn append_outlines_section(out: &mut String, engine: &CodeGraphEngine, files: &[String]) {
+    if files.is_empty() {
+        return;
+    }
+    let _ = writeln!(out, "\n## Symbol Outlines");
+    for file in files.iter().take(4) {
+        let outline = engine.outline(Some(file), 180);
+        for fo in outline.files {
+            if fo.symbols.is_empty() {
+                continue;
+            }
+            let syms: Vec<String> = fo
+                .symbols
+                .iter()
+                .take(8)
+                .map(|s| format!("{} L{}-{}", s.name, s.line, s.end_line))
+                .collect();
+            let _ = writeln!(out, "- `{}`: {}", fo.file, syms.join(", "));
         }
     }
 }

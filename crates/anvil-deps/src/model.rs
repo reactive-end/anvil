@@ -58,6 +58,8 @@ pub struct PackageHealthInfo {
     pub deprecation_message: Option<String>,
     pub archived: bool,
     pub repository_url: Option<String>,
+    #[serde(default)]
+    pub vulnerabilities: Vec<String>,
 }
 
 /// Health risk classification for a dependency.
@@ -67,6 +69,7 @@ pub enum DepIssueKind {
     Deprecated,
     Archived,
     Stale,
+    Vulnerable,
 }
 
 /// Actionable finding produced when a dependency violates health policies.
@@ -80,6 +83,8 @@ pub struct DepFinding {
     pub last_publish: Option<DateTime<Utc>>,
     pub deprecation_message: Option<String>,
     pub latest_version: Option<String>,
+    #[serde(default)]
+    pub vulnerabilities: Vec<String>,
 }
 
 /// Summary report returned by `anvil-deps` audits.
@@ -96,4 +101,11 @@ pub struct DepsAuditReport {
 /// Abstracts registry HTTP lookups so tests can inject deterministic offline mocks.
 pub trait RegistryFetcher: Send + Sync {
     fn fetch(&self, ecosystem: Ecosystem, package: &str) -> Result<PackageHealthInfo>;
+
+    fn fetch_vulnerabilities(
+        &self,
+        _specs: &[DependencySpec],
+    ) -> rustc_hash::FxHashMap<usize, Vec<String>> {
+        rustc_hash::FxHashMap::default()
+    }
 }

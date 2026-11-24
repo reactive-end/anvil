@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use crate::McpServer;
 use crate::tools_graph::call_graph_tool;
 use crate::tools_memory::call_memory_tool;
+use crate::tools_tasks::call_task_tool;
 use crate::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, JsonRpcRequest, JsonRpcResponse, METHOD_NOT_FOUND,
 };
@@ -68,10 +69,12 @@ fn dispatch_tool_call(
     let empty_args = json!({});
     let args = params_val.get("arguments").unwrap_or(&empty_args);
 
-    let outcome = if name.starts_with("graph_") {
+    let outcome = if name == "context_pack" || name.starts_with("graph_") {
         call_graph_tool(server, name, args)
     } else if name.starts_with("mem_") {
         call_memory_tool(server, name, args)
+    } else if name.starts_with("task_") {
+        call_task_tool(server, name, args)
     } else {
         return JsonRpcResponse::err(id, METHOD_NOT_FOUND, format!("unknown tool: {name}"));
     };

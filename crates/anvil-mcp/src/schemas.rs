@@ -1,12 +1,13 @@
-//! JSON Schema definitions for all 12 unified `graph_*` and `mem_*` MCP tools.
+//! JSON Schema definitions for all 17 unified `graph_*`, `context_pack`, `mem_*`, and `task_*` MCP tools.
 
 use serde_json::{Value, json};
 
-/// Returns JSON Schema definitions for all 12 unified `graph_*` and `mem_*` tools.
+/// Returns JSON Schema definitions for all 17 unified `graph_*`, `context_pack`, `mem_*`, and `task_*` tools.
 pub fn tool_definitions() -> Vec<Value> {
     let mut tools = graph_core_schemas();
     tools.extend(graph_inspect_schemas());
     tools.extend(memory_tool_schemas());
+    tools.extend(task_tool_schemas());
     tools
 }
 
@@ -98,6 +99,22 @@ fn graph_inspect_schemas() -> Vec<Value> {
                 }
             }),
         ),
+        tool_schema(
+            "context_pack",
+            "Build a minimal token-budgeted context packet (target outlines, 1-hop dependencies, linked memories, and related tests) for subagent delegation.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "targets": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Repo-relative file paths or symbol names."
+                    },
+                    "max_tokens": { "type": "integer", "minimum": 200, "maximum": 8000, "default": 1200 }
+                },
+                "required": ["targets"]
+            }),
+        ),
     ]
 }
 
@@ -173,6 +190,59 @@ fn mem_save_schema() -> Value {
             "required": ["kind", "title", "what", "why", "where", "learned"]
         }),
     )
+}
+
+fn task_tool_schemas() -> Vec<Value> {
+    vec![
+        tool_schema(
+            "task_record",
+            "Create and record a genuine engineering task (feature, refactor, or bugfix) with an LLM-curated title (e.g. 'Reorganización visual del módulo X'; NEVER copy raw user chat or questions). Prefer `task_done` to continue an existing task or `task_skip` for minor tweaks.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "Concise 3-18 word engineering title (never raw chat or questions)." },
+                    "summary": { "type": "string", "description": "Concise 1-2 sentence technical summary of changes." },
+                    "status": { "type": "string", "enum": ["done", "in_progress", "blocked"], "default": "done" },
+                    "files": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["title", "summary"]
+            }),
+        ),
+        tool_schema(
+            "task_done",
+            "Complete an existing task ID or append follow-up edits belonging to that same deliverable instead of creating a duplicate task.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "summary": { "type": "string" },
+                    "files": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["task_id", "summary"]
+            }),
+        ),
+        tool_schema(
+            "task_skip",
+            "Explicitly skip task creation for minor tweaks, formatting, exploratory edits, or non-task requests so noise never enters tasks.json.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "reason": { "type": "string", "description": "Brief reason why these edits do not warrant a standalone task." }
+                },
+                "required": ["reason"]
+            }),
+        ),
+        tool_schema(
+            "task_list",
+            "List recent tasks in `.harness/tasks/` so continuations can reuse an existing task ID.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 }
+                }
+            }),
+        ),
+    ]
 }
 
 fn tool_schema(name: &str, description: &str, input_schema: Value) -> Value {

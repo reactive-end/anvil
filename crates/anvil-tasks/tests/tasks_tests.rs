@@ -288,7 +288,7 @@ fn lazy_task_materializes_only_on_real_file_edit() {
 
     let recorded = anvil_tasks::record_pending_prompt(
         tmp.path(),
-        "Analyze files only without making edits",
+        "Implement lazy edit tracking without noise",
     )
     .expect("record pending prompt");
     assert!(recorded);
@@ -312,4 +312,59 @@ fn lazy_task_materializes_only_on_real_file_edit() {
         .expect("load active")
         .expect("active exists");
     assert_eq!(active.touched_files, vec!["src/lib.rs", "src/main.rs"]);
+}
+
+#[test]
+fn conversational_prompts_and_chatty_titles_are_strictly_filtered() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    for noisy in [
+        "Como vamos con tal proceso",
+        "¿Cómo vamos con el despliegue?",
+        "Que solucionan esos 10 fix, describemelo",
+        "Si me gustaría, así evitamos recordar comandos",
+        "Sube estos cambios al repositorio",
+        "El primero esta increible, ese sera",
+        "dale sigue",
+    ] {
+        assert!(
+            anvil_tasks::is_conversational_or_trivial_prompt(noisy),
+            "expected `{noisy}` to be classified as conversational noise"
+        );
+        assert!(
+            !anvil_tasks::record_pending_prompt(tmp.path(), noisy).expect("check pending"),
+            "expected `{noisy}` not to record pending prompt"
+        );
+    }
+
+    for bad_title in [
+        "Como vamos con tal proceso",
+        "Oye podrias reorganizar el modulo X",
+        "¿Reorganización del módulo X?",
+        "corto",
+    ] {
+        assert!(
+            anvil_tasks::validate_curated_task_title(bad_title).is_err(),
+            "expected `{bad_title}` to fail curated title validation"
+        );
+    }
+
+    let (meta, entry) = anvil_tasks::record_curated_task(
+        tmp.path(),
+        "Reorganización visual del módulo X",
+        "Reestructurados paneles, grillas y jerarquía tipográfica del módulo X",
+        TaskStatus::Done,
+        &["src/module_x.tsx".to_owned()],
+        Some("alice"),
+    )
+    .expect("curated task");
+    assert_eq!(meta.request, "Reorganización visual del módulo X");
+    assert_eq!(entry.status, TaskStatus::Done);
+
+    let skipped = anvil_tasks::record_task_skip(tmp.path(), "Minor typo adjustment")
+        .expect("skip task");
+    assert!(skipped.skipped);
+    assert_eq!(list_tasks(tmp.path()).expect("list").len(), 1);
 }

@@ -64,9 +64,15 @@ impl std::error::Error for ExitCodeError {}
 pub fn dispatch(cli: Cli) -> Result<()> {
     let root = resolve_repo_root(cli.root.as_deref())?;
     match cli.command {
-        Command::Init { path, adapter } => {
-            init::execute(&resolve_init_root(path.as_deref(), &root)?, &adapter)
-        }
+        Command::Init {
+            path,
+            adapter,
+            git_hooks,
+        } => init::execute(
+            &resolve_init_root(path.as_deref(), &root)?,
+            &adapter,
+            git_hooks,
+        ),
         Command::Sync { adapter } => sync::execute(&root, &adapter),
         Command::Doctor => doctor::execute(&root),
         Command::Hook { event, adapter } => hook::execute(&root, &event, &adapter),
@@ -76,7 +82,8 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             tier,
             no_tests,
             no_cache,
-        } => check::execute(&root, full, tier, no_tests, no_cache),
+            staged,
+        } => check::execute(&root, full, tier, no_tests, no_cache, staged),
         Command::Impact {
             files,
             depth,

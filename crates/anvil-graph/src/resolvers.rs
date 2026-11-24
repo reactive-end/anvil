@@ -3,6 +3,7 @@
 pub mod angular;
 pub mod css;
 pub mod dart;
+pub mod godot;
 pub mod http_routes;
 pub mod kotlin;
 pub mod nestjs;
@@ -30,6 +31,7 @@ pub struct ResolutionContext {
     pub gradle_subprojects: FxHashMap<String, String>,
     pub rust_crates: FxHashMap<String, String>,
     pub php_psr4: Vec<php::Psr4Mapping>,
+    pub godot: godot::GodotProjectContext,
 }
 
 impl ResolutionContext {
@@ -41,6 +43,7 @@ impl ResolutionContext {
             gradle_subprojects: kotlin::load_gradle_subprojects(repo_root),
             rust_crates: rust::load_rust_crates(repo_root),
             php_psr4: php::load_php_psr4(repo_root),
+            godot: godot::GodotProjectContext::load(repo_root),
         }
     }
 }
@@ -207,6 +210,9 @@ pub fn resolve_single_edge(
         Language::Rust => rust::resolve_rust_edge(edge, file_imports, graph, &ctx.rust_crates),
         Language::Php => php::resolve_php_edge(edge, file_imports, graph, &ctx.php_psr4),
         Language::Blade => php::resolve_blade_edge(edge, graph, &ctx.php_psr4),
+        Language::GdScript | Language::GodotScene => {
+            godot::resolve_godot_edge(edge, graph, &ctx.godot)
+        }
         _ => None,
     }
 }

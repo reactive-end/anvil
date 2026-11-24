@@ -41,6 +41,8 @@ pub struct CircuitStatus {
     pub consecutive_failures: u32,
     pub last_fingerprint: Option<String>,
     pub last_tool: Option<String>,
+    #[serde(default)]
+    pub last_command_key: Option<String>,
     pub recent_samples: Vec<String>,
     pub escalation: Option<EscalationSummary>,
     pub updated_at: DateTime<Utc>,
@@ -54,6 +56,7 @@ impl CircuitStatus {
             consecutive_failures: 0,
             last_fingerprint: None,
             last_tool: None,
+            last_command_key: None,
             recent_samples: Vec::new(),
             escalation: None,
             updated_at: Utc::now(),
@@ -126,6 +129,7 @@ impl CircuitBreaker {
             }
 
             status.last_tool = Some(tool.to_owned());
+            status.last_command_key = Some(command_family_key(command));
             push_bounded_sample(&mut status.recent_samples, raw_error, 5);
             status.updated_at = now;
 
@@ -159,9 +163,32 @@ impl CircuitBreaker {
             }
             status.consecutive_failures = 0;
             status.last_fingerprint = None;
+            status.last_command_key = None;
             status.recent_samples.clear();
             status.updated_at = Utc::now();
             self.save(&status)?;
+            Ok(status)
+        })
+    }
+
+    /// Clears consecutive failure streak only when `command` matches the failing command family.
+    /// An `OPEN` circuit stays blocked until `reset()` is explicitly invoked.
+    pub fn record_command_success(&self, command: &str) -> Result<CircuitStatus> {
+        with_file_lock(&self.lock_path(), LOCK_TIMEOUT_MS, || {
+            let mut status = self.status()?;
+            if status.is_open() {
+                return Ok(status);
+            }
+            let key = command_family_key(command);
+            if status.last_command_key.as_deref() == Some(key.as_str()) {
+                status.consecutive_failures = 0;
+                status.last_fingerprint = None;
+                status.last_tool = None;
+                status.last_command_key = None;
+                status.recent_samples.clear();
+                status.updated_at = Utc::now();
+                self.save(&status)?;
+            }
             Ok(status)
         })
     }
@@ -244,4 +271,58 @@ fn push_bounded_sample(samples: &mut Vec<String>, raw: &str, max_samples: usize)
         samples.remove(0);
     }
     samples.push(snippet);
+}
+
+const MULTI_SUBCOMMAND_RUNNERS: &[&str] = &[
+    "cargo", "npm", "pnpm", "yarn", "bun", "git", "php", "python", "python3", "uv", "poetry",
+    "flutter", "dart", "gradle", "gradlew", "anvil", "composer",
+];
+
+/// Derives a normalized command-family key (e.g. `"cargo test"`, `"vitest"`, `"git status"`).
+pub fn command_family_key(command: &str) -> String {
+    let tokens: Vec<&str> = command.split_whitespace().collect();
+    let mut idx = 0usize;
+    while idx < tokens.len() && is_env_assignment(tokens[idx]) {
+        idx += 1;
+    }
+    let Some(first) = tokens.get(idx) else {
+        return String::new();
+    };
+    let mut prog = normalize_prog_token(first);
+    idx += 1;
+
+    if matches!(prog.as_str(), "npx" | "bunx") {
+        let mut next_idx = idx;
+        while next_idx < tokens.len() && tokens[next_idx].starts_with('-') {
+            next_idx += 1;
+        }
+        if let Some(wrapped) = tokens.get(next_idx) {
+            prog = normalize_prog_token(wrapped);
+            idx = next_idx + 1;
+        }
+    }
+
+    if MULTI_SUBCOMMAND_RUNNERS.contains(&prog.as_str())
+        && let Some(sub) = tokens[idx..].iter().find(|t| !t.starts_with('-'))
+    {
+        return format!("{prog} {}", sub.to_ascii_lowercase());
+    }
+    prog
+}
+
+fn is_env_assignment(token: &str) -> bool {
+    token.split_once('=').is_some_and(|(key, _)| {
+        !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+fn normalize_prog_token(token: &str) -> String {
+    let base = token.rsplit(['/', '\\']).next().unwrap_or(token);
+    let lower = base.to_ascii_lowercase();
+    for ext in [".exe", ".cmd", ".bat"] {
+        if let Some(stripped) = lower.strip_suffix(ext) {
+            return stripped.to_owned();
+        }
+    }
+    lower
 }

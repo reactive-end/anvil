@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use anvil_core::config::AnvilConfig;
 use chrono::{DateTime, Utc};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{Deserialize, Serialize};
 
 use crate::cache::DepsCache;
 use crate::cargo_toml::{fetch_cargo, parse_cargo_toml};
@@ -42,14 +43,24 @@ impl RegistryFetcher for LiveRegistryFetcher {
             Ecosystem::Composer => fetch_composer(package),
         }
     }
+
+    fn fetch_vulnerabilities(&self, specs: &[DependencySpec]) -> FxHashMap<usize, Vec<String>> {
+        crate::osv::query_osv_batch(specs)
+    }
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 /// Configurable thresholds and clock override for dependency audits.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditOptions {
     pub max_age_months: u32,
     pub cache_ttl_hours: i64,
     pub now: Option<DateTime<Utc>>,
+    #[serde(default = "default_true")]
+    pub check_osv: bool,
 }
 
 impl Default for AuditOptions {
@@ -58,6 +69,7 @@ impl Default for AuditOptions {
             max_age_months: DEFAULT_MAX_AGE_MONTHS,
             cache_ttl_hours: DEFAULT_CACHE_TTL_HOURS,
             now: None,
+            check_osv: true,
         }
     }
 }
@@ -175,7 +187,42 @@ pub fn audit_manifests(
         }
     }
 
-    for (idx, result) in fetch_misses_bounded(&misses, fetcher) {
+    apply_fetched_misses(
+        &specs,
+        &misses,
+        fetcher,
+        now,
+        &mut cache,
+        &mut resolved,
+        &mut report,
+    );
+
+    if options.check_osv {
+        merge_osv_vulnerabilities(&specs, &mut resolved, fetcher);
+    }
+
+    for (spec, maybe_info) in specs.iter().zip(resolved) {
+        if let Some(info) = maybe_info
+            && let Some(finding) = evaluate_health(&info, spec, options.max_age_months, now)
+        {
+            report.findings.push(finding);
+        }
+    }
+
+    cache.save_if_dirty()?;
+    Ok(report)
+}
+
+fn apply_fetched_misses(
+    specs: &[DependencySpec],
+    misses: &[(usize, &DependencySpec)],
+    fetcher: &dyn RegistryFetcher,
+    now: DateTime<Utc>,
+    cache: &mut DepsCache,
+    resolved: &mut [Option<PackageHealthInfo>],
+    report: &mut DepsAuditReport,
+) {
+    for (idx, result) in fetch_misses_bounded(misses, fetcher) {
         let spec = &specs[idx];
         match result {
             Ok(fetched) => {
@@ -190,17 +237,25 @@ pub fn audit_manifests(
             }
         }
     }
+}
 
-    for (spec, maybe_info) in specs.iter().zip(resolved) {
-        if let Some(info) = maybe_info
-            && let Some(finding) = evaluate_health(&info, spec, options.max_age_months, now)
+fn merge_osv_vulnerabilities(
+    specs: &[DependencySpec],
+    resolved: &mut [Option<PackageHealthInfo>],
+    fetcher: &dyn RegistryFetcher,
+) {
+    let vulns_map = fetcher.fetch_vulnerabilities(specs);
+    for (idx, maybe_info) in resolved.iter_mut().enumerate() {
+        if let Some(vulns) = vulns_map.get(&idx)
+            && let Some(info) = maybe_info.as_mut()
         {
-            report.findings.push(finding);
+            for vuln in vulns {
+                if !info.vulnerabilities.contains(vuln) {
+                    info.vulnerabilities.push(vuln.clone());
+                }
+            }
         }
     }
-
-    cache.save_if_dirty()?;
-    Ok(report)
 }
 
 fn collect_unique_specs(repo_root: &Path, manifests: &[PathBuf]) -> Result<Vec<DependencySpec>> {

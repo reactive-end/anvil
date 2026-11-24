@@ -11,7 +11,7 @@ use anvil_core::config::{AdapterTarget, AnvilConfig};
 use anvil_core::fs_util::atomic_write;
 use anvil_core::stack_detector;
 
-use crate::{antigravity, claude_code, templates};
+use crate::{antigravity, claude_code, codex, cursor, templates, windsurf};
 
 const MANAGED_START: &str = "<!-- anvil:managed:start -->";
 const MANAGED_END: &str = "<!-- anvil:managed:end -->";
@@ -107,8 +107,34 @@ fn infer_default_adapters(repo_root: &Path) -> AdapterTarget {
     match (has_agy, has_claude) {
         (true, false) => AdapterTarget::Antigravity,
         (false, true) => AdapterTarget::Claude,
+        (true, true) => AdapterTarget::All,
+        (false, false) => infer_secondary_ide_adapter(repo_root),
+    }
+}
+
+fn infer_secondary_ide_adapter(repo_root: &Path) -> AdapterTarget {
+    let has_cursor = repo_root.join(".cursor").exists();
+    let has_windsurf = repo_root.join(".windsurf").exists();
+    let has_codex = repo_root.join(".codex").exists();
+    match (has_cursor, has_windsurf, has_codex) {
+        (true, false, false) => AdapterTarget::Cursor,
+        (false, true, false) => AdapterTarget::Windsurf,
+        (false, false, true) => AdapterTarget::Codex,
         _ => AdapterTarget::All,
     }
+}
+
+fn should_sync_cursor(repo_root: &Path, target: AdapterTarget) -> bool {
+    target.includes_cursor() || (target == AdapterTarget::All && repo_root.join(".cursor").exists())
+}
+
+fn should_sync_windsurf(repo_root: &Path, target: AdapterTarget) -> bool {
+    target.includes_windsurf()
+        || (target == AdapterTarget::All && repo_root.join(".windsurf").exists())
+}
+
+fn should_sync_codex(repo_root: &Path, target: AdapterTarget) -> bool {
+    target.includes_codex() || (target == AdapterTarget::All && repo_root.join(".codex").exists())
 }
 
 fn sync_into(
@@ -116,17 +142,34 @@ fn sync_into(
     target: AdapterTarget,
     report: &mut SyncReport,
 ) -> Result<()> {
-    sync_skills_targets(repo_root, target, report)?;
+    let sync_cursor = should_sync_cursor(repo_root, target);
+    let sync_windsurf = should_sync_windsurf(repo_root, target);
+    let sync_codex = should_sync_codex(repo_root, target);
+
+    sync_skills_targets(repo_root, target, sync_cursor, report)?;
 
     if target.includes_antigravity() {
         record_write(antigravity::config::hooks_config_path(repo_root), antigravity::config::merge_hooks_config(repo_root)?, report);
         record_write(antigravity::config::mcp_config_path(repo_root), antigravity::config::merge_mcp_config(repo_root)?, report);
-        sync_managed_doc(&repo_root.join("AGENTS.md"), templates::AGENTS_MD, report)?;
     }
     if target.includes_claude() {
         record_write(claude_code::config::settings_config_path(repo_root), claude_code::config::merge_settings_config(repo_root)?, report);
         record_write(claude_code::config::mcp_config_path(repo_root), claude_code::config::merge_mcp_config(repo_root)?, report);
         sync_managed_doc(&repo_root.join("CLAUDE.md"), templates::CLAUDE_MD, report)?;
+    }
+    if sync_cursor {
+        record_write(cursor::mcp_config_path(repo_root), cursor::merge_mcp_config(repo_root)?, report);
+        record_write(cursor::rules_path(repo_root), cursor::sync_rules(repo_root)?, report);
+    }
+    if sync_windsurf {
+        record_write(windsurf::mcp_config_path(repo_root), windsurf::merge_mcp_config(repo_root)?, report);
+        record_write(windsurf::rules_path(repo_root), windsurf::sync_rules(repo_root)?, report);
+    }
+    if sync_codex {
+        record_write(codex::config_path(repo_root), codex::merge_config_toml(repo_root)?, report);
+    }
+    if target.includes_antigravity() || sync_codex {
+        sync_managed_doc(&repo_root.join("AGENTS.md"), templates::AGENTS_MD, report)?;
     }
 
     sync_gitignore(repo_root, report)?;
@@ -166,6 +209,7 @@ fn ensure_harness_skeleton(repo_root: &Path, report: &mut SyncReport) -> Result<
 fn sync_skills_targets(
     repo_root: &Path,
     target: AdapterTarget,
+    sync_cursor: bool,
     report: &mut SyncReport,
 ) -> Result<()> {
     let custom_root = repo_root.join(".harness").join("skills");
@@ -181,6 +225,9 @@ fn sync_skills_targets(
     }
     if target.includes_claude() {
         targets.push(repo_root.join(".claude").join("skills"));
+    }
+    if sync_cursor {
+        targets.push(repo_root.join(".cursor").join("skills"));
     }
 
     let mut preserved = BTreeSet::new();
@@ -288,24 +335,29 @@ fn sync_gitignore(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
     Ok(())
 }
 
-fn sync_managed_doc(path: &Path, template: &str, report: &mut SyncReport) -> Result<()> {
-    let existing = if path.exists() {
-        Some(
-            fs::read_to_string(path)
-                .with_context(|| format!("failed to read {}", path.display()))?,
-        )
-    } else {
-        None
-    };
+pub(crate) fn read_optional_string(path: &Path) -> Result<Option<String>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    fs::read_to_string(path)
+        .with_context(|| format!("failed to read {}", path.display()))
+        .map(Some)
+}
 
+pub(crate) fn sync_managed_file(path: &Path, template: &str) -> Result<bool> {
+    let existing = read_optional_string(path)?;
     let merged = merge_managed_markdown(existing.as_deref(), template);
-    if write_if_changed(path, &merged)? {
+    write_if_changed(path, &merged)
+}
+
+pub(crate) fn sync_managed_doc(path: &Path, template: &str, report: &mut SyncReport) -> Result<()> {
+    if sync_managed_file(path, template)? {
         report.written_files.push(path.to_path_buf());
     }
     Ok(())
 }
 
-fn merge_managed_markdown(existing: Option<&str>, template: &str) -> String {
+pub(crate) fn merge_managed_markdown(existing: Option<&str>, template: &str) -> String {
     let Some(current) = existing else {
         return template.to_owned();
     };

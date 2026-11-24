@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use anvil_core::traits::FreshnessState;
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::model::{MemoryChunkRecord, Observation, normalize_rel_path};
 use crate::schema;
@@ -205,7 +205,7 @@ impl MemoryStore {
         Ok(stmt.execute([now_ms])?)
     }
 
-    /// Returns the set of already-ingested chunk filenames for O(new_files) sync skipping.
+    /// Returns the set of already-ingested chunk filenames for API compatibility.
     pub fn ingested_chunk_filenames(&self) -> Result<FxHashSet<String>> {
         let mut stmt = self
             .conn
@@ -216,6 +216,20 @@ impl MemoryStore {
             names.insert(row?);
         }
         Ok(names)
+    }
+
+    /// Returns a map of `filename -> blake3_hash` for all previously ingested chunk files.
+    pub fn ingested_chunk_hashes(&self) -> Result<FxHashMap<String, String>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT filename, blake3_hash FROM ingested_chunks")?;
+        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+        let mut hashes = FxHashMap::default();
+        for row in rows {
+            let (filename, hash) = row?;
+            hashes.insert(filename, hash);
+        }
+        Ok(hashes)
     }
 
     /// Records or updates an ingested chunk filename and BLAKE3 hash inside a transaction.

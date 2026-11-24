@@ -6,7 +6,9 @@ use anyhow::Result;
 use anvil_core::check_cache::{self, CachedTier1};
 use anvil_core::config::{AnvilConfig, StackKind};
 use anvil_core::diff_classifier::DiffClassification;
-use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin, resolve_php_vendor_script};
+use anvil_core::fs_util::{
+    resolve_godot_bin, resolve_local_or_path_bin, resolve_php_bin, resolve_php_vendor_script,
+};
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_core::traits::CompressedOutput;
 use anvil_graph::CodeGraphEngine;
@@ -33,27 +35,10 @@ pub(super) fn run_tier1(
 ) -> Result<bool> {
     let engine = CodeGraphEngine::load_or_build(root, config.clone())?;
     let blast = engine.blast_radius(changed, 2);
-    println!(
-        "  {} blast_radius: {} impacted, {} related test(s) {}",
-        ui::cyan("[Tier 1]"),
-        ui::bold(&blast.impacted_files.len().to_string()),
-        ui::bold(&blast.related_tests.len().to_string()),
-        ui::dim(&format!("({:.2}ms)", blast.elapsed_ms))
-    );
-
+    print_blast_summary(&blast);
     if !changed.is_empty() {
-        let over = engine.check_overengineering(changed, added_paths, changed.len() <= 3);
-        for w in over.warnings {
-            println!(
-                "  {} overengineering: {} (consumers={}): {}",
-                ui::warn_badge(),
-                ui::cyan(&w.file),
-                w.consumer_count,
-                w.reason
-            );
-        }
+        print_overengineering_warnings(&engine, changed, added_paths);
     }
-
     if !opts.full && classification.skip_logic_tests {
         println!(
             "  {} {}",
@@ -64,16 +49,24 @@ pub(super) fn run_tier1(
     }
 
     let (tc_scope, cache_scope) = build_tier1_scopes(&blast);
+    let boundary_diags = engine.check_boundaries(changed);
+    let boundaries_failed = print_boundary_diagnostics(&boundary_diags);
     let salt = format!(
-        "full={};no_tests={};stacks={:?}",
-        opts.full, opts.no_tests, config.stacks
+        "full={};no_tests={};stacks={:?};boundaries={};cycles={}",
+        opts.full,
+        opts.no_tests,
+        config.stacks,
+        config.boundaries.len(),
+        config.forbid_import_cycles
     );
-    let cache_key = check_cache::compute_scope_key(root, &cache_scope, &salt).ok();
-    if !opts.no_cache && try_tier1_cache_hit(root, cache_key.as_deref()) {
+    let subrepo_paths: Vec<String> = config.subrepos.iter().map(|s| s.path.clone()).collect();
+    let cache_key =
+        check_cache::compute_scope_key_with_subrepos(root, &cache_scope, &subrepo_paths, &salt).ok();
+    if !boundaries_failed && !opts.no_cache && try_tier1_cache_hit(root, cache_key.as_deref()) {
         return Ok(false);
     }
 
-    let mut failed = false;
+    let mut failed = boundaries_failed;
     if has_installed_typechecker(root, config) {
         failed |= report_compressed("typecheck", &engine.run_impacted_typecheck(&tc_scope)?);
     }
@@ -84,6 +77,47 @@ pub(super) fn run_tier1(
         store_tier1_cache(root, cache_key.as_deref());
     }
     Ok(failed)
+}
+
+fn print_boundary_diagnostics(diags: &[anvil_core::traits::Diagnostic]) -> bool {
+    for d in diags {
+        println!(
+            "  {} [{}] {}:{} — {}",
+            ui::error_badge(),
+            d.rule,
+            d.file,
+            d.line,
+            d.message
+        );
+    }
+    !diags.is_empty()
+}
+
+fn print_blast_summary(blast: &BlastRadiusReport) {
+    println!(
+        "  {} blast_radius: {} impacted, {} related test(s) {}",
+        ui::cyan("[Tier 1]"),
+        ui::bold(&blast.impacted_files.len().to_string()),
+        ui::bold(&blast.related_tests.len().to_string()),
+        ui::dim(&format!("({:.2}ms)", blast.elapsed_ms))
+    );
+}
+
+fn print_overengineering_warnings(
+    engine: &CodeGraphEngine,
+    changed: &[String],
+    added_paths: &[String],
+) {
+    let over = engine.check_overengineering(changed, added_paths, changed.len() <= 3);
+    for w in over.warnings {
+        println!(
+            "  {} overengineering: {} (consumers={}): {}",
+            ui::warn_badge(),
+            ui::cyan(&w.file),
+            w.consumer_count,
+            w.reason
+        );
+    }
 }
 
 fn build_tier1_scopes(blast: &BlastRadiusReport) -> (Vec<String>, Vec<String>) {
@@ -165,6 +199,8 @@ fn has_typechecker_in_dir(dir: &Path, stacks: &[StackKind]) -> bool {
             s,
             StackKind::TypeScript
                 | StackKind::React
+                | StackKind::Vue
+                | StackKind::Svelte
                 | StackKind::Vite
                 | StackKind::NextJs
                 | StackKind::Astro
@@ -175,7 +211,8 @@ fn has_typechecker_in_dir(dir: &Path, stacks: &[StackKind]) -> bool {
     });
     if needs_tsc
         && (resolve_local_or_path_bin(dir, "tsgo").is_some()
-            || resolve_local_or_path_bin(dir, "tsc").is_some())
+            || resolve_local_or_path_bin(dir, "tsc").is_some()
+            || resolve_local_or_path_bin(dir, "vue-tsc").is_some())
     {
         return true;
     }
@@ -193,6 +230,9 @@ fn has_typechecker_in_dir(dir: &Path, stacks: &[StackKind]) -> bool {
     if (stacks.contains(&StackKind::Php) || stacks.contains(&StackKind::Laravel))
         && has_php_analyzer(dir)
     {
+        return true;
+    }
+    if stacks.contains(&StackKind::Godot) && resolve_godot_bin().is_some() {
         return true;
     }
     stacks.contains(&StackKind::KotlinAndroid) && has_gradle_bin(dir)

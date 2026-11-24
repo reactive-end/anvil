@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::contract::{InboxMessage, MessageLevel};
 
 const INBOX_LOCK_TIMEOUT_MS: u64 = 2000;
+const MAX_INBOX_MESSAGES: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct InboxStore {
@@ -44,15 +45,39 @@ pub fn load_inbox(repo_root: &Path) -> Result<Vec<InboxMessage>> {
 }
 
 /// Appends `messages` to `.harness/.state/inbox.json` atomically under advisory file lock.
+///
+/// Deduplicates entries matching `(source, file, content)` already in the queue
+/// and retains at most `MAX_INBOX_MESSAGES` newest messages.
 pub fn push_messages(repo_root: &Path, messages: &[InboxMessage]) -> Result<()> {
     if messages.is_empty() {
         return Ok(());
     }
     with_file_lock(&inbox_lock_path(repo_root), INBOX_LOCK_TIMEOUT_MS, || {
         let mut existing = load_inbox_unlocked(repo_root)?;
-        existing.extend(messages.iter().cloned());
+        let mut changed = false;
+        for msg in messages {
+            if !is_duplicate(&existing, msg) {
+                existing.push(msg.clone());
+                changed = true;
+            }
+        }
+        if existing.len() > MAX_INBOX_MESSAGES {
+            let excess = existing.len() - MAX_INBOX_MESSAGES;
+            existing.drain(0..excess);
+            changed = true;
+        }
+        if !changed {
+            return Ok(());
+        }
         save_inbox_unlocked(repo_root, existing)
     })
+}
+
+fn is_duplicate(existing: &[InboxMessage], msg: &InboxMessage) -> bool {
+    let target = (msg.source.as_str(), msg.file.as_deref(), msg.content.as_str());
+    existing
+        .iter()
+        .any(|e| (e.source.as_str(), e.file.as_deref(), e.content.as_str()) == target)
 }
 
 /// Atomically drains and clears all pending messages from `.harness/.state/inbox.json`.

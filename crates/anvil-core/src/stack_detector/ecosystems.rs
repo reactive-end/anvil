@@ -42,6 +42,18 @@ pub(super) fn detect_js_ts_stacks(
     if pkg_text.contains("\"react\"") && !pkg_text.contains("\"react-native\"") {
         stacks.insert(StackKind::React);
     }
+    if has_any_prefix(dir, &["nuxt.config."])
+        || pkg_text.contains("\"vue\"")
+        || pkg_text.contains("\"nuxt\"")
+    {
+        stacks.insert(StackKind::Vue);
+    }
+    if has_any_prefix(dir, &["svelte.config."])
+        || pkg_text.contains("\"svelte\"")
+        || pkg_text.contains("\"@sveltejs/kit\"")
+    {
+        stacks.insert(StackKind::Svelte);
+    }
     if pkg_text.contains("\"expo\"") || pkg_text.contains("\"react-native\"") || is_expo_app(dir) {
         stacks.insert(StackKind::ExpoReactNative);
     }
@@ -55,6 +67,9 @@ fn detect_js_tools(dir: &Path, pkg_text: &str, tools: &mut FxHashSet<ToolKind>) 
     }
     if has_any_file(dir, &["biome.json", "biome.jsonc"]) || pkg_text.contains("\"@biomejs/biome\"") {
         tools.insert(ToolKind::Biome);
+    }
+    if pkg_text.contains("\"vue-tsc\"") {
+        tools.insert(ToolKind::VueTsc);
     }
     if has_any_prefix(dir, &["vitest.config."]) || pkg_text.contains("\"vitest\"") {
         tools.insert(ToolKind::Vitest);
@@ -190,6 +205,19 @@ pub(super) fn detect_flutter_rust_tools(
     if dir.join("Cargo.toml").exists() {
         stacks.insert(StackKind::Rust);
         tools.insert(ToolKind::Cargo);
+    }
+    if dir.join("project.godot").is_file() {
+        stacks.insert(StackKind::Godot);
+        tools.insert(ToolKind::Godot);
+        if has_any_file(dir, &[".gdlintrc", ".gdlintrc.yaml", ".gdlintrc.yml"]) {
+            tools.insert(ToolKind::GdLint);
+        }
+        if dir.join("addons/gdUnit4").is_dir() {
+            tools.insert(ToolKind::GdUnit4);
+        }
+        if dir.join("addons/gut").is_dir() {
+            tools.insert(ToolKind::Gut);
+        }
     }
     if dir.join("sonar-project.properties").exists() {
         tools.insert(ToolKind::SonarQube);

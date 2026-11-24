@@ -1,6 +1,7 @@
-//! Local telemetry & token-savings store persisted at `.harness/.state/stats.json`.
+//! Lock-free JSONL telemetry appending with periodic compaction into `.harness/.state/stats.json`.
 
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::fs_util::{atomic_write, with_file_lock};
 
 const LOCK_TIMEOUT_MS: u64 = 2_000;
+const STATS_JSONL_COMPACT_BYTES: u64 = 64 * 1024;
 
 /// Cumulative observability metrics for hooks, check cache, compressor, and token guard.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,7 +29,7 @@ pub struct AnvilStats {
 }
 
 /// Telemetry events recorded by `anvil` subsystems.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatsEvent {
     HookCall { elapsed_ms: u64 },
     CheckCacheHit,
@@ -43,33 +45,84 @@ pub fn estimate_tokens(bytes: usize) -> u64 {
     (bytes as u64).div_ceil(4)
 }
 
-/// Records a single telemetry event into `.harness/.state/stats.json` under a file lock.
+/// Appends a single telemetry event to `.harness/.state/stats.jsonl` without advisory locking.
 pub fn record_event(repo_root: &Path, event: StatsEvent) -> Result<()> {
-    let path = stats_path(repo_root);
-    let lock_path = path.with_extension("json.lock");
-    with_file_lock(&lock_path, LOCK_TIMEOUT_MS, || {
-        let mut stats = read_stats_or_default(&path)?;
-        apply_event(&mut stats, event);
-        write_stats(&path, &stats)
-    })
+    let path = stats_jsonl_path(repo_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let mut line = serde_json::to_string(&event)?;
+    line.push('\n');
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
+    file.write_all(line.as_bytes())
+        .with_context(|| format!("failed to append {}", path.display()))
 }
 
-/// Loads current telemetry stats from `.harness/.state/stats.json`, or defaults if missing.
+/// Loads accumulated stats by folding `stats.json` and `stats.jsonl`, compacting when needed.
 pub fn load_stats(repo_root: &Path) -> Result<AnvilStats> {
-    read_stats_or_default(&stats_path(repo_root))
+    let path = stats_path(repo_root);
+    let jsonl = stats_jsonl_path(repo_root);
+    let mut stats = read_stats_or_default(&path)?;
+    fold_jsonl(&jsonl, &mut stats);
+
+    if fs::metadata(&jsonl)
+        .map(|m| m.len() >= STATS_JSONL_COMPACT_BYTES)
+        .unwrap_or(false)
+    {
+        let _ = compact_stats(repo_root);
+    }
+    Ok(stats)
 }
 
-/// Resets `.harness/.state/stats.json` back to zeroed defaults under a file lock.
+/// Resets `.harness/.state/stats.json` and removes pending `.harness/.state/stats.jsonl`.
 pub fn reset_stats(repo_root: &Path) -> Result<()> {
     let path = stats_path(repo_root);
     let lock_path = path.with_extension("json.lock");
     with_file_lock(&lock_path, LOCK_TIMEOUT_MS, || {
+        let _ = fs::remove_file(stats_jsonl_path(repo_root));
         write_stats(&path, &AnvilStats::default())
     })
 }
 
+fn compact_stats(repo_root: &Path) -> Result<()> {
+    let path = stats_path(repo_root);
+    let jsonl = stats_jsonl_path(repo_root);
+    let lock_path = path.with_extension("json.lock");
+    with_file_lock(&lock_path, LOCK_TIMEOUT_MS, || {
+        let mut stats = read_stats_or_default(&path)?;
+        fold_jsonl(&jsonl, &mut stats);
+        write_stats(&path, &stats)?;
+        let _ = fs::write(&jsonl, b"");
+        Ok(())
+    })
+}
+
+fn fold_jsonl(jsonl_path: &Path, stats: &mut AnvilStats) {
+    let Ok(raw) = fs::read_to_string(jsonl_path) else {
+        return;
+    };
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(ev) = serde_json::from_str::<StatsEvent>(trimmed) {
+            apply_event(stats, ev);
+        }
+    }
+}
+
 fn stats_path(repo_root: &Path) -> PathBuf {
     repo_root.join(".harness").join(".state").join("stats.json")
+}
+
+fn stats_jsonl_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".harness").join(".state").join("stats.jsonl")
 }
 
 fn read_stats_or_default(path: &Path) -> Result<AnvilStats> {

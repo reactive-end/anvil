@@ -79,6 +79,8 @@ fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
         matches!(
             s,
             StackKind::React
+                | StackKind::Vue
+                | StackKind::Svelte
                 | StackKind::Vite
                 | StackKind::NextJs
                 | StackKind::Astro
@@ -110,6 +112,13 @@ fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
     }
     if config.stacks.contains(&StackKind::Python) {
         extras.extend(["pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"].into_iter().map(str::to_owned));
+    }
+    if config.stacks.contains(&StackKind::Godot) {
+        extras.extend(
+            ["project.godot", "export_presets.cfg", "default_bus_layout.tres", "icon.svg"]
+                .into_iter()
+                .map(str::to_owned),
+        );
     }
     push_php_laravel_allowlist(&config.stacks, &mut extras);
     for sub in &config.subrepos {

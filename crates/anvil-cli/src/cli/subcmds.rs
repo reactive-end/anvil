@@ -117,12 +117,30 @@ pub enum MemSubcmd {
 
 #[derive(Debug, Subcommand)]
 pub enum TasksSubcmd {
-    /// Start a new tracked task in `.harness/tasks/`.
+    /// Start a new tracked task in `.harness/tasks/` with a clean curated engineering title.
     Start {
         #[arg(required = true)]
         request: Vec<String>,
         #[arg(long)]
         author: Option<String>,
+    },
+    /// Create and record an LLM-curated task in one step (`done` by default).
+    Record {
+        /// Concise 3-18 word engineering title (never raw user chat).
+        title: String,
+        /// Concise 1-2 sentence technical summary.
+        summary: String,
+        #[arg(long, default_value = "done")]
+        status: String,
+        #[arg(long, value_delimiter = ',')]
+        files: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// Explicitly skip task creation for minor tweaks or non-task edits (`0` entries in `tasks.json`).
+    Skip {
+        #[arg(required = true)]
+        reason: Vec<String>,
     },
     /// Append a progress entry to an existing task.
     Update {

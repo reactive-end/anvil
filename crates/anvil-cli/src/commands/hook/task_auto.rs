@@ -1,23 +1,66 @@
-//! Hands-free automatic task tracking helpers for `anvil hook`.
+//! LLM-curated task governance helpers and strict anti-noise `Stop` gate for `anvil hook`.
 
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::time::SystemTime;
 
 use anvil_adapters::contract::{HookOutcome, NormalizedHookInput};
 use anvil_tasks::ledger::tasks_root;
 use anvil_tasks::{
-    TaskStatus, build_root_tasks_json, load_active_task, materialize_task_on_edit,
-    pending_prompt_path, record_pending_prompt, record_touched_file,
+    TaskStatus, build_root_tasks_json, list_tasks, load_active_task, record_pending_prompt,
 };
 
-/// Records a pending user prompt in `.harness/.state/pending-prompt.json` (gitignored) without
-/// creating a task yet; tasks materialize lazily on the first real file edit in `PostToolUse`.
+const TRIVIAL_SINGLE_FILE_MAX_LINES: usize = 12;
+
+/// Records a non-conversational user prompt snapshot in `.harness/.state/pending-prompt.json`
+/// without creating any task on disk, and resets the current turn's edit flag.
 pub fn handle_prompt_hook(root: &Path, input: &NormalizedHookInput) -> HookOutcome {
+    clear_turn_edit(root);
     if let Some(prompt) = input.user_prompt.as_deref() {
         let _ = record_pending_prompt(root, prompt);
     }
     HookOutcome::allow()
+}
+
+/// Marks that the current agent turn performed at least one mutating file tool call.
+pub fn mark_turn_edit(root: &Path) {
+    let flag = root.join(".harness/.state/turn-edits.flag");
+    if let Some(parent) = flag.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(flag, b"1");
+}
+
+fn clear_turn_edit(root: &Path) {
+    let _ = fs::remove_file(root.join(".harness/.state/turn-edits.flag"));
+}
+
+/// Finalizes a passing `Stop` check so subsequent read-only turns avoid redundant `inbox.json` noise.
+pub fn mark_stop_completed(root: &Path) {
+    clear_turn_edit(root);
+    let stamp = root.join(".harness/.state/last-stop.stamp");
+    if let Some(parent) = stamp.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(stamp, b"ok");
+}
+
+/// Returns `true` when the turn is read-only (no `PostToolUse` edit flag, no untracked edits,
+/// and no dirty file newer than the previous completed `Stop` stamp).
+pub fn should_skip_readonly_stop(root: &Path, changed: &[String]) -> bool {
+    if root.join(".harness/.state/turn-edits.flag").is_file() {
+        return false;
+    }
+    if !anvil_tasks::load_untracked_edits(root).is_empty() {
+        return false;
+    }
+    let Ok(stamp_mtime) = fs::metadata(root.join(".harness/.state/last-stop.stamp"))
+        .and_then(|m| m.modified())
+    else {
+        return false;
+    };
+    !changed.iter().any(|rel| is_newer(&root.join(rel), stamp_mtime))
 }
 
 /// Rebuilds `tasks.json` ONLY when `.harness/tasks/` has newer metadata or entries than `tasks.json`.
@@ -62,9 +105,10 @@ fn is_newer(path: &Path, baseline: SystemTime) -> bool {
         .is_ok_and(|mtime| mtime > baseline)
 }
 
-/// Blocks `Stop` once if non-harness files changed and the active task lacks a recorded summary.
-/// If files were modified while a pending prompt exists without an active task (e.g. edits via
-/// shell commands or external tools), materializes the task on the spot so no code edit goes untracked.
+/// Enforces LLM-curated task decisions at `Stop` with a strict anti-noise bias:
+/// - Read-only turns, pure docs edits, and `<= 12`-line single-file micro-tweaks pass automatically (`0` tasks).
+/// - Never auto-creates tasks from raw user chat messages.
+/// - On substantive diffs, asks the LLM once to record a curated task, reuse the latest task, or call `task_skip`.
 pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<HookOutcome> {
     let project_changes: Vec<&String> = changed
         .iter()
@@ -74,42 +118,96 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
         return None;
     }
 
-    let state = match load_active_task(root).ok().flatten() {
-        Some(existing) if existing.status == TaskStatus::InProgress => existing,
-        Some(existing) if existing.summary_recorded_at.is_some() || existing.status == TaskStatus::Done => {
-            if pending_prompt_path(root).is_file() {
-                materialize_from_stop(root, &project_changes)?
-            } else {
-                return None;
-            }
-        }
-        Some(existing) => existing,
-        None => {
-            if pending_prompt_path(root).is_file() {
-                materialize_from_stop(root, &project_changes)?
-            } else {
-                return None;
-            }
-        }
-    };
+    let active = load_active_task(root).ok().flatten();
+    if let Some(ref st) = active
+        && !st.skipped
+        && st.status == TaskStatus::InProgress
+        && st.summary_recorded_at.is_none()
+    {
+        return Some(HookOutcome::block_stop(format!(
+            "Task {} is still in_progress. Complete it via MCP `task_done` or `anvil tasks done {} \"<concise summary>\"`.",
+            st.task_id, st.task_id
+        )));
+    }
 
-    if state.summary_recorded_at.is_some() || state.status == TaskStatus::Done {
+    let untracked = anvil_tasks::load_untracked_edits(root);
+    if untracked.is_empty() && active.as_ref().is_some_and(|st| st.summary_recorded_at.is_some()) {
         return None;
     }
-    Some(HookOutcome::block_stop(format!(
-        "Files were modified under task {}. Record a concise summary before finishing: anvil tasks done {} \"<1-2 sentence summary of changes>\"",
-        state.task_id, state.task_id
+
+    let baseline = active
+        .as_ref()
+        .and_then(|st| st.summary_recorded_at.or(Some(st.started_at)))
+        .map(SystemTime::from);
+    let fresh_changes: Vec<&String> = match baseline {
+        Some(base) => project_changes
+            .into_iter()
+            .filter(|rel| is_newer(&root.join(rel.as_str()), base))
+            .collect(),
+        None => project_changes,
+    };
+    if fresh_changes.is_empty() || is_trivial_edit_scope(root, &fresh_changes) {
+        return None;
+    }
+
+    Some(HookOutcome::block_stop(build_curation_prompt(
+        root,
+        fresh_changes.len(),
     )))
 }
 
-fn materialize_from_stop(
-    root: &Path,
-    project_changes: &[&String],
-) -> Option<anvil_tasks::ActiveTaskState> {
-    let first = project_changes.first()?;
-    let state = materialize_task_on_edit(root, first).ok().flatten()?;
-    for extra in project_changes.iter().skip(1) {
-        let _ = record_touched_file(root, extra);
+fn is_trivial_edit_scope(root: &Path, fresh_changes: &[&String]) -> bool {
+    if fresh_changes.iter().all(|rel| is_doc_only_path(rel)) {
+        return true;
     }
-    Some(state)
+    if fresh_changes.len() == 1 {
+        let changed_lines = count_changed_lines(root, fresh_changes[0]);
+        return changed_lines <= TRIVIAL_SINGLE_FILE_MAX_LINES;
+    }
+    false
+}
+
+fn is_doc_only_path(rel: &str) -> bool {
+    let lower = rel.to_ascii_lowercase();
+    lower.ends_with(".md") || lower.ends_with(".mdx") || lower.ends_with(".txt")
+}
+
+fn count_changed_lines(root: &Path, rel: &str) -> usize {
+    if let Ok(out) = Command::new("git")
+        .args(["diff", "--unified=0", "HEAD", "--", rel])
+        .current_dir(root)
+        .output()
+        && out.status.success()
+    {
+        let diff_text = String::from_utf8_lossy(&out.stdout);
+        let diff_lines = diff_text
+            .lines()
+            .filter(|l| {
+                (l.starts_with('+') && !l.starts_with("+++"))
+                    || (l.starts_with('-') && !l.starts_with("---"))
+            })
+            .count();
+        if diff_lines > 0 {
+            return diff_lines;
+        }
+    }
+    fs::read_to_string(root.join(rel))
+        .map(|s| s.lines().count())
+        .unwrap_or(TRIVIAL_SINGLE_FILE_MAX_LINES + 1)
+}
+
+fn build_curation_prompt(root: &Path, file_count: usize) -> String {
+    let reuse_hint = list_tasks(root)
+        .ok()
+        .and_then(|mut v| v.pop())
+        .map(|last| {
+            format!(
+                " (2) If continuing `{}` (\"{}\"), append via MCP `task_done` / `anvil tasks done {} \"<summary>\"`.",
+                last.task_id, last.request, last.task_id
+            )
+        })
+        .unwrap_or_default();
+    format!(
+        "Substantive edits across {file_count} file(s) need an explicit LLM task decision (strict anti-noise bias — NEVER copy raw user chat): (1) Real feature/refactor/bugfix -> MCP `task_record` or `anvil tasks record \"<Clean Engineering Title>\" \"<summary>\"` (e.g. \"Reorganización visual del módulo X\").{reuse_hint} (3) Minor tweak/chore -> MCP `task_skip` or `anvil tasks skip \"<reason>\"`."
+    )
 }

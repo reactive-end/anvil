@@ -15,7 +15,7 @@ fn locked_inbox_preserves_all_concurrent_pushes_and_drains_cleanly() {
     let dir = tempdir().expect("tempdir");
     let root = Arc::new(dir.path().to_path_buf());
     let workers = 8;
-    let per_worker = 10;
+    let per_worker = 4;
     let barrier = Arc::new(Barrier::new(workers));
 
     let mut handles = Vec::with_capacity(workers);
@@ -162,4 +162,48 @@ fn adapter_templates_stay_compact_and_accurate() {
         assert!(doc.contains("anvil qa run|onboard|eval-web|scan-mobile"));
         assert!(doc.contains("Tier 1"));
     }
+}
+
+#[test]
+fn inbox_deduplicates_identical_messages_and_caps_at_32() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+
+    let dup_a = InboxMessage::new(
+        "tier1",
+        MessageLevel::Warning,
+        "unused import",
+        Some("src/lib.rs".to_owned()),
+    );
+    let dup_b = InboxMessage::new(
+        "tier1",
+        MessageLevel::Error,
+        "unused import",
+        Some("src/lib.rs".to_owned()),
+    );
+    inbox::push_messages(root, &[dup_a.clone(), dup_b.clone()]).expect("batch dedup push");
+    inbox::push_messages(root, &[dup_a]).expect("repeat dedup push");
+
+    let deduped = inbox::drain_inbox(root).expect("drain deduped");
+    assert_eq!(deduped.len(), 1);
+    assert_eq!(deduped[0].content, "unused import");
+
+    let distinct: Vec<InboxMessage> = (0..40)
+        .map(|i| {
+            InboxMessage::new(
+                "tier1",
+                MessageLevel::Info,
+                format!("diag-{i}"),
+                Some("src/lib.rs".to_owned()),
+            )
+        })
+        .collect();
+    inbox::push_messages(root, &distinct).expect("push 40 distinct");
+
+    let capped = inbox::drain_inbox(root).expect("drain capped");
+    assert_eq!(capped.len(), 32);
+    let contents: Vec<&str> = capped.iter().map(|m| m.content.as_str()).collect();
+    let expected: Vec<String> = (8..40).map(|i| format!("diag-{i}")).collect();
+    let expected_refs: Vec<&str> = expected.iter().map(String::as_str).collect();
+    assert_eq!(contents, expected_refs);
 }

@@ -5,7 +5,7 @@ pub mod path;
 
 pub use jsonc::strip_jsonc;
 pub use path::{
-    bin_in_path, relativize_path, resolve_local_or_path_bin, resolve_php_bin,
+    bin_in_path, relativize_path, resolve_godot_bin, resolve_local_or_path_bin, resolve_php_bin,
     resolve_php_vendor_script, sanitize_author,
 };
 

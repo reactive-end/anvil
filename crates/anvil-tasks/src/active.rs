@@ -9,13 +9,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::builder::build_root_tasks_json;
+use crate::curate::{clear_untracked_edits, is_conversational_or_trivial_prompt};
 use crate::identity::resolve_author_fast;
 use crate::ledger::{start_task_as, task_dir};
 use crate::model::{TaskMeta, TaskStatus};
 use crate::{atomic_write_json, read_json_file};
 
-const TRIVIAL_PROMPT_MAX_CHARS: usize = 12;
-const ACTIVE_TASK_LOCK_TIMEOUT_MS: u64 = 2000;
+pub(crate) const ACTIVE_TASK_LOCK_TIMEOUT_MS: u64 = 2000;
 
 /// Local ephemeral tracking state stored at `.harness/.state/active-task.json` (gitignored).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +27,10 @@ pub struct ActiveTaskState {
     pub started_at: DateTime<Utc>,
     #[serde(default)]
     pub touched_files: Vec<String>,
+    #[serde(default)]
+    pub skipped: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skip_reason: Option<String>,
 }
 
 /// Ephemeral prompt snapshot stored in `.harness/.state/pending-prompt.json` (gitignored)
@@ -104,6 +108,8 @@ pub fn ensure_task_for_prompt(
                 summary_recorded_at: None,
                 started_at: meta.created_at,
                 touched_files: Vec::new(),
+                skipped: false,
+                skip_reason: None,
             };
             save_active_task_unlocked(repo, &state)?;
             Ok(Some((state, true)))
@@ -113,15 +119,28 @@ pub fn ensure_task_for_prompt(
 
 /// Records a newly started manual task in `active-task.json` with `summary_recorded_at = None`.
 pub fn activate_task_from_meta(repo: &Path, meta: &TaskMeta) -> Result<()> {
-    let state = ActiveTaskState {
-        task_id: meta.task_id.clone(),
-        prompt_hash: hash_prompt(meta.request.trim()),
-        status: TaskStatus::InProgress,
-        summary_recorded_at: None,
-        started_at: meta.created_at,
-        touched_files: Vec::new(),
-    };
-    save_active_task(repo, &state)
+    with_file_lock(
+        &active_task_lock_path(repo),
+        ACTIVE_TASK_LOCK_TIMEOUT_MS,
+        || {
+            let prompt_hash = load_pending_prompt_unlocked(repo)?
+                .map_or_else(|| hash_prompt(meta.request.trim()), |p| p.prompt_hash);
+            let state = ActiveTaskState {
+                task_id: meta.task_id.clone(),
+                prompt_hash,
+                status: TaskStatus::InProgress,
+                summary_recorded_at: None,
+                started_at: meta.created_at,
+                touched_files: Vec::new(),
+                skipped: false,
+                skip_reason: None,
+            };
+            save_active_task_unlocked(repo, &state)?;
+            let _ = fs::remove_file(pending_prompt_path(repo));
+            clear_untracked_edits(repo);
+            Ok(())
+        },
+    )
 }
 
 /// Captures a non-trivial user prompt in `.harness/.state/pending-prompt.json` without creating
@@ -137,7 +156,7 @@ pub fn record_pending_prompt(repo: &Path, prompt: &str) -> Result<bool> {
         || {
             let prompt_hash = hash_prompt(trimmed);
             if let Some(existing) = load_active_task_unlocked(repo)?
-                && task_dir(repo, &existing.task_id).join("meta.json").exists()
+                && (existing.skipped || task_dir(repo, &existing.task_id).join("meta.json").exists())
                 && (existing.prompt_hash == prompt_hash || existing.status == TaskStatus::InProgress)
             {
                 return Ok(false);
@@ -208,6 +227,8 @@ pub fn materialize_task_on_edit_with_fallback(
                 summary_recorded_at: None,
                 started_at: meta.created_at,
                 touched_files: vec![norm.to_owned()],
+                skipped: false,
+                skip_reason: None,
             };
             save_active_task_unlocked(repo, &state)?;
             let _ = fs::remove_file(pending_prompt_path(repo));
@@ -288,9 +309,13 @@ pub fn mark_summary_recorded_with_files(
                         summary_recorded_at: Some(now),
                         started_at,
                         touched_files: Vec::new(),
+                        skipped: false,
+                        skip_reason: None,
                     }
                 }
             };
+            next.skipped = false;
+            next.skip_reason = None;
             for f in files {
                 let norm = f.trim().replace('\\', "/");
                 if !norm.is_empty() && !next.touched_files.iter().any(|x| x == &norm) {
@@ -298,12 +323,18 @@ pub fn mark_summary_recorded_with_files(
                 }
             }
             next.touched_files.sort();
-            save_active_task_unlocked(repo, &next)
+            if let Ok(Some(pending)) = load_pending_prompt_unlocked(repo) {
+                next.prompt_hash = pending.prompt_hash;
+            }
+            save_active_task_unlocked(repo, &next)?;
+            let _ = fs::remove_file(pending_prompt_path(repo));
+            clear_untracked_edits(repo);
+            Ok(())
         },
     )
 }
 
-fn load_pending_prompt_unlocked(repo: &Path) -> Result<Option<PendingPrompt>> {
+pub(crate) fn load_pending_prompt_unlocked(repo: &Path) -> Result<Option<PendingPrompt>> {
     let path = pending_prompt_path(repo);
     if !path.exists() {
         return Ok(None);
@@ -318,7 +349,7 @@ fn load_pending_prompt_unlocked(repo: &Path) -> Result<Option<PendingPrompt>> {
     Ok(Some(pending))
 }
 
-fn load_active_task_unlocked(repo: &Path) -> Result<Option<ActiveTaskState>> {
+pub(crate) fn load_active_task_unlocked(repo: &Path) -> Result<Option<ActiveTaskState>> {
     let path = active_task_path(repo);
     if !path.exists() {
         return Ok(None);
@@ -333,16 +364,14 @@ fn load_active_task_unlocked(repo: &Path) -> Result<Option<ActiveTaskState>> {
     Ok(Some(state))
 }
 
-fn save_active_task_unlocked(repo: &Path, state: &ActiveTaskState) -> Result<()> {
+pub(crate) fn save_active_task_unlocked(repo: &Path, state: &ActiveTaskState) -> Result<()> {
     atomic_write_json(&active_task_path(repo), state)
 }
 
 fn is_ignored_prompt(trimmed: &str) -> bool {
-    trimmed.is_empty()
-        || trimmed.starts_with('/')
-        || trimmed.chars().count() <= TRIVIAL_PROMPT_MAX_CHARS
+    is_conversational_or_trivial_prompt(trimmed)
 }
 
-fn hash_prompt(trimmed: &str) -> String {
+pub(crate) fn hash_prompt(trimmed: &str) -> String {
     blake3::hash(trimmed.as_bytes()).to_hex().to_string()
 }

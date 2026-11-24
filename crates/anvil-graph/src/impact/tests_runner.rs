@@ -3,14 +3,17 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
-use anvil_core::fs_util::resolve_local_or_path_bin;
+use anvil_core::fs_util::{resolve_godot_bin, resolve_local_or_path_bin};
+use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
 
 use super::tests_native::{run_kotlin_tests, run_php_tests, run_rust_tests};
+use super::typecheck_godot::resolve_godot_project_for_script;
 
 /// Runs targeted test runners for `related_tests`, skipping gracefully when a runner is absent.
 pub fn run_impacted_tests(
@@ -43,6 +46,9 @@ pub fn run_impacted_tests(
     if !buckets.php.is_empty() {
         results.extend(run_php_tests(repo_root, config, &buckets.php)?);
     }
+    if !buckets.godot.is_empty() {
+        results.push(run_godot_gut_tests(repo_root, config, &buckets.godot)?);
+    }
     Ok(results)
 }
 
@@ -54,6 +60,7 @@ struct TestBuckets<'a> {
     kotlin: Vec<&'a str>,
     rust: Vec<&'a str>,
     php: Vec<&'a str>,
+    godot: Vec<&'a str>,
 }
 
 fn partition_tests<'a>(related_tests: &'a [String]) -> TestBuckets<'a> {
@@ -70,6 +77,8 @@ fn partition_tests<'a>(related_tests: &'a [String]) -> TestBuckets<'a> {
             buckets.rust.push(raw.as_str());
         } else if lower.ends_with(".php") && !lower.ends_with(".blade.php") {
             buckets.php.push(raw.as_str());
+        } else if is_godot_test_path(&lower) {
+            buckets.godot.push(raw.as_str());
         } else if lower.ends_with(".ts")
             || lower.ends_with(".tsx")
             || lower.ends_with(".js")
@@ -153,7 +162,10 @@ pub(super) fn exec_compressed(
     label: &str,
     args: &[&str],
 ) -> Result<CompressedOutput> {
-    let output = match Command::new(bin_path).args(args).current_dir(work_dir).output() {
+    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let mut cmd = Command::new(bin_path);
+    cmd.args(args).current_dir(work_dir);
+    let timed = match run_command_with_timeout(&mut cmd, timeout) {
         Ok(out) => out,
         Err(err) => {
             return compress_output(
@@ -166,16 +178,15 @@ pub(super) fn exec_compressed(
             );
         }
     };
-    let code = output.status.code().unwrap_or(1);
     let combined = format!(
         "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&timed.stdout),
+        String::from_utf8_lossy(&timed.stderr)
     );
     compress_output(
         Some(log_root),
         label,
-        code,
+        timed.status_code,
         &combined,
         config.tier_budgets.compressor_max_lines,
         config.tier_budgets.compressor_max_tokens,
@@ -193,4 +204,50 @@ pub(super) fn skip_output(tool: &str, reason: &str) -> CompressedOutput {
         truncated: false,
         raw_log_path: None,
     }
+}
+
+fn is_godot_test_path(lower: &str) -> bool {
+    if !lower.ends_with(".gd") {
+        return false;
+    }
+    let fname = lower.rsplit('/').next().unwrap_or(lower);
+    lower.starts_with("test/")
+        || lower.starts_with("tests/")
+        || lower.contains("/test/")
+        || lower.contains("/tests/")
+        || fname.ends_with("_test.gd")
+        || fname.starts_with("test_")
+}
+
+fn run_godot_gut_tests(
+    repo_root: &Path,
+    config: &AnvilConfig,
+    files: &[&str],
+) -> Result<CompressedOutput> {
+    let (proj_dir, _) = resolve_godot_project_for_script(repo_root, files[0]);
+    if !proj_dir.join("addons/gut/gut_cmdln.gd").is_file() {
+        return Ok(skip_output("godot-gut", "addons/gut/gut_cmdln.gd not found"));
+    }
+    let Some(bin) = resolve_godot_bin() else {
+        return Ok(skip_output("godot-gut", "godot binary not found"));
+    };
+    let res_tests: Vec<String> = files
+        .iter()
+        .map(|f| {
+            let (_, sub_rel) = resolve_godot_project_for_script(repo_root, f);
+            format!("res://{sub_rel}")
+        })
+        .collect();
+    let gtest_arg = format!("-gtest={}", res_tests.join(","));
+    let proj_str = proj_dir.to_string_lossy().into_owned();
+    let args = [
+        "--headless",
+        "-s",
+        "--path",
+        &proj_str,
+        "addons/gut/gut_cmdln.gd",
+        "-gexit",
+        &gtest_arg,
+    ];
+    exec_compressed(repo_root, &proj_dir, config, &bin, "godot gut", &args)
 }

@@ -32,6 +32,50 @@ pub fn execute(root: &Path, sub: DaemonSubcmd) -> Result<()> {
     }
 }
 
+/// Best-effort lazy background daemon spawn for `SessionStart` hooks (< 5ms, non-blocking).
+pub fn ensure_daemon_running_async(root: &Path) {
+    if std::env::var_os("ANVIL_NO_AUTO_DAEMON").is_some()
+        || !anvil_graph::store::default_bin_path(root).is_file()
+        || !root.join(".harness").is_dir()
+    {
+        return;
+    }
+    if matches!(try_request(root, DaemonRequest::Ping), Some(DaemonResponse::Pong { .. })) {
+        return;
+    }
+    remove_state(root);
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = spawn_detached_async(&exe, root);
+    }
+}
+
+#[cfg(windows)]
+fn spawn_detached_async(exe: &Path, root: &Path) -> Result<()> {
+    let ps_cmd = "Start-Process -FilePath $env:ANVIL_DAEMON_EXE -ArgumentList @('--root', ('\"{0}\"' -f $env:ANVIL_DAEMON_ROOT), 'daemon', 'start', '--foreground') -WindowStyle Hidden";
+    let _child = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", ps_cmd])
+        .env("ANVIL_DAEMON_EXE", exe)
+        .env("ANVIL_DAEMON_ROOT", root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn spawn_detached_async(exe: &Path, root: &Path) -> Result<()> {
+    let _child = Command::new(exe)
+        .arg("--root")
+        .arg(root)
+        .args(["daemon", "start", "--foreground"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    Ok(())
+}
+
 fn start_background(root: &Path) -> Result<()> {
     if let Some(DaemonResponse::Pong { pid, .. }) = try_request(root, DaemonRequest::Ping) {
         let port = read_state(root).map_or(0, |s| s.port);

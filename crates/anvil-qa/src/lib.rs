@@ -1,5 +1,6 @@
 //! Hybrid visual QA driver for Web DOM assertions and mobile view trees.
 
+pub mod godot;
 pub mod mobile;
 pub mod model;
 pub mod onboarding;
@@ -70,6 +71,11 @@ impl QaEngine {
         }
         out.extend(mobile::scan_roborazzi_diffs(&self.repo_root)?);
         Ok(out)
+    }
+
+    /// Audits a Godot `.tscn` scene tree for missing 3D camera, lighting, or physics collision shapes.
+    pub fn audit_godot_scene(&self, tscn_source: &str, file: &str) -> Vec<QaViolation> {
+        godot::audit_godot_scene_tree(tscn_source, file)
     }
 
     /// Builds a combined before/after [`QaReport`].

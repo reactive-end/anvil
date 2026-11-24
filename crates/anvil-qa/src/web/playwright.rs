@@ -3,19 +3,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use serde::{Deserialize, Serialize};
+use anvil_core::proc_util::run_command_with_timeout;
+use serde::Deserialize;
 
 use super::{DOM_AUDIT_SCRIPT, RawDomAudit, build_capture};
+pub use crate::model::RunnerCommand;
 use crate::model::ViewportCapture;
-
-/// Command specification returned by runner builders for deterministic testing and execution.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RunnerCommand {
-    pub program: String,
-    pub args: Vec<String>,
-}
 
 #[derive(Debug, Deserialize)]
 struct RawPlaywrightOutput {
@@ -123,17 +119,20 @@ pub fn run_playwright_capture(
         .with_context(|| format!("failed to write {}", script_path.display()))?;
 
     let cmd = build_playwright_command(&script_path);
-    let output = Command::new(&cmd.program)
-        .args(&cmd.args)
-        .output()
+    let mut command = Command::new(&cmd.program);
+    command.args(&cmd.args);
+    let timed = run_command_with_timeout(&mut command, Duration::from_secs(60))
         .with_context(|| format!("failed to invoke `{}` for Playwright QA", cmd.program))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if timed.timed_out {
+        bail!("Playwright QA runner timed out after 60s");
+    }
+    if timed.status_code != 0 {
+        let stderr = String::from_utf8_lossy(&timed.stderr);
         bail!("Playwright QA runner failed: {}", stderr.trim());
     }
 
-    let parsed: RawPlaywrightOutput = serde_json::from_slice(&output.stdout)
+    let parsed: RawPlaywrightOutput = serde_json::from_slice(&timed.stdout)
         .context("failed to parse Playwright runner JSON output")?;
 
     Ok(parsed

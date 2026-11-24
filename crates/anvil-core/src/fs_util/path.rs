@@ -89,6 +89,69 @@ fn find_windows_php_bin() -> Option<PathBuf> {
     None
 }
 
+/// Resolves the Godot 4 CLI binary: `GODOT_BIN`, `PATH`, then common Windows/OS install paths.
+pub fn resolve_godot_bin() -> Option<PathBuf> {
+    if let Some(env_bin) = std::env::var_os("GODOT_BIN") {
+        let candidate = PathBuf::from(env_bin);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    for name in ["godot4", "godot", "godot4_console", "godot_console"] {
+        if let Some(found) = bin_in_path(name) {
+            return Some(found);
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Some(found) = find_windows_godot_bin() {
+            return Some(found);
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn find_windows_godot_bin() -> Option<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        dirs.push(PathBuf::from(local).join(r"Microsoft\WinGet\Links"));
+    }
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        dirs.push(PathBuf::from(profile).join(r"scoop\shims"));
+    }
+    for dir in dirs {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            let mut cands: Vec<PathBuf> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.is_file()
+                        && p.file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| {
+                                let l = n.to_ascii_lowercase();
+                                l.starts_with("godot") && l.ends_with(".exe")
+                            })
+                })
+                .collect();
+            cands.sort();
+            if let Some(best) = cands
+                .iter()
+                .find(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.to_ascii_lowercase().contains("console"))
+                })
+                .or_else(|| cands.first())
+            {
+                return Some(best.clone());
+            }
+        }
+    }
+    None
+}
+
 fn find_bin_in_dir(dir: &Path, name: &str) -> Option<PathBuf> {
     if name.is_empty() || !dir.is_dir() {
         return None;

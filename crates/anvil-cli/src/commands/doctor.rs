@@ -7,7 +7,9 @@ use anyhow::Result;
 use anvil_adapters::{antigravity, claude_code};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::{AnvilConfig, StackKind, ToolKind};
-use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin, strip_jsonc};
+use anvil_core::fs_util::{
+    resolve_godot_bin, resolve_local_or_path_bin, resolve_php_bin, strip_jsonc,
+};
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author;
@@ -26,6 +28,7 @@ pub fn execute(root: &Path) -> Result<()> {
     check_adapters(root, &config, &mut failures);
     check_tsconfig_strict(root, &config, &mut failures);
     check_phpstan_config(root, &config);
+    check_godot_project(root, &config);
     check_graph_index(root);
     let author = check_identity(root);
     check_memory(root, &author);
@@ -83,6 +86,21 @@ fn check_adapters(root: &Path, config: &AnvilConfig, failures: &mut usize) {
             claude_code::config::mcp_config_path(root),
             root.join("CLAUDE.md"),
         ]);
+    }
+    if config.adapters.includes_cursor() {
+        required.extend([
+            root.join(".cursor/mcp.json"),
+            root.join(".cursor/rules/anvil.mdc"),
+        ]);
+    }
+    if config.adapters.includes_windsurf() {
+        required.extend([
+            root.join(".windsurf/mcp_config.json"),
+            root.join(".windsurf/rules/anvil.md"),
+        ]);
+    }
+    if config.adapters.includes_codex() {
+        required.extend([root.join(".codex/config.toml"), root.join("AGENTS.md")]);
     }
     let missing: Vec<_> = required.into_iter().filter(|p| !p.exists()).collect();
     if missing.is_empty() {
@@ -319,6 +337,7 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
                     || resolve_local_or_path_bin(d, "tsc").is_some()
             }),
             "php" => resolve_php_bin().is_none(),
+            "godot" => resolve_godot_bin().is_none(),
             other => !search_dirs
                 .iter()
                 .any(|d| resolve_local_or_path_bin(d, other).is_some()),
@@ -350,6 +369,7 @@ fn workspace_has_php(config: &AnvilConfig) -> bool {
 fn tool_kind_bin(tool: ToolKind) -> Option<&'static str> {
     match tool {
         ToolKind::Tsc => Some("tsc"),
+        ToolKind::VueTsc => Some("vue-tsc"),
         ToolKind::Eslint => Some("eslint"),
         ToolKind::Biome => Some("biome"),
         ToolKind::Ruff => Some("ruff"),
@@ -369,7 +389,34 @@ fn tool_kind_bin(tool: ToolKind) -> Option<&'static str> {
         ToolKind::PhpCsFixer => Some("php-cs-fixer"),
         ToolKind::PhpUnit => Some("phpunit"),
         ToolKind::Pest => Some("pest"),
-        ToolKind::Gradle | ToolKind::Roborazzi | ToolKind::SonarQube => None,
+        ToolKind::Godot => Some("godot"),
+        ToolKind::GdLint => Some("gdlint"),
+        ToolKind::Gradle | ToolKind::Roborazzi | ToolKind::SonarQube | ToolKind::GdUnit4 | ToolKind::Gut => None,
+    }
+}
+
+fn check_godot_project(root: &Path, config: &AnvilConfig) {
+    let has_godot = config.stacks.contains(&StackKind::Godot)
+        || config.subrepos.iter().any(|s| s.stacks.contains(&StackKind::Godot));
+    if !has_godot {
+        return;
+    }
+    if resolve_godot_bin().is_some() {
+        ui::print_status_row(&ui::ok_badge(), "godot", "headless Godot binary detected");
+    } else {
+        ui::print_status_row(
+            &ui::warn_badge(),
+            "godot",
+            "Godot binary not found (`GODOT_BIN` / PATH); Tier 1 `--check-only` & `qa` paused",
+        );
+    }
+    let gitignore = fs::read_to_string(root.join(".gitignore")).unwrap_or_default();
+    if !gitignore.lines().any(|l| l.trim().starts_with(".godot")) {
+        ui::print_status_row(
+            &ui::warn_badge(),
+            "godot",
+            "add `.godot/` to `.gitignore` so imported engine caches stay untracked",
+        );
     }
 }
 

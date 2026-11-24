@@ -117,6 +117,7 @@ pub fn parse_pypi_registry_json(package: &str, body: &str) -> Result<PackageHeal
         deprecation_message: yanked.then(|| "latest PyPI release is yanked".to_owned()),
         archived: classifiers_inactive,
         repository_url,
+        vulnerabilities: Vec::new(),
     })
 }
 

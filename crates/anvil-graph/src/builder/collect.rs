@@ -19,10 +19,10 @@ pub fn collect_source_files(repo_root: &Path) -> Vec<(PathBuf, String)> {
             let name = entry.file_name().to_str().unwrap_or("");
             if matches!(
                 name,
-                ".git" | ".harness" | "node_modules" | "target" | "dist" | "build"
+                ".git" | ".godot" | ".harness" | "node_modules" | "target" | "dist" | "build"
                     | "coverage" | "graphify-out" | ".dart_tool" | ".gradle"
                     | "__pycache__" | ".venv" | "venv" | "out-tsc" | ".next" | ".nuxt"
-                    | "vendor" | "storage"
+                    | ".svelte-kit" | ".astro" | "vendor" | "storage"
             ) {
                 return false;
             }
@@ -54,11 +54,21 @@ pub fn collect_source_files(repo_root: &Path) -> Vec<(PathBuf, String)> {
 }
 
 fn is_supported_source(path: &Path) -> bool {
-    matches!(
+    if matches!(
         anvil_ast::detect_language(path),
         Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx
             | Language::Html | Language::Css | Language::Scss | Language::Python
             | Language::Kotlin | Language::Dart | Language::Rust
             | Language::Php | Language::Blade
-    )
+            | Language::GdScript | Language::GodotScene | Language::GdShader
+    ) {
+        return true;
+    }
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("vue")
+                || ext.eq_ignore_ascii_case("svelte")
+                || ext.eq_ignore_ascii_case("astro")
+        })
 }

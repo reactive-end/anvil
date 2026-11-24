@@ -10,7 +10,7 @@ use anyhow::Result;
 use anvil_ast::analyze_files_parallel;
 use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, DiffClassification, classify_files};
-use anvil_core::git;
+use anvil_core::git::{self, DiffScope};
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
 use anvil_core::traits::{Diagnostic, Severity, Tier};
 use anvil_graph::builder::collect_source_files;
@@ -21,17 +21,22 @@ use crate::commands::ExitCodeError;
 use crate::ui;
 use tier1::{Tier1Options, run_tier1};
 
-/// Executes `anvil check [--full] [--tier 0|1|2] [--no-tests] [--no-cache]`.
+/// Executes `anvil check [--full] [--tier 0|1|2] [--no-tests] [--no-cache] [--staged]`.
 pub fn execute(
     root: &Path,
     full: bool,
     tier_override: Option<u8>,
     no_tests: bool,
     no_cache: bool,
+    staged: bool,
 ) -> Result<()> {
     ui::print_banner_if_tty("Tiered Verification Pipeline");
     let config = AnvilConfig::load_or_default(root)?;
-    let (changed_paths, added_paths, classification) = classify_repo_diff(root);
+    let (changed_paths, added_paths, classification) = if staged {
+        classify_staged_diff(root)
+    } else {
+        classify_repo_diff(root)
+    };
     let effective_tier = resolve_tier(full, tier_override, classification.minimum_tier);
 
     println!(
@@ -120,6 +125,15 @@ fn classify_repo_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassificat
         .collect();
     let classification = classify_files(&changed);
     (paths, added_paths, classification)
+}
+
+fn classify_staged_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassification) {
+    let mut paths = git::changed_files(root, DiffScope::Staged).unwrap_or_default();
+    paths.sort();
+    paths.dedup();
+    let changed: Vec<ChangedFile> = paths.iter().map(ChangedFile::from_path).collect();
+    let classification = classify_files(&changed);
+    (paths, Vec::new(), classification)
 }
 
 fn resolve_tier(full: bool, tier_override: Option<u8>, minimum: Tier) -> Tier {

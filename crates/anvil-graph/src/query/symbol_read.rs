@@ -38,7 +38,14 @@ pub fn read_symbol(
     };
 
     let abs = repo_root.join(&node.file);
-    let content = fs::read_to_string(&abs)
+    let canon_root = fs::canonicalize(repo_root)
+        .with_context(|| format!("failed to canonicalize repo root {}", repo_root.display()))?;
+    let canon_abs = fs::canonicalize(&abs)
+        .with_context(|| format!("failed to canonicalize symbol path {}", abs.display()))?;
+    if !canon_abs.starts_with(&canon_root) {
+        anyhow::bail!("refusing to read symbol outside repository root: {}", node.file);
+    }
+    let content = fs::read_to_string(&canon_abs)
         .with_context(|| format!("failed to read symbol source {}", abs.display()))?;
     let lines: Vec<&str> = content.lines().collect();
     let total_file_lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);

@@ -96,6 +96,7 @@ pub fn parse_packagist_json(package: &str, body: &str) -> Result<PackageHealthIn
         deprecation_message,
         archived: false,
         repository_url,
+        vulnerabilities: Vec::new(),
     })
 }
 
