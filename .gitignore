@@ -1,5 +1,6 @@
 /target
 .harness/.state/
+.harness/.worktrees/
 *.db-wal
 *.db-shm
 *.rs.bk

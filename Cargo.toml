@@ -8,6 +8,7 @@ members = [
     "crates/anvil-mcp",
     "crates/anvil-tasks",
     "crates/anvil-adapters",
+    "crates/anvil-codemode",
     "crates/anvil-deps",
     "crates/anvil-qa",
     "crates/anvil-cli",
@@ -45,6 +46,7 @@ anvil-memory = { path = "crates/anvil-memory" }
 anvil-mcp = { path = "crates/anvil-mcp" }
 anvil-tasks = { path = "crates/anvil-tasks" }
 anvil-adapters = { path = "crates/anvil-adapters" }
+anvil-codemode = { path = "crates/anvil-codemode" }
 anvil-deps = { path = "crates/anvil-deps" }
 anvil-qa = { path = "crates/anvil-qa" }
 

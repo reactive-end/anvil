@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M85RFQRDN0NTSFK8RTZGZJKX",
+  "task_id": "T-20261124-01M85RFQRA9KRHZX",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/sonar-codemode-harness",
+  "summary": "Started task: Add opt-in SonarQube, Code Mode sandbox/proxy, anti-tampering, and checkpoints",
+  "files_touched": [],
+  "timestamp": "2026-11-24T03:09:43.597650500Z"
+}

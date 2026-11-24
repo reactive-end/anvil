@@ -82,6 +82,9 @@ fn is_duplicate(existing: &[InboxMessage], msg: &InboxMessage) -> bool {
 
 /// Atomically drains and clears all pending messages from `.harness/.state/inbox.json`.
 pub fn drain_inbox(repo_root: &Path) -> Result<Vec<InboxMessage>> {
+    if !inbox_path(repo_root).exists() {
+        return Ok(Vec::new());
+    }
     with_file_lock(&inbox_lock_path(repo_root), INBOX_LOCK_TIMEOUT_MS, || {
         let messages = load_inbox_unlocked(repo_root)?;
         if !messages.is_empty() {
@@ -93,6 +96,9 @@ pub fn drain_inbox(repo_root: &Path) -> Result<Vec<InboxMessage>> {
 
 /// Clears `.harness/.state/inbox.json` if it exists under advisory file lock.
 pub fn clear_inbox(repo_root: &Path) -> Result<()> {
+    if !inbox_path(repo_root).exists() {
+        return Ok(());
+    }
     with_file_lock(&inbox_lock_path(repo_root), INBOX_LOCK_TIMEOUT_MS, || {
         clear_inbox_unlocked(repo_root)
     })

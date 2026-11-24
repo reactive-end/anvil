@@ -9,11 +9,12 @@ use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
 use anvil_core::stats::{StatsEvent, record_event};
+use anvil_core::test_tampering::{check_test_tampering_diff, is_test_file};
 use anvil_core::tier0_cache::{Tier0Cache, compute_rules_hash};
 use anvil_core::traits::{Diagnostic, Severity};
 use serde_json::Value;
 
-use super::payload::extract_command_field;
+use super::payload::{extract_command_field, is_anvil_run_command};
 
 /// Collects Tier 0 AST and promoted ratchet diagnostics for a single modified file.
 pub fn collect_post_tool_messages(
@@ -67,8 +68,17 @@ pub fn collect_changed_gate_errors(
     let mut cache = Tier0Cache::load(root);
     let mut cache_dirty = false;
     let mut errs = Vec::new();
+    let has_test_changes = changed.iter().any(|p| is_test_file(p));
+    let test_diffs = if has_test_changes {
+        anvil_core::git::batched_working_tree_diffs(root).unwrap_or_default()
+    } else {
+        Default::default()
+    };
 
     for rel in changed {
+        if let Some(diff_text) = test_diffs.get(rel) {
+            extend_error_lines(&mut errs, check_test_tampering_diff(rel, diff_text));
+        }
         let abs = root.join(rel);
         if cache.is_clean_hit(&abs, rel, &rules_hash) {
             continue;
@@ -111,40 +121,51 @@ pub fn update_circuit_from_output(
         .get("exitCode")
         .or_else(|| out.get("exit_code"))
         .and_then(Value::as_i64);
+    let tool = input.tool_name.as_deref().unwrap_or("command");
+    let cmd = extract_command_field(input.tool_input.as_ref())
+        .map(|(_, s)| s)
+        .unwrap_or(tool);
     let cb = CircuitBreaker::new(root, config.circuit_breaker_limit);
+    if is_anvil_run_command(cmd) {
+        if matches!(code, Some(c) if c != 0)
+            && let Ok(st) = cb.status()
+            && st.is_open()
+        {
+            push_circuit_open_msg(messages, st.consecutive_failures);
+        }
+        return;
+    }
+
     match code {
         Some(0) => {
-            let cmd = extract_command_field(input.tool_input.as_ref())
-                .map(|(_, s)| s)
-                .unwrap_or_else(|| input.tool_name.as_deref().unwrap_or("command"));
             let _ = cb.record_command_success(cmd);
         }
         Some(c) => {
-            let tool = input.tool_name.as_deref().unwrap_or("command");
             let snippet = out
                 .get("stderr")
                 .or_else(|| out.get("output"))
                 .and_then(Value::as_str)
                 .unwrap_or("non-zero exit");
-            let cmd = extract_command_field(input.tool_input.as_ref())
-                .map(|(_, s)| s)
-                .unwrap_or(tool);
             if let Ok(st) = cb.record_failure(tool, &format!("exit {c}: {snippet}"), cmd)
                 && st.is_open()
             {
-                let msg =
-                    "Circuit Breaker tripped OPEN after 3 identical failures; run `anvil circuit reset`."
-                        .to_owned();
-                messages.push(InboxMessage::new(
-                    "circuit-breaker",
-                    MessageLevel::Error,
-                    msg,
-                    None,
-                ));
+                push_circuit_open_msg(messages, st.consecutive_failures);
             }
         }
         None => {}
     }
+}
+
+fn push_circuit_open_msg(messages: &mut Vec<InboxMessage>, failures: u32) {
+    let msg = format!(
+        "Circuit Breaker tripped OPEN after {failures} identical failures; run `anvil circuit reset`."
+    );
+    messages.push(InboxMessage::new(
+        "circuit-breaker",
+        MessageLevel::Error,
+        msg,
+        None,
+    ));
 }
 
 fn push_diagnostics(

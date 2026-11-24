@@ -12,8 +12,9 @@ use crate::fs_util::{atomic_write, with_file_lock};
 
 const LOCK_TIMEOUT_MS: u64 = 2_000;
 const STATS_JSONL_COMPACT_BYTES: u64 = 64 * 1024;
+const MAX_LATENCY_SAMPLES: usize = 200;
 
-/// Cumulative observability metrics for hooks, check cache, compressor, and token guard.
+/// Cumulative observability metrics for hooks, check cache, compressor, Code Mode, and token guard.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AnvilStats {
@@ -23,8 +24,11 @@ pub struct AnvilStats {
     pub tokens_saved_compressor: u64,
     pub tokens_saved_symbol_read: u64,
     pub tokens_saved_outline: u64,
+    pub code_mode_calls: u64,
+    pub tokens_saved_code_mode: u64,
     pub token_guard_blocks: u64,
     pub token_guard_warnings: u64,
+    pub hook_latencies_ms: Vec<u64>,
     pub rule_hits: FxHashMap<String, u64>,
 }
 
@@ -36,8 +40,22 @@ pub enum StatsEvent {
     CompressorSaved { raw_bytes: usize, compact_bytes: usize },
     SymbolReadSaved { tokens_saved: u64 },
     OutlineSaved { tokens_saved: u64 },
+    CodeModeExec { calls_executed: u64, tokens_saved: u64 },
     TokenGuard { blocked: bool },
     RuleHit { rule: String },
+}
+
+/// Computes an integer percentile (`p` in `0.0..=100.0`) from latency samples.
+pub fn percentile_ms(samples: &[u64], pct: f64) -> u64 {
+    if samples.is_empty() {
+        return 0;
+    }
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let clamped = pct.clamp(0.0, 100.0) / 100.0;
+    let max_idx = sorted.len().saturating_sub(1);
+    let idx = ((max_idx as f64) * clamped).round() as usize;
+    sorted[idx.min(max_idx)]
 }
 
 /// Estimates token count using `ceil(bytes / 4)`.
@@ -144,6 +162,11 @@ fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
         StatsEvent::HookCall { elapsed_ms } => {
             stats.hook_calls = stats.hook_calls.saturating_add(1);
             stats.total_hook_ms = stats.total_hook_ms.saturating_add(elapsed_ms);
+            stats.hook_latencies_ms.push(elapsed_ms);
+            if stats.hook_latencies_ms.len() > MAX_LATENCY_SAMPLES {
+                let drop_n = stats.hook_latencies_ms.len() - MAX_LATENCY_SAMPLES;
+                stats.hook_latencies_ms.drain(..drop_n);
+            }
         }
         StatsEvent::CheckCacheHit => {
             stats.check_cache_hits = stats.check_cache_hits.saturating_add(1);
@@ -162,6 +185,14 @@ fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
         }
         StatsEvent::OutlineSaved { tokens_saved } => {
             stats.tokens_saved_outline = stats.tokens_saved_outline.saturating_add(tokens_saved);
+        }
+        StatsEvent::CodeModeExec {
+            calls_executed: _,
+            tokens_saved,
+        } => {
+            stats.code_mode_calls = stats.code_mode_calls.saturating_add(1);
+            stats.tokens_saved_code_mode =
+                stats.tokens_saved_code_mode.saturating_add(tokens_saved);
         }
         StatsEvent::TokenGuard { blocked } => {
             if blocked {

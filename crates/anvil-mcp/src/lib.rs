@@ -1,7 +1,9 @@
 //! Unified stdio MCP server exposing `graph_*` and `mem_*` tools.
 
+pub mod proxy;
 pub mod router;
 mod schemas;
+pub mod tools_codemode;
 pub mod tools_graph;
 pub mod tools_memory;
 pub mod tools_tasks;
@@ -151,4 +153,10 @@ impl McpServer {
 pub fn run_stdio_server(repo_root: &Path) -> Result<()> {
     let mut server = McpServer::new(repo_root)?;
     server.run_stdio()
+}
+
+/// Runs the Code Mode MCP proxy gateway wrapping external servers from `.harness/mcp-proxy.json`.
+pub fn run_proxy_server(repo_root: &Path) -> Result<()> {
+    let mut proxy = proxy::ProxyGateway::new(repo_root)?;
+    proxy.run_stdio()
 }

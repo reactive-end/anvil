@@ -207,6 +207,45 @@ fn post_tool_use_tier0_ast_failures_trip_and_clean_edit_resets_streak() {
 }
 
 #[test]
+fn anvil_run_plus_post_tool_use_does_not_flip_flop_circuit_streak() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    for attempt in 0..3 {
+        let cmd_str = "rustc nonexistent_file_12345.rs";
+        let run_out = Command::new(anvil_bin())
+            .arg("--root")
+            .arg(root)
+            .args(["run", "--", "rustc", "nonexistent_file_12345.rs"])
+            .output()
+            .expect("anvil run");
+        assert!(!run_out.status.success(), "expected wrapped command to fail on attempt {attempt}");
+
+        let wrapped_post = json!({
+            "hook_event_name": "PostToolUse",
+            "cwd": root.to_string_lossy(),
+            "tool_name": "Bash",
+            "tool_input": { "command": format!("anvil run -- {cmd_str}") },
+            "tool_output": {
+                "exitCode": run_out.status.code().unwrap_or(1),
+                "output": String::from_utf8_lossy(&run_out.stdout).to_string()
+            }
+        });
+        assert_ok(
+            &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "claude"], &wrapped_post.to_string()),
+            "wrapped post-tool-use",
+        );
+    }
+
+    let st = assert_ok(&run_anvil(root, &["circuit", "status"]), "circuit status after 3 wrapped runs");
+    assert!(
+        st.contains("circuit: Open") && st.contains("consecutive_failures=3/3"),
+        "wrapped `anvil run` + PostToolUse must reach Open (no flip-flop reset): {st}"
+    );
+}
+
+#[test]
 fn doctor_checks_cursor_windsurf_and_codex_adapters() {
     for (flag, files) in [
         ("cursor", vec![".cursor/mcp.json", ".cursor/rules/anvil.mdc"]),

@@ -31,12 +31,14 @@ fn detects_web_mobile_both_and_none_platforms() {
                 path: "fliiper-front".to_owned(),
                 stacks: vec![StackKind::Angular],
                 tools: vec![],
+                sonar_enabled: false,
             },
             SubrepoConfig {
                 name: "centinela-ia-movil".to_owned(),
                 path: "centinela-ia-movil".to_owned(),
                 stacks: vec![StackKind::KotlinAndroid],
                 tools: vec![ToolKind::Roborazzi],
+                sonar_enabled: false,
             },
         ],
         ..Default::default()

@@ -1,7 +1,8 @@
 //! Targeted Tier 1 test runner executing only impacted test suites via `anvil_core::compressor`.
 
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -29,10 +30,10 @@ pub fn run_impacted_tests(
     let mut results = Vec::new();
 
     if !buckets.js_ts.is_empty() {
-        results.push(run_js_tests(repo_root, config, &buckets.js_ts)?);
+        results.extend(run_js_tests(repo_root, config, &buckets.js_ts)?);
     }
     if !buckets.python.is_empty() {
-        results.push(run_simple_file_runner(repo_root, config, "pytest", &[], &buckets.python)?);
+        results.extend(run_simple_file_runner(repo_root, config, "pytest", &[], &buckets.python)?);
     }
     if !buckets.dart.is_empty() {
         results.push(run_dart_flutter_tests(repo_root, config, &buckets.dart)?);
@@ -96,25 +97,30 @@ fn run_js_tests(
     repo_root: &Path,
     config: &AnvilConfig,
     files: &[&str],
-) -> Result<CompressedOutput> {
-    if let Some(vitest) = resolve_local_or_path_bin(repo_root, "vitest") {
-        let mut args = vec!["related", "--run"];
-        args.extend_from_slice(files);
-        return exec_compressed(repo_root, repo_root, config, &vitest, "vitest related", &args);
+) -> Result<Vec<CompressedOutput>> {
+    let mut outputs = Vec::new();
+    for (work_dir, rel_files) in group_by_subrepo(repo_root, config, files) {
+        let refs: Vec<&str> = rel_files.iter().map(String::as_str).collect();
+        if let Some(vitest) = resolve_bin_subrepo_or_root(&work_dir, repo_root, "vitest") {
+            let mut args = vec!["related", "--run"];
+            args.extend_from_slice(&refs);
+            outputs.push(exec_compressed(repo_root, &work_dir, config, &vitest, "vitest related", &args)?);
+        } else if let Some(jest) = resolve_bin_subrepo_or_root(&work_dir, repo_root, "jest") {
+            let mut args = vec!["--findRelatedTests"];
+            args.extend_from_slice(&refs);
+            outputs.push(exec_compressed(
+                repo_root,
+                &work_dir,
+                config,
+                &jest,
+                "jest --findRelatedTests",
+                &args,
+            )?);
+        } else {
+            outputs.push(skip_output("vitest/jest", "test runner binary not found"));
+        }
     }
-    if let Some(jest) = resolve_local_or_path_bin(repo_root, "jest") {
-        let mut args = vec!["--findRelatedTests"];
-        args.extend_from_slice(files);
-        return exec_compressed(
-            repo_root,
-            repo_root,
-            config,
-            &jest,
-            "jest --findRelatedTests",
-            &args,
-        );
-    }
-    Ok(skip_output("vitest/jest", "test runner binary not found"))
+    Ok(outputs)
 }
 
 fn run_dart_flutter_tests(
@@ -145,13 +151,57 @@ fn run_simple_file_runner(
     bin: &str,
     base_args: &[&str],
     files: &[&str],
-) -> Result<CompressedOutput> {
-    let Some(bin_path) = resolve_local_or_path_bin(repo_root, bin) else {
-        return Ok(skip_output(bin, "binary not found"));
-    };
-    let mut args = base_args.to_vec();
-    args.extend_from_slice(files);
-    exec_compressed(repo_root, repo_root, config, &bin_path, bin, &args)
+) -> Result<Vec<CompressedOutput>> {
+    let mut outputs = Vec::new();
+    for (work_dir, rel_files) in group_by_subrepo(repo_root, config, files) {
+        let Some(bin_path) = resolve_bin_subrepo_or_root(&work_dir, repo_root, bin) else {
+            outputs.push(skip_output(bin, "binary not found"));
+            continue;
+        };
+        let mut args = base_args.to_vec();
+        let refs: Vec<&str> = rel_files.iter().map(String::as_str).collect();
+        args.extend_from_slice(&refs);
+        outputs.push(exec_compressed(repo_root, &work_dir, config, &bin_path, bin, &args)?);
+    }
+    Ok(outputs)
+}
+
+fn resolve_bin_subrepo_or_root(work_dir: &Path, repo_root: &Path, bin: &str) -> Option<PathBuf> {
+    resolve_local_or_path_bin(work_dir, bin).or_else(|| {
+        (work_dir != repo_root)
+            .then(|| resolve_local_or_path_bin(repo_root, bin))
+            .flatten()
+    })
+}
+
+fn group_by_subrepo(
+    repo_root: &Path,
+    config: &AnvilConfig,
+    files: &[&str],
+) -> Vec<(PathBuf, Vec<String>)> {
+    let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
+    for &file in files {
+        let norm = file.trim_start_matches("./").replace('\\', "/");
+        let matched = config
+            .subrepos
+            .iter()
+            .filter(|s| s.path != "." && !s.path.is_empty())
+            .filter_map(|s| {
+                let sub_norm = s.path.trim_matches(['/', '\\']).replace('\\', "/");
+                norm.strip_prefix(&format!("{sub_norm}/"))
+                    .map(|rest| (sub_norm.len(), s.path.clone(), rest.to_owned()))
+            })
+            .max_by_key(|(len, _, _)| *len);
+        if let Some((_, sub_path, stripped)) = matched {
+            grouped.entry(repo_root.join(sub_path)).or_default().push(stripped);
+        } else {
+            grouped
+                .entry(repo_root.to_path_buf())
+                .or_default()
+                .push((*file).to_owned());
+        }
+    }
+    grouped.into_iter().collect()
 }
 
 pub(super) fn exec_compressed(

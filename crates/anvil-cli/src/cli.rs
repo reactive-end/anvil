@@ -9,8 +9,8 @@ use clap::{Parser, Subcommand};
 
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
-    CircuitSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd, MemSubcmd, QaSubcmd, RatchetSubcmd,
-    TasksSubcmd,
+    CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd,
+    MemSubcmd, QaSubcmd, RatchetSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -59,6 +59,12 @@ pub enum Command {
         /// Install a non-destructive `.git/hooks/pre-commit` runner (`anvil check --staged --tier 0`).
         #[arg(long)]
         git_hooks: bool,
+        /// Enable opt-in local SonarQube integration (`auto` prompts interactively, or `yes` / `no`).
+        #[arg(long, default_value = "auto", value_parser = ["auto", "yes", "no"])]
+        sonar: String,
+        /// Workspace layout when multiple projects exist (`auto` prompts interactively, or `monorepo` / `multi-repo`).
+        #[arg(long, default_value = "auto", value_parser = ["auto", "monorepo", "multi-repo"])]
+        layout: String,
     },
     /// Non-destructively sync skills, config tools, and adapter files.
     Sync {
@@ -99,6 +105,12 @@ pub enum Command {
         /// Verify only git staged files (`git diff --cached --name-only`).
         #[arg(long)]
         staged: bool,
+        /// Explicitly run opt-in SonarQube checks (complexity, duplication, quality gate).
+        #[arg(long)]
+        sonar: bool,
+        /// Skip SonarQube checks even when `sonar.enabled` is true in config.
+        #[arg(long)]
+        no_sonar: bool,
     },
     /// Analyze reverse-BFS blast radius and upstream origin via `anvil-graph`.
     Impact {
@@ -124,8 +136,12 @@ pub enum Command {
         #[command(subcommand)]
         sub: MemSubcmd,
     },
-    /// Start the unified stdio MCP server (`graph_*` and `mem_*`).
-    Mcp,
+    /// Start the unified stdio MCP server (`graph_*`, `mem_*`, `code_exec`) or `--proxy` gateway.
+    Mcp {
+        /// Run as a Code Mode proxy gateway wrapping `.harness/mcp-proxy.json` upstream servers.
+        #[arg(long)]
+        proxy: bool,
+    },
     /// Manage conflict-free team task ledger and root `tasks.json`.
     Tasks {
         #[command(subcommand)]
@@ -184,5 +200,33 @@ pub enum Command {
         /// Reset `.harness/.state/stats.json` to zeroed defaults.
         #[arg(long)]
         reset: bool,
+        /// Show hook latency percentiles (p50/p95), Code Mode savings, and trajectory summary.
+        #[arg(long)]
+        trajectories: bool,
+    },
+    /// Opt-in local SonarQube Quality Gate, New Code issues, and scanner runner.
+    Sonar {
+        #[command(subcommand)]
+        sub: SonarSubcmd,
+    },
+    /// Save, list, or rewind isolated Git working-tree checkpoints.
+    Checkpoint {
+        #[command(subcommand)]
+        sub: CheckpointSubcmd,
+    },
+    /// Create, list, or remove isolated Git worktrees under `.harness/.worktrees/`.
+    Worktree {
+        #[command(subcommand)]
+        sub: WorktreeSubcmd,
+    },
+    /// Scaffold and verify `.harness/specs/*.md` deterministic acceptance criteria.
+    Spec {
+        #[command(subcommand)]
+        sub: SpecSubcmd,
+    },
+    /// Execute sandboxed JS Code Mode queries against `anvil-graph` and `anvil-memory`.
+    Code {
+        #[command(subcommand)]
+        sub: CodeSubcmd,
     },
 }

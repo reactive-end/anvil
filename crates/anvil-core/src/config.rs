@@ -123,6 +123,8 @@ pub struct SubrepoConfig {
     pub stacks: Vec<StackKind>,
     #[serde(default)]
     pub tools: Vec<ToolKind>,
+    #[serde(default)]
+    pub sonar_enabled: bool,
 }
 
 /// Latency and context-budget limits for Tier 0/1/2 execution.
@@ -192,6 +194,36 @@ pub struct BoundaryRule {
     pub reason: Option<String>,
 }
 
+/// Opt-in local SonarQube integration configuration (`enabled = false` by default).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SonarConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_key: Option<String>,
+    #[serde(default = "default_sonar_token_env")]
+    pub token_env: String,
+    #[serde(default = "default_cognitive_max")]
+    pub cognitive_complexity_max: usize,
+    #[serde(default = "default_duplication_min_lines")]
+    pub duplication_min_lines: usize,
+}
+
+impl Default for SonarConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            host_url: None,
+            project_key: None,
+            token_env: default_sonar_token_env(),
+            cognitive_complexity_max: default_cognitive_max(),
+            duplication_min_lines: default_duplication_min_lines(),
+        }
+    }
+}
+
 /// Top-level `.harness/config.json` configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnvilConfig {
@@ -221,6 +253,8 @@ pub struct AnvilConfig {
     pub boundaries: Vec<BoundaryRule>,
     #[serde(default)]
     pub forbid_import_cycles: bool,
+    #[serde(default)]
+    pub sonar: SonarConfig,
 }
 
 impl Default for AnvilConfig {
@@ -239,6 +273,7 @@ impl Default for AnvilConfig {
             allowed_escapes: default_allowed_escapes(),
             boundaries: Vec::new(),
             forbid_import_cycles: false,
+            sonar: SonarConfig::default(),
         }
     }
 }
@@ -306,6 +341,18 @@ fn default_deps_max_age_months() -> u32 {
 
 fn default_allowed_escapes() -> Vec<String> {
     vec!["anvil-allow".to_owned()]
+}
+
+fn default_sonar_token_env() -> String {
+    "SONAR_TOKEN".to_owned()
+}
+
+fn default_cognitive_max() -> usize {
+    15
+}
+
+fn default_duplication_min_lines() -> usize {
+    8
 }
 
 fn default_root_allowlist() -> Vec<String> {

@@ -62,6 +62,28 @@ fn assert_ok(out: &Output, label: &str) -> String {
     stdout
 }
 
+fn pre_tool_decision(root: &Path, tool_name: &str, tool_input: Value) -> (Value, String) {
+    let payload = json!({
+        "hook_event_name": "PreToolUse",
+        "cwd": root.to_string_lossy(),
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+    });
+    let out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &payload.to_string()),
+        tool_name,
+    );
+    let parsed: Value = serde_json::from_str(&out).unwrap();
+    assert!(parsed["hookSpecificOutput"].is_object());
+    (
+        parsed["hookSpecificOutput"]["permissionDecision"].clone(),
+        parsed["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .unwrap_or("")
+            .to_owned(),
+    )
+}
+
 #[test]
 fn circuit_breaker_open_allows_read_and_reset_while_blocking_edits() {
     let repo = setup_git_ts_repo();
@@ -82,42 +104,12 @@ fn circuit_breaker_open_allows_read_and_reset_while_blocking_edits() {
         );
     }
 
-    let read_pre = json!({
-        "hook_event_name": "PreToolUse",
-        "cwd": root.to_string_lossy(),
-        "tool_name": "Read",
-        "tool_input": { "file_path": "src/core.ts" }
-    });
-    let read_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &read_pre.to_string()),
-        "pre-tool-use Read",
-    );
-    let read_json: Value = serde_json::from_str(&read_out).unwrap();
-    assert_eq!(read_json["hookSpecificOutput"]["permissionDecision"], json!("allow"));
-
-    let reset_pre = json!({
-        "hook_event_name": "PreToolUse",
-        "cwd": root.to_string_lossy(),
-        "tool_name": "Bash",
-        "tool_input": { "command": "anvil circuit reset" }
-    });
-    let reset_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &reset_pre.to_string()),
-        "pre-tool-use circuit reset",
-    );
-    let reset_json: Value = serde_json::from_str(&reset_out).unwrap();
-    assert_eq!(reset_json["hookSpecificOutput"]["permissionDecision"], json!("allow"));
-
-    let edit_pre = json!({
-        "hook_event_name": "PreToolUse",
-        "cwd": root.to_string_lossy(),
-        "tool_name": "edit_file",
-        "tool_input": { "TargetFile": "src/core.ts" }
-    });
-    let edit_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &edit_pre.to_string()),
-        "pre-tool-use edit_file",
-    );
-    let edit_json: Value = serde_json::from_str(&edit_out).unwrap();
-    assert_eq!(edit_json["hookSpecificOutput"]["permissionDecision"], json!("deny"));
+    assert_eq!(pre_tool_decision(root, "Read", json!({ "file_path": "src/core.ts" })).0, json!("allow"));
+    assert_eq!(pre_tool_decision(root, "Bash", json!({ "command": "anvil circuit status" })).0, json!("allow"));
+    let (reset_dec, reset_reason) = pre_tool_decision(root, "Bash", json!({ "command": "anvil circuit reset" }));
+    assert_eq!(reset_dec, json!("ask"));
+    assert!(reset_reason.contains("confirm before running `anvil circuit reset`"));
+    let (edit_dec, edit_reason) = pre_tool_decision(root, "edit_file", json!({ "TargetFile": "src/core.ts" }));
+    assert_eq!(edit_dec, json!("deny"));
+    assert!(edit_reason.contains("Circuit Breaker OPEN"));
 }

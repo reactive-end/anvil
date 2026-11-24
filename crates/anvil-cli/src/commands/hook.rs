@@ -34,8 +34,9 @@ use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
 use crate::daemon::try_request;
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
 use payload::{
-    extract_command_field, extract_rel_file, is_circuit_recovery_command, is_mutating_file_tool,
-    is_read_only_tool, resolve_hook_targets, should_bypass_stop, should_wrap_with_anvil_run,
+    extract_command_field, extract_rel_file, is_circuit_reset_command, is_circuit_status_command,
+    is_mutating_file_tool, is_read_only_tool, resolve_hook_targets, should_bypass_stop,
+    should_wrap_with_anvil_run,
 };
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
@@ -69,7 +70,11 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     let outcome = match event {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
         HookEvent::UserPromptSubmit | HookEvent::PreInvocation => {
-            task_auto::handle_prompt_hook(&effective_root, &input)
+            if effective_root.join(".harness").is_dir() {
+                task_auto::handle_prompt_hook(&effective_root, &input)
+            } else {
+                HookOutcome::allow()
+            }
         }
         HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input),
         HookEvent::PostToolUse => handle_post_tool_use(&effective_root, &config, &input),
@@ -82,12 +87,17 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     };
     println!("{}", serde_json::to_string(&rendered)?);
 
-    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let _ = record_event(&effective_root, StatsEvent::HookCall { elapsed_ms });
+    if effective_root.join(".harness").is_dir() {
+        let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let _ = record_event(&effective_root, StatsEvent::HookCall { elapsed_ms });
+    }
     Ok(())
 }
 
 fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
+    if !root.join(".harness").is_dir() {
+        return HookOutcome::allow();
+    }
     crate::commands::daemon::ensure_daemon_running_async(root);
     let mut messages = Vec::new();
     let author = resolve_author_fast(root).unwrap_or_else(|_| "hook".to_owned());
@@ -168,20 +178,29 @@ fn handle_pre_tool_use(
     input: &NormalizedHookInput,
 ) -> HookOutcome {
     let cmd_field = extract_command_field(input.tool_input.as_ref());
-    match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
-        Ok(st) if st.is_open() => {
-            let is_recovery = cmd_field.is_some_and(|(_, cmd)| is_circuit_recovery_command(cmd));
-            if is_read_only_tool(input.tool_name.as_deref()) || is_recovery {
-                return run_pre_tool_guards(root, input).unwrap_or_else(HookOutcome::allow);
+    if root.join(".harness").is_dir() {
+        match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
+            Ok(st) if st.is_open() => {
+                let is_status = cmd_field.is_some_and(|(_, cmd)| is_circuit_status_command(cmd));
+                let is_reset = cmd_field.is_some_and(|(_, cmd)| is_circuit_reset_command(cmd));
+                if is_read_only_tool(input.tool_name.as_deref()) || is_status {
+                    return run_pre_tool_guards(root, input).unwrap_or_else(HookOutcome::allow);
+                }
+                if is_reset {
+                    return HookOutcome::ask(format!(
+                        "Circuit Breaker is OPEN ({} identical failures) — confirm before running `anvil circuit reset`.",
+                        st.consecutive_failures
+                    ));
+                }
+                let tool = input.tool_name.as_deref().unwrap_or("tool");
+                return HookOutcome::deny(format!(
+                    "Circuit Breaker OPEN ({} identical failures) — blocked `{tool}`. Run `anvil circuit reset` after fixing.",
+                    st.consecutive_failures
+                ));
             }
-            let tool = input.tool_name.as_deref().unwrap_or("tool");
-            return HookOutcome::deny(format!(
-                "Circuit Breaker OPEN ({} identical failures) — blocked `{tool}`. Run `anvil circuit reset` after fixing.",
-                st.consecutive_failures
-            ));
+            Ok(_) => {}
+            Err(err) => error_log::log_hook_error(root, "pre-tool-use:circuit", &err),
         }
-        Ok(_) => {}
-        Err(err) => error_log::log_hook_error(root, "pre-tool-use:circuit", &err),
     }
     if let Some(guard_outcome) = run_pre_tool_guards(root, input) {
         return guard_outcome;
@@ -268,22 +287,28 @@ fn handle_stop(root: &Path, config: &AnvilConfig, bypass_stop: bool) -> HookOutc
     if bypass_stop {
         return HookOutcome::allow();
     }
-    task_auto::refresh_tasks_json_if_changed(root);
-    match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
-        Ok(st) if st.is_open() => {
-            let msg = "Circuit Breaker OPEN — stopping for human escalation.".to_owned();
-            return HookOutcome::with_messages(vec![InboxMessage::new(
-                "circuit-breaker",
-                MessageLevel::Error,
-                msg,
-                None,
-            )]);
+    let has_root_harness = root.join(".harness").is_dir();
+    if has_root_harness {
+        task_auto::refresh_tasks_json_if_changed(root);
+        match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
+            Ok(st) if st.is_open() => {
+                let msg = "Circuit Breaker OPEN — stopping for human escalation.".to_owned();
+                return HookOutcome::with_messages(vec![InboxMessage::new(
+                    "circuit-breaker",
+                    MessageLevel::Error,
+                    msg,
+                    None,
+                )]);
+            }
+            Ok(_) => {}
+            Err(err) => error_log::log_hook_error(root, "stop:circuit", &err),
         }
-        Ok(_) => {}
-        Err(err) => error_log::log_hook_error(root, "stop:circuit", &err),
     }
     if let Some(sub_block) = check_subrepo_stop_gates(root, config) {
         return sub_block;
+    }
+    if !has_root_harness {
+        return HookOutcome::allow();
     }
     let changed = git::changed_files(root, DiffScope::WorkingTree).unwrap_or_default();
     if changed.is_empty() || task_auto::should_skip_readonly_stop(root, &changed) {
@@ -357,15 +382,13 @@ fn resolve_stop_blast(
 }
 
 fn check_subrepo_stop_gates(root: &Path, config: &AnvilConfig) -> Option<HookOutcome> {
-    if config.subrepos.is_empty() {
+    let sub_paths = collect_subrepo_stop_paths(root, config);
+    if sub_paths.is_empty() {
         return None;
     }
     let root_has_git = root.join(".git").exists();
-    for sub in &config.subrepos {
-        if sub.path == "." {
-            continue;
-        }
-        let sub_dir = root.join(&sub.path);
+    for rel_sub in sub_paths {
+        let sub_dir = root.join(&rel_sub);
         if !sub_dir.join(".harness").is_dir() || (root_has_git && !sub_dir.join(".git").exists()) {
             continue;
         }
@@ -378,8 +401,7 @@ fn check_subrepo_stop_gates(root: &Path, config: &AnvilConfig) -> Option<HookOut
         let errs = collect_changed_gate_errors(&sub_dir, &sub_changed, &sub_cfg);
         if !errs.is_empty() {
             return Some(HookOutcome::block_stop(format!(
-                "Tier 0 AST gate failed in `{}` ({} error(s)): {}",
-                sub.path,
+                "Tier 0 AST gate failed in `{rel_sub}` ({} error(s)): {}",
                 errs.len(),
                 errs.join("; ")
             )));
@@ -389,4 +411,39 @@ fn check_subrepo_stop_gates(root: &Path, config: &AnvilConfig) -> Option<HookOut
         }
     }
     None
+}
+
+fn collect_subrepo_stop_paths(root: &Path, config: &AnvilConfig) -> Vec<String> {
+    if !config.subrepos.is_empty() {
+        return config
+            .subrepos
+            .iter()
+            .filter(|s| s.path != ".")
+            .map(|s| s.path.clone())
+            .collect();
+    }
+    if root.join(".harness").is_dir() {
+        return Vec::new();
+    }
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut dirs = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.starts_with('.')
+            && !matches!(name, "node_modules" | "target")
+            && path.join(".harness/config.json").is_file()
+        {
+            dirs.push(name.to_owned());
+        }
+    }
+    dirs.sort();
+    dirs
 }

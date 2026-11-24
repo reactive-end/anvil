@@ -57,6 +57,7 @@ impl WorkspaceDetection {
                     path: repo.rel_path.clone(),
                     stacks,
                     tools,
+                    sonar_enabled: false,
                 });
             }
         }

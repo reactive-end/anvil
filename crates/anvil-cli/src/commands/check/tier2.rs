@@ -10,18 +10,22 @@ use anvil_qa::QaEngine;
 use crate::commands::deps::discover_manifests;
 use crate::ui;
 
-/// Runs Tier 2 dependency auditing and visual QA readiness checks.
-/// Returns `true` when deprecated or stale dependencies were found.
+/// Runs Tier 2 dependency auditing, visual QA readiness, and opt-in SonarQube Quality Gate checks.
+/// Returns `true` when blocking findings or a failing Sonar Quality Gate are reported.
 pub fn run_tier2(
     root: &Path,
     config: &AnvilConfig,
     changed: &[String],
     classification: &DiffClassification,
     full: bool,
+    run_sonar: bool,
 ) -> bool {
-    let mut deps_findings = false;
+    let mut failed = false;
     if classification.needs_deps_audit || full {
-        deps_findings = run_deps_audit(root, changed, full);
+        failed |= run_deps_audit(root, changed, full);
+    }
+    if run_sonar {
+        failed |= crate::commands::sonar::run_tier2_quality_gate(root, config);
     }
     if classification.needs_visual_qa || full {
         let qa = QaEngine::new(root);
@@ -39,7 +43,7 @@ pub fn run_tier2(
             );
         }
     }
-    deps_findings
+    failed
 }
 
 fn run_deps_audit(root: &Path, changed: &[String], full: bool) -> bool {

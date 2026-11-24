@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use anvil_core::config::{AdapterTarget, AnvilConfig};
+use anvil_core::config::{AdapterTarget, AnvilConfig, StackKind};
 use anvil_core::fs_util::atomic_write;
 use anvil_core::stack_detector;
 
@@ -22,6 +22,90 @@ pub struct SyncReport {
     pub created_dirs: Vec<PathBuf>,
     pub written_files: Vec<PathBuf>,
     pub preserved_skills: Vec<String>,
+}
+
+/// Subproject metadata passed to [`init_umbrella_root`] for Thin Umbrella workspace indices.
+#[derive(Debug, Clone)]
+pub struct UmbrellaSubrepo {
+    pub rel_path: String,
+    pub abs_path: PathBuf,
+    pub stacks: Vec<StackKind>,
+}
+
+/// Initializes a lightweight umbrella root (`AGENTS.md`/`CLAUDE.md`, IDE hook routers, and
+/// per-subrepo MCP servers) WITHOUT creating duplicate `.harness/` or `tasks.json` in `root`.
+pub fn init_umbrella_root(
+    root: &Path,
+    explicit_adapter: Option<AdapterTarget>,
+    subrepos: &[UmbrellaSubrepo],
+) -> Result<(AdapterTarget, SyncReport)> {
+    let target = explicit_adapter.unwrap_or_else(|| infer_default_adapters(root));
+    let mut report = SyncReport::default();
+    let mcp_entries: Vec<(String, PathBuf)> = subrepos
+        .iter()
+        .map(|s| (sanitize_subrepo_slug(&s.rel_path), s.abs_path.clone()))
+        .collect();
+
+    if target.includes_antigravity() {
+        record_write(
+            antigravity::config::hooks_config_path(root),
+            antigravity::config::merge_hooks_config(root)?,
+            &mut report,
+        );
+        record_write(
+            antigravity::config::mcp_config_path(root),
+            antigravity::config::merge_umbrella_mcp_config(root, &mcp_entries)?,
+            &mut report,
+        );
+    }
+    if target.includes_claude() {
+        record_write(
+            claude_code::config::settings_config_path(root),
+            claude_code::config::merge_settings_config(root)?,
+            &mut report,
+        );
+        record_write(
+            claude_code::config::mcp_config_path(root),
+            claude_code::config::merge_umbrella_mcp_config(root, &mcp_entries)?,
+            &mut report,
+        );
+        let doc = render_umbrella_doc("CLAUDE.md — Multi-Repo Workspace Router", subrepos);
+        sync_managed_doc(&root.join("CLAUDE.md"), &doc, &mut report)?;
+    }
+    if target.includes_antigravity() || should_sync_codex(root, target) {
+        let doc = render_umbrella_doc("AGENTS.md — Multi-Repo Workspace Router", subrepos);
+        sync_managed_doc(&root.join("AGENTS.md"), &doc, &mut report)?;
+    }
+    Ok((target, report))
+}
+
+fn sanitize_subrepo_slug(rel_path: &str) -> String {
+    let cleaned: String = rel_path
+        .trim()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let trimmed = cleaned.trim_matches('-');
+    if trimmed.is_empty() { "repo".to_owned() } else { trimmed.to_owned() }
+}
+
+fn render_umbrella_doc(heading: &str, subrepos: &[UmbrellaSubrepo]) -> String {
+    let mut rows = String::new();
+    for s in subrepos {
+        let slug = sanitize_subrepo_slug(&s.rel_path);
+        let stacks = if s.stacks.is_empty() {
+            "generic".to_owned()
+        } else {
+            s.stacks.iter().map(|st| format!("{st:?}")).collect::<Vec<_>>().join(", ")
+        };
+        rows.push_str(&format!(
+            "- **`{}`** ({stacks}) — MCP server `anvil-{slug}`, CLI: `anvil --root {} <cmd>`\n",
+            s.rel_path, s.rel_path
+        ));
+    }
+    format!(
+        "{MANAGED_START}\n\n# {heading}\n\n> Thin multi-repo workspace root. Each independent repository owns its own `.harness/` and `tasks.json` (no duplicate state at root).\n\n## Subrepositories\n\n{rows}\n## Working Across Subrepositories\n\n- Hooks route edits automatically by target file path into each repo's `.harness/`.\n- Run verification per repo (`anvil --root <subrepo> check`) or query any repo's graph/memory/tasks via its `anvil-<repo>` MCP server.\n\n{MANAGED_END}\n"
+    )
 }
 
 /// Initializes `.harness/` in `repo_root` and synchronizes adapters (`auto` detection).
@@ -316,11 +400,16 @@ fn sync_gitignore(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
         String::new()
     };
 
-    let has_state = existing
-        .lines()
-        .map(str::trim)
-        .any(|line| line == ".harness/.state/" || line == ".harness/.state");
-    if has_state {
+    let has_line = |target: &str| {
+        let trimmed = target.trim_end_matches('/');
+        existing
+            .lines()
+            .map(str::trim)
+            .any(|line| line == target || line == trimmed)
+    };
+    let need_state = !has_line(".harness/.state/");
+    let need_worktrees = !has_line(".harness/.worktrees/");
+    if !need_state && !need_worktrees {
         return Ok(());
     }
 
@@ -328,7 +417,12 @@ fn sync_gitignore(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
     if !updated.is_empty() && !updated.ends_with('\n') {
         updated.push('\n');
     }
-    updated.push_str(".harness/.state/\n");
+    if need_state {
+        updated.push_str(".harness/.state/\n");
+    }
+    if need_worktrees {
+        updated.push_str(".harness/.worktrees/\n");
+    }
     if write_if_changed(&path, &updated)? {
         report.written_files.push(path);
     }

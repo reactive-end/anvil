@@ -229,3 +229,40 @@ class MainActivity {
         ok_ts.diagnostics
     );
 }
+
+#[test]
+fn permission_substring_traps_and_rust_inner_docs_behave_accurately() {
+    let cfg = default_cfg();
+    let sneaky_kt = r#"
+class SubstringTrap {
+    val l1 = registerForActivityResult(ActivityResultContracts.RequestPermission()) { notifyUser() }
+    val l2 = registerForActivityResult(ActivityResultContracts.RequestPermission()) { val s = "ok!" }
+}
+"#;
+    let sneaky = analyze_file(Path::new("app/Trap.kt"), sneaky_kt, &cfg).expect("sneaky kt");
+    assert_eq!(
+        sneaky.diagnostics.iter().filter(|d| d.rule == "no-unverified-permission").count(),
+        2
+    );
+
+    let forwarded_kt = r#"
+class Forwarded {
+    val l = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        handleResult(granted)
+    }
+}
+"#;
+    let forwarded = analyze_file(Path::new("app/Fwd.kt"), forwarded_kt, &cfg).expect("fwd kt");
+    assert!(!forwarded.diagnostics.iter().any(|d| d.rule == "no-unverified-permission"));
+
+    let module_doc = (0..8)
+        .map(|i| format!("//! Crate overview line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let doc_res = analyze_file(Path::new("src/lib.rs"), &module_doc, &cfg).expect("rust doc");
+    assert!(
+        !doc_res.diagnostics.iter().any(|d| d.rule == "no-narrative-comments"),
+        "Rust `//!` doc comment must not trigger no-narrative-comments: {:?}",
+        doc_res.diagnostics
+    );
+}

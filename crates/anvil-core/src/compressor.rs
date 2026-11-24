@@ -8,6 +8,7 @@ pub mod godot;
 pub mod gradle_kotlin;
 pub mod php;
 pub mod pytest_ruff;
+pub mod sonar;
 pub mod tsc;
 pub mod vitest_jest;
 
@@ -68,7 +69,7 @@ pub fn strip_ansi(input: &str) -> Cow<'_, str> {
 
 /// Selects the most specific parser for `command`, falling back to `generic`.
 pub fn select_parser(command: &str) -> Box<dyn OutputParser> {
-    let parsers: [Box<dyn OutputParser>; 9] = [
+    let parsers: [Box<dyn OutputParser>; 10] = [
         Box::new(cargo::CargoParser),
         Box::new(tsc::TscParser),
         Box::new(eslint_biome::EslintBiomeParser),
@@ -78,6 +79,7 @@ pub fn select_parser(command: &str) -> Box<dyn OutputParser> {
         Box::new(dart_flutter::DartFlutterParser),
         Box::new(php::PhpParser),
         Box::new(godot::GodotParser),
+        Box::new(sonar::SonarParser),
     ];
     for parser in parsers {
         if parser.matches(command) {

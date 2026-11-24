@@ -63,7 +63,10 @@ fn check_narrative(node: Node<'_>, text: &str, state: &mut RuleState<'_>) {
     }
 
     let trimmed = text.trim();
-    let is_doc_comment = trimmed.starts_with("/**") || trimmed.starts_with("///");
+    let is_doc_comment = trimmed.starts_with("/**")
+        || trimmed.starts_with("///")
+        || trimmed.starts_with("//!")
+        || trimmed.starts_with("/*!");
     let has_changelog = CHANGELOG_RE
         .get_or_init(|| {
             Regex::new(

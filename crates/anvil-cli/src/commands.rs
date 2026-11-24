@@ -1,7 +1,9 @@
 //! Command dispatcher and shared CLI repository resolution helpers.
 
 pub mod check;
+pub mod checkpoint;
 pub mod circuit;
+pub mod code;
 pub mod context;
 pub mod daemon;
 pub mod deps;
@@ -17,9 +19,12 @@ pub mod mem;
 pub mod qa;
 pub mod ratchet;
 pub mod run;
+pub mod sonar;
+pub mod spec;
 pub mod stats;
 pub mod sync;
 pub mod tasks;
+pub mod worktree;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -68,10 +73,16 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             path,
             adapter,
             git_hooks,
+            sonar,
+            layout,
         } => init::execute(
             &resolve_init_root(path.as_deref(), &root)?,
-            &adapter,
-            git_hooks,
+            init::InitOptions {
+                adapter: &adapter,
+                git_hooks,
+                sonar: &sonar,
+                layout: &layout,
+            },
         ),
         Command::Sync { adapter } => sync::execute(&root, &adapter),
         Command::Doctor => doctor::execute(&root),
@@ -83,33 +94,35 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             no_tests,
             no_cache,
             staged,
-        } => check::execute(&root, full, tier, no_tests, no_cache, staged),
-        Command::Impact {
-            files,
-            depth,
-            origin,
-            typecheck,
-        } => impact::execute(&root, &files, depth, origin.as_deref(), typecheck),
+            sonar,
+            no_sonar,
+        } => check::execute(
+            &root,
+            check::CheckOptions { full, tier_override: tier, no_tests, no_cache, staged, sonar, no_sonar },
+        ),
+        Command::Impact { files, depth, origin, typecheck } => {
+            impact::execute(&root, &files, depth, origin.as_deref(), typecheck)
+        }
         Command::Graph { sub } => graph::execute(&root, sub),
         Command::Mem { sub } => mem::execute(&root, sub),
-        Command::Mcp => mcp::execute(&root),
+        Command::Mcp { proxy } => mcp::execute(&root, proxy),
         Command::Tasks { sub } => tasks::execute(&root, sub),
         Command::Ratchet { sub } => ratchet::execute(&root, sub),
         Command::Circuit { sub } => circuit::execute(&root, sub),
         Command::Deps { all, manifests } => deps::execute(&root, all, &manifests),
         Command::Qa { sub } => qa::execute(&root, sub),
         Command::Context { sub } => context::execute(&root, sub),
-        Command::Diff {
-            max_lines,
-            max_tokens,
-        } => diff::execute(&root, max_lines, max_tokens),
-        Command::Grep {
-            pattern,
-            max_matches,
-            max_tokens,
-        } => grep::execute(&root, &pattern, max_matches, max_tokens),
+        Command::Diff { max_lines, max_tokens } => diff::execute(&root, max_lines, max_tokens),
+        Command::Grep { pattern, max_matches, max_tokens } => {
+            grep::execute(&root, &pattern, max_matches, max_tokens)
+        }
         Command::Daemon { sub } => daemon::execute(&root, sub),
-        Command::Stats { reset } => stats::execute(&root, reset),
+        Command::Stats { reset, trajectories } => stats::execute(&root, reset, trajectories),
+        Command::Sonar { sub } => sonar::execute(&root, sub),
+        Command::Checkpoint { sub } => checkpoint::execute(&root, sub),
+        Command::Worktree { sub } => worktree::execute(&root, sub),
+        Command::Spec { sub } => spec::execute(&root, sub),
+        Command::Code { sub } => code::execute(&root, sub),
     }
 }
 

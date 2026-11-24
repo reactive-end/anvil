@@ -8,7 +8,7 @@ use anvil_adapters::{antigravity, claude_code};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::{AnvilConfig, StackKind, ToolKind};
 use anvil_core::fs_util::{
-    resolve_godot_bin, resolve_local_or_path_bin, resolve_php_bin, strip_jsonc,
+    resolve_godot_bin, resolve_local_or_path_bin, resolve_php_bin, resolve_sonar_bin, strip_jsonc,
 };
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
@@ -29,6 +29,7 @@ pub fn execute(root: &Path) -> Result<()> {
     check_tsconfig_strict(root, &config, &mut failures);
     check_phpstan_config(root, &config);
     check_godot_project(root, &config);
+    check_sonar_setup(root, &config);
     check_graph_index(root);
     let author = check_identity(root);
     check_memory(root, &author);
@@ -393,6 +394,44 @@ fn tool_kind_bin(tool: ToolKind) -> Option<&'static str> {
         ToolKind::GdLint => Some("gdlint"),
         ToolKind::Gradle | ToolKind::Roborazzi | ToolKind::SonarQube | ToolKind::GdUnit4 | ToolKind::Gut => None,
     }
+}
+
+fn check_sonar_setup(root: &Path, config: &AnvilConfig) {
+    let any_sonar = config.sonar.enabled || config.subrepos.iter().any(|s| s.sonar_enabled);
+    if !any_sonar {
+        return;
+    }
+    if let Some(bin) = resolve_sonar_bin() {
+        ui::print_status_row(
+            &ui::ok_badge(),
+            "sonar",
+            &format!("scanner ready ({})", bin.display()),
+        );
+    } else {
+        ui::print_status_row(
+            &ui::warn_badge(),
+            "sonar",
+            "scanner binary (`sonar` / `sonar-scanner`) not found on PATH",
+        );
+    }
+    let (host, project, token) =
+        crate::commands::sonar::resolve_sonar_endpoint(root, config, None, None);
+    let token_state = if token.is_some() { "token set" } else { "token unset" };
+    let badge = if project.is_some() {
+        ui::ok_badge()
+    } else {
+        ui::warn_badge()
+    };
+    ui::print_status_row(
+        &badge,
+        "sonar",
+        &format!(
+            "host={} project={} ({}: {token_state})",
+            host.as_deref().unwrap_or("unset"),
+            project.as_deref().unwrap_or("missing"),
+            config.sonar.token_env
+        ),
+    );
 }
 
 fn check_godot_project(root: &Path, config: &AnvilConfig) {

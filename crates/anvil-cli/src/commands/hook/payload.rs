@@ -189,6 +189,8 @@ pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
         "npx vue-tsc",
         "godot",
         "godot4",
+        "sonar",
+        "sonar-scanner",
     ]
     .iter()
     .any(|p| cmd == *p || cmd.starts_with(&format!("{p} ")))
@@ -224,6 +226,8 @@ pub fn is_read_only_tool(tool_name: Option<&str>) -> bool {
             | "mem_timeline"
             | "mem_get"
             | "mem_context"
+            | "code_exec"
+            | "context_pack"
     ) || bare.starts_with("graph_")
 }
 
@@ -247,34 +251,59 @@ pub fn is_mutating_file_tool(tool_name: Option<&str>) -> bool {
     )
 }
 
-/// Returns `true` when `cmd` safely invokes `anvil circuit reset` or `anvil circuit status`.
-pub fn is_circuit_recovery_command(cmd: &str) -> bool {
-    let trimmed = cmd.trim();
-    if trimmed.is_empty() || contains_shell_metacharacters(trimmed) {
-        return false;
-    }
-    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-    let Some(first) = tokens.first() else {
+/// Returns `true` when `cmd` safely invokes `anvil circuit status`.
+pub fn is_circuit_status_command(cmd: &str) -> bool {
+    circuit_subcommand(cmd) == Some("status")
+}
+
+/// Returns `true` when `cmd` safely invokes `anvil circuit reset`.
+pub fn is_circuit_reset_command(cmd: &str) -> bool {
+    circuit_subcommand(cmd) == Some("reset")
+}
+
+/// Returns `true` when `cmd` is already wrapped with `anvil run`.
+pub fn is_anvil_run_command(cmd: &str) -> bool {
+    let tokens: Vec<&str> = cmd.split_whitespace().collect();
+    let Some(idx) = skip_anvil_global_flags(&tokens) else {
         return false;
     };
+    tokens.get(idx).copied() == Some("run")
+}
+
+fn circuit_subcommand(cmd: &str) -> Option<&str> {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() || contains_shell_metacharacters(trimmed) {
+        return None;
+    }
+    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+    let idx = skip_anvil_global_flags(&tokens)?;
+    if tokens.get(idx).copied() == Some("circuit") && tokens.len() == idx + 2 {
+        return tokens.get(idx + 1).copied();
+    }
+    None
+}
+
+fn skip_anvil_global_flags(tokens: &[&str]) -> Option<usize> {
+    let first = tokens.first()?;
     let bin = first.trim_matches(|c| c == '"' || c == '\'');
     let file_name = Path::new(bin)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(bin);
     if !file_name.eq_ignore_ascii_case("anvil") && !file_name.eq_ignore_ascii_case("anvil.exe") {
-        return false;
+        return None;
     }
-
     let mut idx = 1usize;
-    if tokens.get(idx).copied() == Some("--root") {
-        idx += 2;
-    } else if tokens.get(idx).is_some_and(|t| t.starts_with("--root=")) {
-        idx += 1;
+    while let Some(tok) = tokens.get(idx).copied() {
+        if matches!(tok, "--root" | "--repo") {
+            idx += 2;
+        } else if tok.starts_with("--root=") || tok.starts_with("--repo=") {
+            idx += 1;
+        } else {
+            break;
+        }
     }
-    tokens.get(idx).copied() == Some("circuit")
-        && matches!(tokens.get(idx + 1).copied(), Some("reset" | "status"))
-        && tokens.len() == idx + 2
+    Some(idx)
 }
 
 /// Extracts and normalizes a repository-relative target file path from `tool_input`.

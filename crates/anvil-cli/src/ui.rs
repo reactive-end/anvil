@@ -1,5 +1,7 @@
 //! Terminal styling, TTY/NO_COLOR detection, structured cards, and HD 3D Braille Anvil banner.
 
+pub mod prompt;
+
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicU8, Ordering};
 

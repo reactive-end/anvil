@@ -4,11 +4,13 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin};
+use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
 use rustc_hash::FxHashSet;
 
@@ -196,7 +198,8 @@ fn exec_php_command(
     cmd: &mut Command,
     label: &str,
 ) -> Result<CompressedOutput> {
-    let output = match cmd.output() {
+    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timed = match run_command_with_timeout(cmd, timeout) {
         Ok(out) => out,
         Err(err) => {
             return compress_output(
@@ -209,16 +212,15 @@ fn exec_php_command(
             );
         }
     };
-    let code = output.status.code().unwrap_or(1);
     let combined = format!(
         "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&timed.stdout),
+        String::from_utf8_lossy(&timed.stderr)
     );
     compress_output(
         Some(log_root),
         label,
-        code,
+        timed.status_code,
         &combined,
         config.tier_budgets.compressor_max_lines,
         config.tier_budgets.compressor_max_tokens,

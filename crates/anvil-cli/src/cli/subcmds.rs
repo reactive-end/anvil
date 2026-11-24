@@ -296,3 +296,85 @@ pub enum DaemonSubcmd {
     /// Show current daemon status, PID, port, and loaded graph counts.
     Status,
 }
+
+#[derive(Debug, Subcommand)]
+pub enum SonarSubcmd {
+    /// Fetch opt-in SonarQube Quality Gate status via Web API.
+    Status {
+        #[arg(long)]
+        host: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// List unresolved New Code issues from SonarQube Web API.
+    Issues {
+        #[arg(long)]
+        host: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        branch: Option<String>,
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+    },
+    /// Run local `sonar` / `sonar-scanner` through Anvil's output compressor.
+    Analyze {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CheckpointSubcmd {
+    /// Save an isolated working-tree snapshot into `refs/anvil/checkpoints/*`.
+    Save {
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// List saved Anvil checkpoints.
+    List,
+    /// Restore working tree files from the latest or specified checkpoint (with safety backup).
+    Rewind { target: Option<String> },
+    /// Delete a specific checkpoint (`all` removes every checkpoint ref).
+    Drop { target: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum WorktreeSubcmd {
+    /// Create an isolated Git worktree inside `.harness/.worktrees/<name>`.
+    Add {
+        name: String,
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// List active Git worktrees.
+    List,
+    /// Remove an isolated worktree created under `.harness/.worktrees/`.
+    Remove {
+        name: String,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SpecSubcmd {
+    /// Scaffold a deterministic verification spec under `.harness/specs/<name>.md`.
+    Init { name: String },
+    /// List all verification specs in `.harness/specs/`.
+    List,
+    /// Verify `.harness/specs/*.md` acceptance criteria against the repository.
+    Check { name: Option<String> },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CodeSubcmd {
+    /// Execute a sandboxed Code Mode JS script (`script` or `@path/to/script.js`).
+    Exec {
+        script: String,
+        #[arg(long, default_value_t = 32)]
+        max_calls: usize,
+    },
+}

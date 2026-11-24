@@ -1,14 +1,30 @@
-//! JSON Schema definitions for all 17 unified `graph_*`, `context_pack`, `mem_*`, and `task_*` MCP tools.
+//! JSON Schema definitions for all 18 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` MCP tools.
 
 use serde_json::{Value, json};
 
-/// Returns JSON Schema definitions for all 17 unified `graph_*`, `context_pack`, `mem_*`, and `task_*` tools.
+/// Returns JSON Schema definitions for all 18 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` tools.
 pub fn tool_definitions() -> Vec<Value> {
     let mut tools = graph_core_schemas();
     tools.extend(graph_inspect_schemas());
+    tools.push(code_exec_schema());
     tools.extend(memory_tool_schemas());
     tools.extend(task_tool_schemas());
     tools
+}
+
+fn code_exec_schema() -> Value {
+    tool_schema(
+        "code_exec",
+        "Execute a sandboxed JS snippet (`anvil.<tool>(args)`) to batch/filter multiple read-only graph, memory, and task queries in one turn without flooding context.",
+        json!({
+            "type": "object",
+            "properties": {
+                "script": { "type": "string", "description": "JS function body using `anvil.graph_query(...)`, `anvil.mem_search(...)`, etc. and returning a filtered JSON result." },
+                "max_calls": { "type": "integer", "minimum": 1, "maximum": 64, "default": 32 }
+            },
+            "required": ["script"]
+        }),
+    )
 }
 
 fn graph_core_schemas() -> Vec<Value> {

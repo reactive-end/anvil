@@ -3,6 +3,7 @@
 use serde_json::{Value, json};
 
 use crate::McpServer;
+use crate::tools_codemode::call_code_exec;
 use crate::tools_graph::call_graph_tool;
 use crate::tools_memory::call_memory_tool;
 use crate::tools_tasks::call_task_tool;
@@ -69,7 +70,9 @@ fn dispatch_tool_call(
     let empty_args = json!({});
     let args = params_val.get("arguments").unwrap_or(&empty_args);
 
-    let outcome = if name == "context_pack" || name.starts_with("graph_") {
+    let outcome = if name == "code_exec" {
+        call_code_exec(server, args)
+    } else if name == "context_pack" || name.starts_with("graph_") {
         call_graph_tool(server, name, args)
     } else if name.starts_with("mem_") {
         call_memory_tool(server, name, args)

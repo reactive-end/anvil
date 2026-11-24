@@ -50,6 +50,11 @@ pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
     merge_mcp_servers_json(&mcp_config_path(repo_root), ".agents/mcp_config.json")
 }
 
+/// Non-destructively merges per-subrepo `anvil-<slug>` MCP entries for Thin Umbrella roots.
+pub fn merge_umbrella_mcp_config(root: &Path, subrepos: &[(String, PathBuf)]) -> Result<bool> {
+    merge_umbrella_mcp_servers_json(&mcp_config_path(root), ".agents/mcp_config.json", subrepos)
+}
+
 pub(crate) fn merge_mcp_servers_json(path: &Path, label: &str) -> Result<bool> {
     let mut root = read_json_object(path)?;
 
@@ -62,6 +67,28 @@ pub(crate) fn merge_mcp_servers_json(path: &Path, label: &str) -> Result<bool> {
         }),
     );
 
+    let formatted = serde_json::to_string_pretty(&Value::Object(root))
+        .with_context(|| format!("failed to serialize {label}"))?;
+    write_if_changed(path, &format!("{formatted}\n"))
+}
+
+pub(crate) fn merge_umbrella_mcp_servers_json(
+    path: &Path,
+    label: &str,
+    subrepos: &[(String, PathBuf)],
+) -> Result<bool> {
+    let mut root = read_json_object(path)?;
+    let servers = ensure_object_field(&mut root, "mcpServers")?;
+    for (slug, abs_path) in subrepos {
+        let key = format!("anvil-{slug}");
+        servers.insert(
+            key,
+            json!({
+                "command": "anvil",
+                "args": ["--root", abs_path.to_string_lossy(), "mcp"]
+            }),
+        );
+    }
     let formatted = serde_json::to_string_pretty(&Value::Object(root))
         .with_context(|| format!("failed to serialize {label}"))?;
     write_if_changed(path, &format!("{formatted}\n"))

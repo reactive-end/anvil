@@ -36,8 +36,13 @@ fn check_kotlin_activity_result(node: Node<'_>, state: &mut RuleState<'_>) {
     let Some(lambda) = find_callback_lambda(node) else {
         return;
     };
-    let body = extract_lambda_body_code(lambda, state.source);
-    if !body.is_empty() && (body.contains("if") || body.contains("when") || body.contains('!')) {
+    let (param_name, body) = extract_lambda_param_and_body(lambda, state.source);
+    let handled = !body.is_empty()
+        && (contains_word(&body, "if")
+            || contains_word(&body, "when")
+            || has_unary_not(&body)
+            || contains_word(&body, &param_name));
+    if handled {
         return;
     }
     emit_diag(
@@ -58,10 +63,13 @@ fn check_kotlin_permissions_result(node: Node<'_>, state: &mut RuleState<'_>) {
     let Some(body_node) = node.child_by_field_name("body") else {
         return;
     };
-    let code = strip_comments(&state.source[body_node.byte_range()]);
-    let checks_grant = code.contains("PERMISSION_GRANTED")
-        || (code.contains("grantResults")
-            && (code.contains("if") || code.contains("when") || code.contains("all") || code.contains("any")));
+    let code = strip_comments_and_strings(&state.source[body_node.byte_range()]);
+    let checks_grant = contains_word(&code, "PERMISSION_GRANTED")
+        || (contains_word(&code, "grantResults")
+            && (contains_word(&code, "if")
+                || contains_word(&code, "when")
+                || contains_word(&code, "all")
+                || contains_word(&code, "any")));
     if checks_grant {
         return;
     }
@@ -110,7 +118,7 @@ fn has_empty_promise_then(inner_call: Node<'_>, source: &str) -> bool {
     let Some((_, after_then)) = then_text.split_once(".then") else {
         return false;
     };
-    let code = strip_comments(after_then);
+    let code = strip_comments_and_strings(after_then);
     code.contains("=> {}")
         || code.contains("=>{}")
         || code.contains("function(){}")
@@ -159,7 +167,7 @@ fn find_callback_lambda(call_node: Node<'_>) -> Option<Node<'_>> {
     None
 }
 
-fn extract_lambda_body_code(lambda_node: Node<'_>, source: &str) -> String {
+fn extract_lambda_param_and_body(lambda_node: Node<'_>, source: &str) -> (String, String) {
     let raw = &source[lambda_node.byte_range()];
     let inner = raw
         .trim()
@@ -167,14 +175,56 @@ fn extract_lambda_body_code(lambda_node: Node<'_>, source: &str) -> String {
         .unwrap_or(raw)
         .strip_suffix('}')
         .unwrap_or(raw);
-    let after_arrow = match inner.split_once("->") {
-        Some((_, body)) => body,
-        None => inner,
+    let (param, body) = match inner.split_once("->") {
+        Some((lhs, rhs)) => {
+            let p = lhs
+                .split_whitespace()
+                .last()
+                .filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or("it")
+                .to_owned();
+            (p, rhs)
+        }
+        None => ("it".to_owned(), inner),
     };
-    strip_comments(after_arrow).trim().to_owned()
+    (param, strip_comments_and_strings(body).trim().to_owned())
 }
 
-fn strip_comments(input: &str) -> String {
+fn contains_word(haystack: &str, word: &str) -> bool {
+    if word.is_empty() {
+        return false;
+    }
+    haystack.match_indices(word).any(|(idx, _)| {
+        let prev_ok = haystack[..idx]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_');
+        let next_ok = haystack[idx + word.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_');
+        prev_ok && next_ok
+    })
+}
+
+fn has_unary_not(code: &str) -> bool {
+    let bytes = code.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b != b'!' {
+            continue;
+        }
+        let next = bytes.get(i + 1).copied();
+        let prev = i.checked_sub(1).and_then(|p| bytes.get(p).copied());
+        let is_neq_or_bang_bang = matches!(next, Some(b'=' | b'!'));
+        let preceded_by_expr = prev.is_some_and(|p| p.is_ascii_alphanumeric() || matches!(p, b')' | b']' | b'!'));
+        if !is_neq_or_bang_bang && !preceded_by_expr {
+            return true;
+        }
+    }
+    false
+}
+
+fn strip_comments_and_strings(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let bytes = input.as_bytes();
     let mut i = 0;
@@ -190,6 +240,21 @@ fn strip_comments(input: &str) -> String {
                 i += 1;
             }
             i = (i + 2).min(bytes.len());
+        } else if matches!(bytes[i], b'"' | b'\'') {
+            let quote = bytes[i];
+            out.push(' ');
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == quote {
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
         } else {
             out.push(bytes[i] as char);
             i += 1;

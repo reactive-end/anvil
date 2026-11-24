@@ -6,7 +6,13 @@ use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::traits::CompressedOutput;
 
-/// Filters compiler/typechecker output to `impacted_files` without leaking unrelated errors.
+struct PartitionResult<'a> {
+    kept: Vec<&'a str>,
+    suppressed_other_file: usize,
+    unattributed_errors: usize,
+}
+
+/// Filters compiler/typechecker output to `impacted_files` without masking unattributed failures.
 pub fn filter_typecheck_output(
     repo_root: Option<&Path>,
     label: &str,
@@ -20,54 +26,24 @@ pub fn filter_typecheck_output(
         return compress_output(repo_root, label, exit_code, raw_output, max_lines, max_tokens);
     }
 
-    let patterns: Vec<(String, String)> = impacted_files
-        .iter()
-        .map(|f| {
-            let clean = f.trim_start_matches("./").replace('\\', "/");
-            let win = clean.replace('/', "\\");
-            (clean, win)
-        })
-        .collect();
-
-    let mut kept = Vec::new();
-    let mut suppressed_errors = 0usize;
-    let mut in_kept_diag = false;
-
-    for line in raw_output.lines() {
-        let is_indented = line.starts_with(char::is_whitespace);
-        let matches_impacted = patterns
-            .iter()
-            .any(|(fwd, bck)| line_matches_path(line, fwd) || line_matches_path(line, bck));
-
-        if matches_impacted {
-            kept.push(line);
-            in_kept_diag = true;
-        } else if is_indented && in_kept_diag {
-            kept.push(line);
-        } else {
-            in_kept_diag = false;
-            if looks_like_error_line(line) {
-                suppressed_errors += 1;
-            }
-        }
-    }
+    let patterns = normalize_patterns(impacted_files);
+    let part = partition_diagnostics(raw_output, &patterns);
 
     if exit_code == 0 {
-        let filtered = kept.join("\n");
+        let filtered = part.kept.join("\n");
         return compress_output(repo_root, label, 0, &filtered, max_lines, max_tokens);
     }
 
-    let has_kept_error = kept.iter().any(|l| looks_like_error_line(l));
-    if kept.is_empty() || (suppressed_errors > 0 && !has_kept_error) {
+    let has_kept_error = part.kept.iter().any(|l| looks_like_error_line(l));
+    if !has_kept_error && part.suppressed_other_file > 0 && part.unattributed_errors == 0 {
         let tool = label.split_whitespace().next().unwrap_or(label).to_owned();
-        let count = suppressed_errors.max(1);
+        let count = part.suppressed_other_file;
         return Ok(CompressedOutput {
-            tool,
+            tool: tool.clone(),
             passed: true,
             exit_code: 0,
             summary: format!(
-                "PASS ({}): 0 errors in modified/impacted files ({count} unrelated error(s) suppressed)",
-                label.split_whitespace().next().unwrap_or(label)
+                "PASS ({tool}): 0 errors in modified/impacted files ({count} unrelated error(s) suppressed)"
             ),
             lines: Vec::new(),
             total_errors: 0,
@@ -76,8 +52,93 @@ pub fn filter_typecheck_output(
         });
     }
 
-    let filtered = kept.join("\n");
-    compress_output(repo_root, label, exit_code, &filtered, max_lines, max_tokens)
+    let payload = if has_kept_error {
+        part.kept.join("\n")
+    } else {
+        raw_output.to_owned()
+    };
+    compress_output(repo_root, label, exit_code, &payload, max_lines, max_tokens)
+}
+
+fn normalize_patterns(impacted_files: &[String]) -> Vec<(String, String)> {
+    impacted_files
+        .iter()
+        .map(|f| {
+            let clean = f.trim_start_matches("./").replace('\\', "/");
+            let win = clean.replace('/', "\\");
+            (clean, win)
+        })
+        .collect()
+}
+
+fn partition_diagnostics<'a>(raw_output: &'a str, patterns: &[(String, String)]) -> PartitionResult<'a> {
+    let mut kept = Vec::new();
+    let mut suppressed_other_file = 0usize;
+    let mut unattributed_errors = 0usize;
+    let mut pending_header: Option<&'a str> = None;
+    let mut in_kept_diag = false;
+
+    for line in raw_output.lines() {
+        let trimmed = line.trim();
+        let is_indented = line.starts_with(char::is_whitespace);
+        let matches_impacted = patterns
+            .iter()
+            .any(|(fwd, bck)| line_matches_path(line, fwd) || line_matches_path(line, bck));
+
+        if matches_impacted {
+            if let Some(hdr) = pending_header.take() {
+                kept.push(hdr);
+            }
+            kept.push(line);
+            in_kept_diag = true;
+        } else if trimmed.starts_with("--> ") {
+            if pending_header.take().is_some() {
+                suppressed_other_file += 1;
+            }
+            in_kept_diag = false;
+        } else if is_indented && in_kept_diag {
+            kept.push(line);
+        } else if looks_like_error_line(line) {
+            in_kept_diag = false;
+            if has_explicit_file_path(line) {
+                if pending_header.take().is_some() {
+                    unattributed_errors += 1;
+                }
+                suppressed_other_file += 1;
+            } else if pending_header.replace(line).is_some() {
+                unattributed_errors += 1;
+            }
+        } else if !is_indented || trimmed.is_empty() {
+            in_kept_diag = false;
+            if pending_header.take().is_some() {
+                unattributed_errors += 1;
+            }
+        }
+    }
+    if pending_header.take().is_some() {
+        unattributed_errors += 1;
+    }
+
+    PartitionResult {
+        kept,
+        suppressed_other_file,
+        unattributed_errors,
+    }
+}
+
+fn has_explicit_file_path(line: &str) -> bool {
+    const EXTS: &[&str] = &[
+        ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".kt", ".dart", ".php", ".gd",
+        ".vue", ".svelte", ".go", ".java",
+    ];
+    let lower = line.to_ascii_lowercase();
+    EXTS.iter().any(|ext| {
+        lower.match_indices(ext).any(|(idx, _)| {
+            let after = &lower[idx + ext.len()..];
+            after.is_empty()
+                || after.starts_with([':', '(', ' ', '\t', ',', ')', '\r', '\n'])
+        })
+    })
 }
 
 pub(crate) fn line_matches_path(line: &str, pat: &str) -> bool {

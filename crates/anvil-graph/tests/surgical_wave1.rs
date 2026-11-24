@@ -242,6 +242,50 @@ other_src/a.ts(3,1): error TS2304: Cannot find name 'X'.\n";
 }
 
 #[test]
+fn typecheck_filter_preserves_unattributed_and_multiline_rust_errors() {
+    let global_err = "error TS5023: Unknown compiler option '--bogus'.\n";
+    let global_out = filter_typecheck_output(
+        None,
+        "tsc --noEmit",
+        2,
+        global_err,
+        &["src/a.ts".to_owned()],
+        50,
+        1200,
+    )
+    .expect("global failure");
+    assert!(!global_out.passed, "unattributed compiler failure must fail: {global_out:?}");
+    assert_eq!(global_out.exit_code, 2);
+
+    let rust_impacted = "error[E0308]: mismatched types\n  --> src/lib.rs:10:5\n   |\n10 |     \"bad\"\n";
+    let rust_fail = filter_typecheck_output(
+        None,
+        "cargo check",
+        101,
+        rust_impacted,
+        &["src/lib.rs".to_owned()],
+        50,
+        1200,
+    )
+    .expect("rust impacted error");
+    assert!(!rust_fail.passed, "Rust multi-line error on impacted file must fail");
+    assert!(rust_fail.lines.iter().any(|l| l.contains("E0308")));
+
+    let rust_other = "error[E0308]: mismatched types\n  --> src/unrelated.rs:10:5\n";
+    let rust_ok = filter_typecheck_output(
+        None,
+        "cargo check",
+        101,
+        rust_other,
+        &["src/lib.rs".to_owned()],
+        50,
+        1200,
+    )
+    .expect("rust unrelated error");
+    assert!(rust_ok.passed, "Rust multi-line error strictly on unrelated file may be suppressed");
+}
+
+#[test]
 fn sibling_tests_are_directory_scoped_and_rust_barrels_trace_origin() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path();

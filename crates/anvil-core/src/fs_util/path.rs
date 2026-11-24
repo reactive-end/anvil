@@ -111,6 +111,17 @@ pub fn resolve_godot_bin() -> Option<PathBuf> {
     None
 }
 
+/// Resolves the local SonarQube scanner binary (`SONAR_SCANNER_BIN`, `sonar`, or `sonar-scanner`).
+pub fn resolve_sonar_bin() -> Option<PathBuf> {
+    if let Some(env_bin) = std::env::var_os("SONAR_SCANNER_BIN") {
+        let candidate = PathBuf::from(env_bin);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    bin_in_path("sonar").or_else(|| bin_in_path("sonar-scanner"))
+}
+
 #[cfg(windows)]
 fn find_windows_godot_bin() -> Option<PathBuf> {
     let mut dirs = Vec::new();

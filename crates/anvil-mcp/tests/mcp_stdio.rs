@@ -76,9 +76,10 @@ fn mcp_initialize_and_tools_list() {
     let tools = resps[2].result.as_ref().unwrap()["tools"]
         .as_array()
         .unwrap();
-    assert_eq!(tools.len(), 17);
+    assert_eq!(tools.len(), 18);
     assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
     assert!(tools.iter().any(|t| t["name"] == "context_pack"));
+    assert!(tools.iter().any(|t| t["name"] == "code_exec"));
     assert!(tools.iter().any(|t| t["name"] == "task_record"));
     assert!(tools.iter().any(|t| t["name"] == "task_skip"));
     assert!(tools.iter().any(|t| t["name"] == "graph_outline"));
@@ -438,4 +439,31 @@ fn mcp_context_pack_returns_bounded_graph_and_memory_packet() {
     let est = pack["estimated_tokens"].as_u64().unwrap();
     assert!(est > 0 && est <= 1200);
     assert_eq!(resps[2].result.as_ref().unwrap()["isError"], json!(true));
+}
+
+#[test]
+fn mcp_code_exec_multistep_roundtrip() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let resps = run_session(
+        &mut server,
+        &[
+                call_req(
+                1,
+                "code_exec",
+                json!({
+                    "script": "const hits = anvil.graph_query({ term: 'add', limit: 5 }).hits; const out = []; for (const h of hits) { const exp = anvil.graph_explain({ target: h.id }); if (exp.found && exp.explain && exp.explain.node) out.push(exp.explain.node.label); } return out;"
+                }),
+            ),
+            call_req(
+                2,
+                "code_exec",
+                json!({ "script": "return anvil.call('task_record', { title: 'x', summary: 'y' });" }),
+            ),
+        ],
+    );
+    let ok_val = parse_tool_json(&resps[0]);
+    assert!(ok_val["calls_executed"].as_u64().unwrap() >= 2);
+    assert!(ok_val["result"].as_array().unwrap().iter().any(|v| v == "add"));
+    assert_eq!(resps[1].result.as_ref().unwrap()["isError"], json!(true));
 }

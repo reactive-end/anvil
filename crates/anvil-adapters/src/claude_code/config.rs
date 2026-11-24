@@ -6,7 +6,8 @@ use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
 use crate::antigravity::config::{
-    ensure_array_field, ensure_object_field, merge_mcp_servers_json, read_json_object,
+    ensure_array_field, ensure_object_field, merge_mcp_servers_json,
+    merge_umbrella_mcp_servers_json, read_json_object,
 };
 use crate::contract::HookEvent;
 use crate::sync::write_if_changed;
@@ -55,6 +56,11 @@ pub fn merge_settings_config(repo_root: &Path) -> Result<bool> {
 /// Non-destructively merges the `anvil mcp` server entry into root `.mcp.json`.
 pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
     merge_mcp_servers_json(&mcp_config_path(repo_root), ".mcp.json")
+}
+
+/// Non-destructively merges per-subrepo `anvil-<slug>` MCP entries into `.mcp.json` for Thin Umbrella roots.
+pub fn merge_umbrella_mcp_config(root: &Path, subrepos: &[(String, PathBuf)]) -> Result<bool> {
+    merge_umbrella_mcp_servers_json(&mcp_config_path(root), ".mcp.json", subrepos)
 }
 
 fn upsert_claude_hook_entry(entries: &mut Vec<Value>, command: &str, use_matcher: bool) {
