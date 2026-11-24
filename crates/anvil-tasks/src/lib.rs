@@ -4,6 +4,7 @@ pub mod active;
 pub mod builder;
 pub mod curate;
 pub mod identity;
+pub mod import_export;
 pub mod ledger;
 pub mod merge_driver;
 pub mod model;
@@ -23,15 +24,20 @@ pub use active::{
     materialize_task_on_edit_with_fallback, pending_prompt_path, record_pending_prompt,
     record_touched_file, save_active_task,
 };
-pub use builder::build_root_tasks_json;
+pub use builder::{build_root_tasks_json, consolidate_repo_tasks, read_single_task};
 pub use curate::{
     clear_untracked_edits, is_conversational_or_trivial_prompt, load_untracked_edits,
-    record_curated_task, record_session_edit, record_task_skip, untracked_edits_path,
-    validate_curated_task_title,
+    record_curated_task, record_curated_task_with_id, record_session_edit, record_task_skip,
+    untracked_edits_path, validate_curated_task_title,
 };
 pub use identity::{resolve_author, resolve_author_fast};
+pub use import_export::{
+    ImportReport, ImportedFeature, ImportedFeatureList, export_feature_list, import_feature_list,
+    parse_feature_list_json,
+};
 pub use ledger::{
-    append_entry, append_entry_as, list_tasks, start_task, start_task_as, write_task_plan,
+    append_entry, append_entry_as, append_entry_with_evidence, compare_task_ids, list_tasks,
+    migrate_legacy_task_ids, start_task, start_task_as, start_task_with_id, write_task_plan,
 };
 pub use merge_driver::{install_git_merge_driver, resolve_merge};
 pub use model::{ConsolidatedTask, ConsolidatedTasksFile, TaskEntry, TaskMeta, TaskStatus};

@@ -1,0 +1,16 @@
+{
+  "entry_id": "01M7Z3XKAF0R7MNH0WCYJ5H2V4",
+  "task_id": "T-002",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Implemented 100% hands-free automatic task tracking via Antigravity PreInvocation and Claude Code UserPromptSubmit hooks, Stop summary enforcement, active-task.json local pointer, and updated thin adapters.",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/task_auto.rs",
+    "crates/anvil-tasks/src/active.rs",
+    "templates/AGENTS.md",
+    "templates/CLAUDE.md"
+  ],
+  "timestamp": "2026-11-21T13:14:51.119987900Z"
+}

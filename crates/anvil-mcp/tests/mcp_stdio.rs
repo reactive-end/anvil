@@ -76,11 +76,12 @@ fn mcp_initialize_and_tools_list() {
     let tools = resps[2].result.as_ref().unwrap()["tools"]
         .as_array()
         .unwrap();
-    assert_eq!(tools.len(), 18);
+    assert_eq!(tools.len(), 19);
     assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
     assert!(tools.iter().any(|t| t["name"] == "context_pack"));
     assert!(tools.iter().any(|t| t["name"] == "code_exec"));
     assert!(tools.iter().any(|t| t["name"] == "task_record"));
+    assert!(tools.iter().any(|t| t["name"] == "task_get"));
     assert!(tools.iter().any(|t| t["name"] == "task_skip"));
     assert!(tools.iter().any(|t| t["name"] == "graph_outline"));
     assert!(tools.iter().all(|t| t["inputSchema"].is_object()));

@@ -16,7 +16,7 @@ use crate::active::{
 };
 use crate::builder::build_root_tasks_json;
 use crate::identity::{resolve_author, resolve_author_fast};
-use crate::ledger::{append_entry_as, start_task_as, task_dir};
+use crate::ledger::{append_entry_as, start_task_with_id, task_dir};
 use crate::model::{TaskEntry, TaskMeta, TaskStatus};
 use crate::{atomic_write_json, read_json_file};
 
@@ -253,6 +253,19 @@ pub fn record_curated_task(
     files: &[String],
     author: Option<&str>,
 ) -> Result<(TaskMeta, TaskEntry)> {
+    record_curated_task_with_id(repo, title, summary, status, files, author, None)
+}
+
+/// Same as [`record_curated_task`] with an optional explicit short task ID (`F039`, `T-042`).
+pub fn record_curated_task_with_id(
+    repo: &Path,
+    title: &str,
+    summary: &str,
+    status: TaskStatus,
+    files: &[String],
+    author: Option<&str>,
+    explicit_id: Option<&str>,
+) -> Result<(TaskMeta, TaskEntry)> {
     let clean_title = validate_curated_task_title(title)?;
     let clean_summary = summary.trim();
     if clean_summary.is_empty() {
@@ -263,7 +276,7 @@ pub fn record_curated_task(
         None => resolve_author_fast(repo).or_else(|_| resolve_author(repo))?,
     };
     let merged_files = merge_session_files(repo, files);
-    let meta = start_task_as(repo, &resolved_author, &clean_title)?;
+    let meta = start_task_with_id(repo, &resolved_author, &clean_title, explicit_id)?;
     let entry = append_entry_as(
         repo,
         &meta.task_id,

@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "task_count": 13,
-  "updated_at": "2026-11-24T04:42:59.770031800Z",
+  "task_count": 14,
+  "updated_at": "2026-11-24T14:08:33.328639900Z",
   "tasks": [
     {
-      "task_id": "T-20261121-01M7YC7MM5WX2CGP",
+      "task_id": "T-001",
       "request": "Implement anvil engineering harness Phases 1-5 (core, AST, graph, memory, MCP, tasks, adapters, deps, QA, release)",
       "status": "done",
       "created_by": "reactive-end",
@@ -28,7 +28,7 @@
       "entries": [
         {
           "entry_id": "01M7YC7MM6JRWGFZ832PA0Z7RY",
-          "task_id": "T-20261121-01M7YC7MM5WX2CGP",
+          "task_id": "T-001",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -38,7 +38,7 @@
         },
         {
           "entry_id": "01M7YC7X4GKHGPT858RAV470SK",
-          "task_id": "T-20261121-01M7YC7MM5WX2CGP",
+          "task_id": "T-001",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -55,7 +55,7 @@
       ]
     },
     {
-      "task_id": "T-20261121-01M7Z3WF8FE23ZDM",
+      "task_id": "T-002",
       "request": "Si me gustaría, así evitamos estar recordando comandos, simplemente le vas pidiendo cosas y el harness se encarga",
       "status": "done",
       "created_by": "reactive-end",
@@ -79,7 +79,7 @@
       "entries": [
         {
           "entry_id": "01M7Z3WF8GXDYA92TNYAWJNMGC",
-          "task_id": "T-20261121-01M7Z3WF8FE23ZDM",
+          "task_id": "T-002",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -89,7 +89,7 @@
         },
         {
           "entry_id": "01M7Z3XKAF0R7MNH0WCYJ5H2V4",
-          "task_id": "T-20261121-01M7Z3WF8FE23ZDM",
+          "task_id": "T-002",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -106,7 +106,7 @@
       ]
     },
     {
-      "task_id": "T-20261122-01M80D7WTWKESEZN",
+      "task_id": "T-003",
       "request": "Release anvil v0.3.1: auto-populate files_touched and 5 Windows/Kotlin/QA fixes",
       "status": "done",
       "created_by": "reactive-end",
@@ -140,7 +140,7 @@
       "entries": [
         {
           "entry_id": "01M80D7WTX8G2VEBRDM1JBJAKE",
-          "task_id": "T-20261122-01M80D7WTWKESEZN",
+          "task_id": "T-003",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -150,7 +150,7 @@
         },
         {
           "entry_id": "01M80D7X0R9198SBMNR0E1ZJ5K",
-          "task_id": "T-20261122-01M80D7WTWKESEZN",
+          "task_id": "T-003",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -177,7 +177,7 @@
       ]
     },
     {
-      "task_id": "T-20261122-01M80EPV3EYN9YX5",
+      "task_id": "T-004",
       "request": "Release anvil v0.3.2: lazy tasks, git -uall, symbolic-ref branch, stack allowlist, auto memory symbols",
       "status": "done",
       "created_by": "reactive-end",
@@ -213,7 +213,7 @@
       "entries": [
         {
           "entry_id": "01M80EPV3FYVN6QZC98HGNY2JD",
-          "task_id": "T-20261122-01M80EPV3EYN9YX5",
+          "task_id": "T-004",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -223,7 +223,7 @@
         },
         {
           "entry_id": "01M80EPV8D7SXQENCQF3M63AJ2",
-          "task_id": "T-20261122-01M80EPV3EYN9YX5",
+          "task_id": "T-004",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -252,7 +252,7 @@
       ]
     },
     {
-      "task_id": "T-20261122-01M80GVE9CMHPCCC",
+      "task_id": "T-005",
       "request": "Release anvil v0.3.3: Tier 0 rule no-unverified-permission and Evidence-First discipline",
       "status": "done",
       "created_by": "reactive-end",
@@ -283,7 +283,7 @@
       "entries": [
         {
           "entry_id": "01M80GVE9D1P3MA3600RE7N755",
-          "task_id": "T-20261122-01M80GVE9CMHPCCC",
+          "task_id": "T-005",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -293,7 +293,7 @@
         },
         {
           "entry_id": "01M80GVEER33QB0DDD0Q1FDZV0",
-          "task_id": "T-20261122-01M80GVE9CMHPCCC",
+          "task_id": "T-005",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -317,7 +317,7 @@
       ]
     },
     {
-      "task_id": "T-20261122-01M80JDD9XMGN3RZ",
+      "task_id": "T-006",
       "request": "Release anvil v0.4.0: multi-subproject init, file-aware hooks, lean --adapter sync, and expanded permission AST rules",
       "status": "done",
       "created_by": "reactive-end",
@@ -359,7 +359,7 @@
       "entries": [
         {
           "entry_id": "01M80JDD9ZHRZ781VYXZY3D5CZ",
-          "task_id": "T-20261122-01M80JDD9XMGN3RZ",
+          "task_id": "T-006",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -369,7 +369,7 @@
         },
         {
           "entry_id": "01M80JDDDS5BWGEJXRXNFRJCHF",
-          "task_id": "T-20261122-01M80JDD9XMGN3RZ",
+          "task_id": "T-006",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -404,7 +404,7 @@
       ]
     },
     {
-      "task_id": "T-20261123-01M84WPB6M45RDT9",
+      "task_id": "T-007",
       "request": "Add first-class PHP 8.x and Laravel (API, Blade, Inertia, Livewire) support across anvil crates",
       "status": "done",
       "created_by": "reactive-end",
@@ -471,7 +471,7 @@
       "entries": [
         {
           "entry_id": "01M84WPB6PQJ70XFE728P6BM3G",
-          "task_id": "T-20261123-01M84WPB6M45RDT9",
+          "task_id": "T-007",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -481,7 +481,7 @@
         },
         {
           "entry_id": "01M84WPBDDXDVYGXXTZ4GBRNMM",
-          "task_id": "T-20261123-01M84WPB6M45RDT9",
+          "task_id": "T-007",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -541,7 +541,7 @@
       ]
     },
     {
-      "task_id": "T-20261123-01M84Y9SH0QAEPKS",
+      "task_id": "T-008",
       "request": "Add forge-themed ANSI terminal UI and ASCII anvil banner to anvil-cli",
       "status": "done",
       "created_by": "reactive-end",
@@ -575,7 +575,7 @@
       "entries": [
         {
           "entry_id": "01M84Y9SH1C55YJEFN1Y4J27FE",
-          "task_id": "T-20261123-01M84Y9SH0QAEPKS",
+          "task_id": "T-008",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -585,7 +585,7 @@
         },
         {
           "entry_id": "01M84Y9SM97E5PVRH9YEZ0XJG5",
-          "task_id": "T-20261123-01M84Y9SH0QAEPKS",
+          "task_id": "T-008",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -610,7 +610,7 @@
         },
         {
           "entry_id": "01M84ZJHXZHQZ2B5HYXBGKBSSS",
-          "task_id": "T-20261123-01M84Y9SH0QAEPKS",
+          "task_id": "T-008",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -636,7 +636,7 @@
         },
         {
           "entry_id": "01M84ZJJ19B3AFKE16APZQRP1B",
-          "task_id": "T-20261123-01M84Y9SH0QAEPKS",
+          "task_id": "T-008",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -663,7 +663,7 @@
       ]
     },
     {
-      "task_id": "T-20261123-01M850190FP4QQ81",
+      "task_id": "T-009",
       "request": "Fix Antigravity 2.0 Path key extraction and Stop task materialization fallback",
       "status": "done",
       "created_by": "reactive-end",
@@ -687,7 +687,7 @@
       "entries": [
         {
           "entry_id": "01M850190HZDQGJVBQT4A3KNKF",
-          "task_id": "T-20261123-01M850190FP4QQ81",
+          "task_id": "T-009",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -697,7 +697,7 @@
         },
         {
           "entry_id": "01M850193T87KM6113Q537RG5V",
-          "task_id": "T-20261123-01M850190FP4QQ81",
+          "task_id": "T-009",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -712,7 +712,7 @@
         },
         {
           "entry_id": "01M85046PE4WJE1GJAJ43VHBJ2",
-          "task_id": "T-20261123-01M850190FP4QQ81",
+          "task_id": "T-009",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -728,7 +728,7 @@
         },
         {
           "entry_id": "01M850GX2VZ5YYC09GY7237P22",
-          "task_id": "T-20261123-01M850190FP4QQ81",
+          "task_id": "T-009",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -745,7 +745,7 @@
       ]
     },
     {
-      "task_id": "T-20261123-01M85CF9AYMBK5AR",
+      "task_id": "T-010",
       "request": "Harden Anvil P0-P2 audit issues via Hydrogen subagents",
       "status": "done",
       "created_by": "reactive-end",
@@ -834,7 +834,7 @@
       "entries": [
         {
           "entry_id": "01M85CF9B2WCN3YM4BTHS1PKJD",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -844,7 +844,7 @@
         },
         {
           "entry_id": "01M85D4NZE41AJ2VJR794NQMDN",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -873,7 +873,7 @@
         },
         {
           "entry_id": "01M85DCQ396F244XHBY6YJ0YHS",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -911,7 +911,7 @@
         },
         {
           "entry_id": "01M85DJ99WN1HSHR30QJ4FRM3M",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -977,7 +977,7 @@
         },
         {
           "entry_id": "01M85DK4YR8ZWVTJZ7N1HS2WPG",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -1043,7 +1043,7 @@
         },
         {
           "entry_id": "01M85E0ZJ7KFXR2VRXV430BXFV",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1109,7 +1109,7 @@
         },
         {
           "entry_id": "01M85E9JNZ610FNJDBG8DXRDYX",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1176,7 +1176,7 @@
         },
         {
           "entry_id": "01M85EH6R4JAWAHMG4DSXM654Y",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1244,7 +1244,7 @@
         },
         {
           "entry_id": "01M85FG2H3N38Y0W16K1WHZDD5",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1325,7 +1325,7 @@
         },
         {
           "entry_id": "01M85FJ72GGK31MT9KFG9V082F",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1406,7 +1406,7 @@
         },
         {
           "entry_id": "01M85FM84YC6RBSKYY9KVDK0XN",
-          "task_id": "T-20261123-01M85CF9AYMBK5AR",
+          "task_id": "T-010",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1488,7 +1488,7 @@
       ]
     },
     {
-      "task_id": "T-20261124-01M85FR2Q0PZT2CE",
+      "task_id": "T-011",
       "request": "Implement LLM-curated task governance and anti-noise filters",
       "status": "done",
       "created_by": "reactive-end",
@@ -1579,7 +1579,7 @@
       "entries": [
         {
           "entry_id": "01M85FR2Q14598Z3M0QEFTZ1Y1",
-          "task_id": "T-20261124-01M85FR2Q0PZT2CE",
+          "task_id": "T-011",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -1589,7 +1589,7 @@
         },
         {
           "entry_id": "01M85FR2R6HDA3PMXFMYMGPKCY",
-          "task_id": "T-20261124-01M85FR2Q0PZT2CE",
+          "task_id": "T-011",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1673,7 +1673,7 @@
       ]
     },
     {
-      "task_id": "T-20261124-01M85KJXP2CRFQGV",
+      "task_id": "T-012",
       "request": "Implement token, performance, security, boundary, and Godot 4 upgrades",
       "status": "done",
       "created_by": "reactive-end",
@@ -1822,7 +1822,7 @@
       "entries": [
         {
           "entry_id": "01M85KJXP4A0Q47DXAQWD5A75R",
-          "task_id": "T-20261124-01M85KJXP2CRFQGV",
+          "task_id": "T-012",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "main",
@@ -1832,7 +1832,7 @@
         },
         {
           "entry_id": "01M85KJXQ8C6DM1PFW40KTJXYE",
-          "task_id": "T-20261124-01M85KJXP2CRFQGV",
+          "task_id": "T-012",
           "author": "reactive-end",
           "status": "done",
           "branch": "main",
@@ -1974,7 +1974,7 @@
       ]
     },
     {
-      "task_id": "T-20261124-01M85RFQRA9KRHZX",
+      "task_id": "T-013",
       "request": "Add opt-in SonarQube, Code Mode sandbox/proxy, anti-tampering, and checkpoints",
       "status": "done",
       "created_by": "reactive-end",
@@ -2055,7 +2055,7 @@
       "entries": [
         {
           "entry_id": "01M85RFQRDN0NTSFK8RTZGZJKX",
-          "task_id": "T-20261124-01M85RFQRA9KRHZX",
+          "task_id": "T-013",
           "author": "reactive-end",
           "status": "in_progress",
           "branch": "feat/sonar-codemode-harness",
@@ -2065,7 +2065,7 @@
         },
         {
           "entry_id": "01M85RFQSE7GSZKC5Z2W0T7T1N",
-          "task_id": "T-20261124-01M85RFQRA9KRHZX",
+          "task_id": "T-013",
           "author": "reactive-end",
           "status": "done",
           "branch": "feat/sonar-codemode-harness",
@@ -2119,7 +2119,7 @@
         },
         {
           "entry_id": "01M85TDJ5DA9XT8757NPWX02PB",
-          "task_id": "T-20261124-01M85RFQRA9KRHZX",
+          "task_id": "T-013",
           "author": "reactive-end",
           "status": "done",
           "branch": "feat/sonar-codemode-harness",
@@ -2178,7 +2178,7 @@
         },
         {
           "entry_id": "01M85TZWCHJ7NVEZ6GHNDT6A1K",
-          "task_id": "T-20261124-01M85RFQRA9KRHZX",
+          "task_id": "T-013",
           "author": "reactive-end",
           "status": "done",
           "branch": "feat/sonar-codemode-harness",
@@ -2240,7 +2240,7 @@
         },
         {
           "entry_id": "01M85XTGRRG2SQGM2EQEF4Q6AM",
-          "task_id": "T-20261124-01M85RFQRA9KRHZX",
+          "task_id": "T-013",
           "author": "reactive-end",
           "status": "done",
           "branch": "feat/sonar-codemode-harness",
@@ -2310,6 +2310,119 @@
             "crates/anvil-qa/tests/onboarding_qa.rs"
           ],
           "timestamp": "2026-11-24T04:42:59.770031800Z"
+        }
+      ]
+    },
+    {
+      "task_id": "T-014",
+      "request": "Soporte de importación feature_list.json con navegador de archivos",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "files_touched": [
+        "Cargo.lock",
+        "crates/anvil-cli/Cargo.toml",
+        "crates/anvil-cli/src/cli/subcmds.rs",
+        "crates/anvil-cli/src/commands/hook/payload.rs",
+        "crates/anvil-cli/src/commands/tasks.rs",
+        "crates/anvil-cli/src/ui.rs",
+        "crates/anvil-cli/src/ui/file_picker.rs",
+        "crates/anvil-cli/src/ui/prompt.rs",
+        "crates/anvil-cli/tests/phase5_upgrades_e2e.rs",
+        "crates/anvil-mcp/src/schemas.rs",
+        "crates/anvil-mcp/src/tools_codemode.rs",
+        "crates/anvil-mcp/src/tools_tasks.rs",
+        "crates/anvil-mcp/tests/mcp_stdio.rs",
+        "crates/anvil-tasks/src/builder.rs",
+        "crates/anvil-tasks/src/curate.rs",
+        "crates/anvil-tasks/src/import_export.rs",
+        "crates/anvil-tasks/src/ledger.rs",
+        "crates/anvil-tasks/src/lib.rs",
+        "crates/anvil-tasks/src/merge_driver.rs",
+        "crates/anvil-tasks/src/model.rs",
+        "crates/anvil-tasks/tests/tasks_tests.rs"
+      ],
+      "summary": "Cambiados los IDs de tareas a códigos secuenciales cortos (T-001, T-002, ...), añadidos --id/task_id, ordenamiento natural y comando anvil tasks migrate-ids ejecutado sobre las 14 tareas del repo.",
+      "entry_count": 3,
+      "created_at": "2026-11-24T13:59:54.717931600Z",
+      "updated_at": "2026-11-24T14:08:33.328639900Z",
+      "entries": [
+        {
+          "entry_id": "01M86XP8JZSBEN738K1NK0M6QR",
+          "task_id": "T-014",
+          "author": "reactive-end",
+          "status": "in_progress",
+          "branch": "main",
+          "summary": "Started task: Soporte de importación feature_list.json con navegador de archivos",
+          "files_touched": [],
+          "timestamp": "2026-11-24T13:59:54.756001400Z"
+        },
+        {
+          "entry_id": "01M86XP8M5P5NY84P86BNQC9GT",
+          "task_id": "T-014",
+          "author": "reactive-end",
+          "status": "done",
+          "branch": "main",
+          "summary": "Implementados import/export/verify conflict-free sobre .harness/tasks/, diálogo nativo OS + file browser TUI en ui/file_picker.rs, filtro por estado y herramienta MCP task_get.",
+          "files_touched": [
+            "Cargo.lock",
+            "crates/anvil-cli/Cargo.toml",
+            "crates/anvil-cli/src/cli/subcmds.rs",
+            "crates/anvil-cli/src/commands/hook/payload.rs",
+            "crates/anvil-cli/src/commands/tasks.rs",
+            "crates/anvil-cli/src/ui.rs",
+            "crates/anvil-cli/src/ui/file_picker.rs",
+            "crates/anvil-cli/src/ui/prompt.rs",
+            "crates/anvil-cli/tests/phase5_upgrades_e2e.rs",
+            "crates/anvil-mcp/src/schemas.rs",
+            "crates/anvil-mcp/src/tools_codemode.rs",
+            "crates/anvil-mcp/src/tools_tasks.rs",
+            "crates/anvil-mcp/tests/mcp_stdio.rs",
+            "crates/anvil-tasks/src/builder.rs",
+            "crates/anvil-tasks/src/import_export.rs",
+            "crates/anvil-tasks/src/ledger.rs",
+            "crates/anvil-tasks/src/lib.rs",
+            "crates/anvil-tasks/src/merge_driver.rs",
+            "crates/anvil-tasks/src/model.rs"
+          ],
+          "timestamp": "2026-11-24T13:59:54.790691400Z"
+        },
+        {
+          "entry_id": "01M86Y630G126W4HX865JP0A5M",
+          "task_id": "T-014",
+          "author": "reactive-end",
+          "status": "done",
+          "branch": "main",
+          "summary": "Cambiados los IDs de tareas a códigos secuenciales cortos (T-001, T-002, ...), añadidos --id/task_id, ordenamiento natural y comando anvil tasks migrate-ids ejecutado sobre las 14 tareas del repo.",
+          "files_touched": [
+            "Cargo.lock",
+            "crates/anvil-cli/Cargo.toml",
+            "crates/anvil-cli/src/cli/subcmds.rs",
+            "crates/anvil-cli/src/commands/hook/payload.rs",
+            "crates/anvil-cli/src/commands/tasks.rs",
+            "crates/anvil-cli/src/ui.rs",
+            "crates/anvil-cli/src/ui/file_picker.rs",
+            "crates/anvil-cli/src/ui/prompt.rs",
+            "crates/anvil-cli/tests/phase5_upgrades_e2e.rs",
+            "crates/anvil-mcp/src/schemas.rs",
+            "crates/anvil-mcp/src/tools_codemode.rs",
+            "crates/anvil-mcp/src/tools_tasks.rs",
+            "crates/anvil-mcp/tests/mcp_stdio.rs",
+            "crates/anvil-tasks/src/builder.rs",
+            "crates/anvil-tasks/src/curate.rs",
+            "crates/anvil-tasks/src/import_export.rs",
+            "crates/anvil-tasks/src/ledger.rs",
+            "crates/anvil-tasks/src/lib.rs",
+            "crates/anvil-tasks/src/merge_driver.rs",
+            "crates/anvil-tasks/src/model.rs",
+            "crates/anvil-tasks/tests/tasks_tests.rs"
+          ],
+          "timestamp": "2026-11-24T14:08:33.328639900Z"
         }
       ]
     }

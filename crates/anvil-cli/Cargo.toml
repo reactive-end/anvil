@@ -28,6 +28,9 @@ anvil-adapters.workspace = true
 anvil-deps.workspace = true
 anvil-qa.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+rfd = "0.15"
+
 [dev-dependencies]
 tempfile.workspace = true
 

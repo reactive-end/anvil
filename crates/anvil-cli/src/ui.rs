@@ -1,5 +1,6 @@
 //! Terminal styling, TTY/NO_COLOR detection, structured cards, and HD 3D Braille Anvil banner.
 
+pub mod file_picker;
 pub mod prompt;
 
 use std::io::IsTerminal;

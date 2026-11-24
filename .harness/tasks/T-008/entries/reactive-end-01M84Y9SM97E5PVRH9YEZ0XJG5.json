@@ -1,0 +1,25 @@
+{
+  "entry_id": "01M84Y9SM97E5PVRH9YEZ0XJG5",
+  "task_id": "T-008",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Added TTY-aware ANSI UI module with ASCII anvil forge banner, colored clap help, styled init/doctor/check/stats/sync/impact/deps/run output, --no-color/NO_COLOR/ANVIL_COLOR controls, tests, and installed updated release binary.",
+  "files_touched": [
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/check/tier1.rs",
+    "crates/anvil-cli/src/commands/check/tier2.rs",
+    "crates/anvil-cli/src/commands/deps.rs",
+    "crates/anvil-cli/src/commands/doctor.rs",
+    "crates/anvil-cli/src/commands/impact.rs",
+    "crates/anvil-cli/src/commands/init.rs",
+    "crates/anvil-cli/src/commands/run.rs",
+    "crates/anvil-cli/src/commands/stats.rs",
+    "crates/anvil-cli/src/commands/sync.rs",
+    "crates/anvil-cli/src/main.rs",
+    "crates/anvil-cli/src/ui.rs",
+    "crates/anvil-cli/tests/php_laravel_e2e.rs"
+  ],
+  "timestamp": "2026-11-23T19:32:05.932487900Z"
+}

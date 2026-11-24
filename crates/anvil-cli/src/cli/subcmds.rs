@@ -121,6 +121,9 @@ pub enum TasksSubcmd {
     Start {
         #[arg(required = true)]
         request: Vec<String>,
+        /// Optional short custom ID (e.g. `F039`); defaults to `T-001`, `T-002`, ...
+        #[arg(long)]
+        id: Option<String>,
         #[arg(long)]
         author: Option<String>,
     },
@@ -132,6 +135,9 @@ pub enum TasksSubcmd {
         summary: String,
         #[arg(long, default_value = "done")]
         status: String,
+        /// Optional short custom ID (e.g. `F039`); defaults to `T-001`, `T-002`, ...
+        #[arg(long)]
+        id: Option<String>,
         #[arg(long, value_delimiter = ',')]
         files: Vec<String>,
         #[arg(long)]
@@ -170,10 +176,45 @@ pub enum TasksSubcmd {
         #[arg(long)]
         author: Option<String>,
     },
+    /// Import a `feature_list.json` / tasks JSON into conflict-free `.harness/tasks/` folders.
+    Import {
+        /// Optional path to the JSON file; omit to open the native OS / TUI file browser.
+        file: Option<PathBuf>,
+        /// Use the in-terminal arrow-key TUI file browser instead of the native OS file dialog.
+        #[arg(long)]
+        tui: bool,
+        /// Overwrite existing task metadata and append imported status entries for existing IDs.
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// Export `.harness/tasks/` back to a single-file `feature_list.json` snapshot.
+    Export {
+        /// Optional destination JSON file path (prints to stdout when omitted).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Execute a task/feature's `verify` command and optionally record the result as evidence.
+    Verify {
+        task_id: String,
+        /// Append the compressed result as an immutable evidence entry in `.harness/tasks/<id>/`.
+        #[arg(long)]
+        record: bool,
+    },
+    /// Rename legacy `T-YYYYMMDD-<ULID>` folders to short sequential codes (`T-001`, `T-002`, ...).
+    MigrateIds,
     /// Deterministically rebuild root `tasks.json`.
     Build,
-    /// List all tasks in `.harness/tasks/`.
-    List,
+    /// List tasks in `.harness/tasks/` (optionally filtered by status).
+    List {
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Git custom merge driver for conflict-free `tasks.json` resolution.
     MergeDriver {
         base: PathBuf,

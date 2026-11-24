@@ -225,6 +225,32 @@ pub fn select(
     options: &[SelectOption],
     default_idx: usize,
 ) -> Result<PromptOutcome<usize>> {
+    select_with_mode(title, collapsed_label, subtitle, options, default_idx, true)
+}
+
+/// Same arrow-key menu without printing a collapsed summary line (useful for directory navigation).
+pub fn select_transient(
+    title: &str,
+    subtitle: Option<&str>,
+    options: &[SelectOption],
+    default_idx: usize,
+) -> Result<PromptOutcome<usize>> {
+    select_with_mode(title, "", subtitle, options, default_idx, false)
+}
+
+/// Prints a single completed step on the Clack rail (`◇  <label>` / `│  <value>`).
+pub fn emit_collapsed(label: &str, summary: &str) -> Result<()> {
+    print_collapsed(label, summary)
+}
+
+fn select_with_mode(
+    title: &str,
+    collapsed_label: &str,
+    subtitle: Option<&str>,
+    options: &[SelectOption],
+    default_idx: usize,
+    collapse: bool,
+) -> Result<PromptOutcome<usize>> {
     if options.is_empty() {
         return Ok(PromptOutcome::Cancelled);
     }
@@ -239,7 +265,9 @@ pub fn select(
         print_cancelled()?;
         return Ok(PromptOutcome::Cancelled);
     }
-    print_collapsed(collapsed_label, &options[state.cursor].label)?;
+    if collapse {
+        print_collapsed(collapsed_label, &options[state.cursor].label)?;
+    }
     Ok(PromptOutcome::Confirmed(state.cursor))
 }
 
@@ -347,18 +375,34 @@ fn render_select_frame(
     options: &[SelectOption],
     cursor_idx: usize,
 ) -> Vec<String> {
+    const MAX_ROWS: usize = 14;
     let cols = term_cols();
     let label_width = max_label_width(options, cols);
     let mut lines = render_header(title, subtitle, cols);
-    for (idx, opt) in options.iter().enumerate() {
+    let (start, end) = visible_window(options.len(), cursor_idx, MAX_ROWS);
+    if start > 0 {
+        lines.push(format!("  {C_DIM}│    ↑ {start} more above{C_RESET}"));
+    }
+    for (idx, opt) in options.iter().enumerate().take(end).skip(start) {
         let active = idx == cursor_idx;
         let pointer = if active { format!("{C_DIAMOND}▸{C_RESET}") } else { " ".to_owned() };
         let bullet = if active { format!("{C_ACTIVE}●{C_RESET}") } else { format!("{C_DIM}○{C_RESET}") };
         lines.push(format_option_row(opt, active, &pointer, &bullet, label_width, cols));
     }
+    if end < options.len() {
+        lines.push(format!("  {C_DIM}│    ↓ {} more below{C_RESET}", options.len() - end));
+    }
     lines.push(format!("  {C_DIM}│{C_RESET}"));
     lines.push(format_footer("↑/↓ move · Enter confirm · Esc cancel", cols));
     lines
+}
+
+fn visible_window(len: usize, cursor: usize, max_rows: usize) -> (usize, usize) {
+    if len <= max_rows {
+        return (0, len);
+    }
+    let start = cursor.saturating_sub(max_rows / 2).min(len - max_rows);
+    (start, start + max_rows)
 }
 
 fn render_multi_frame(

@@ -1,0 +1,32 @@
+{
+  "entry_id": "01M86Y630G126W4HX865JP0A5M",
+  "task_id": "T-014",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Cambiados los IDs de tareas a códigos secuenciales cortos (T-001, T-002, ...), añadidos --id/task_id, ordenamiento natural y comando anvil tasks migrate-ids ejecutado sobre las 14 tareas del repo.",
+  "files_touched": [
+    "Cargo.lock",
+    "crates/anvil-cli/Cargo.toml",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/hook/payload.rs",
+    "crates/anvil-cli/src/commands/tasks.rs",
+    "crates/anvil-cli/src/ui.rs",
+    "crates/anvil-cli/src/ui/file_picker.rs",
+    "crates/anvil-cli/src/ui/prompt.rs",
+    "crates/anvil-cli/tests/phase5_upgrades_e2e.rs",
+    "crates/anvil-mcp/src/schemas.rs",
+    "crates/anvil-mcp/src/tools_codemode.rs",
+    "crates/anvil-mcp/src/tools_tasks.rs",
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "crates/anvil-tasks/src/builder.rs",
+    "crates/anvil-tasks/src/curate.rs",
+    "crates/anvil-tasks/src/import_export.rs",
+    "crates/anvil-tasks/src/ledger.rs",
+    "crates/anvil-tasks/src/lib.rs",
+    "crates/anvil-tasks/src/merge_driver.rs",
+    "crates/anvil-tasks/src/model.rs",
+    "crates/anvil-tasks/tests/tasks_tests.rs"
+  ],
+  "timestamp": "2026-11-24T14:08:33.328639900Z"
+}

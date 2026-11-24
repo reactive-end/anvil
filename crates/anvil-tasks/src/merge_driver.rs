@@ -126,6 +126,9 @@ fn merge_file_tasks(
             task_id: task.task_id.clone(),
             created_by: task.created_by.clone(),
             request: task.request.clone(),
+            project: task.project.clone(),
+            behavior: task.behavior.clone(),
+            verify: task.verify.clone(),
             created_at: task.created_at,
         };
         merge_task_into(by_task, meta, task.entries);

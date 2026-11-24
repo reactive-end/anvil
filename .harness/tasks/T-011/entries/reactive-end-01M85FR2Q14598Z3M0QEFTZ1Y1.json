@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M85FR2Q14598Z3M0QEFTZ1Y1",
+  "task_id": "T-011",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Implement LLM-curated task governance and anti-noise filters",
+  "files_touched": [],
+  "timestamp": "2026-11-24T00:36:59.781359200Z"
+}

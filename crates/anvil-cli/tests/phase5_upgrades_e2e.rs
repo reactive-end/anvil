@@ -262,3 +262,50 @@ fn mcp_proxy_wraps_upstream_mcp_server_with_search_exec_and_mutation_guard() {
     assert_eq!(lines[3]["result"]["isError"], json!(false));
     assert_eq!(lines[4]["result"]["isError"], json!(true));
 }
+
+#[test]
+fn tasks_import_export_verify_and_status_filtering_work_end_to_end() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    let json_path = root.join("voz_features.json");
+    fs::write(
+        &json_path,
+        r#"{
+          "project": "voz",
+          "updated": "2026-11-24",
+          "features": [
+            {
+              "id": "F001",
+              "name": "VOZ-RF-01 Crear bucket",
+              "behavior": "Crear bucket",
+              "verify": "echo verify_ok",
+              "status": "not_started",
+              "evidence": "En codigo"
+            },
+            {
+              "id": "F003",
+              "name": "VOZ-RF-03 VAD 512",
+              "behavior": "Detectar voz",
+              "verify": null,
+              "status": "not_started",
+              "evidence": "Pendiente"
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    let imp = assert_ok(&run_anvil(root, &["tasks", "import", "voz_features.json"]), "import");
+    assert!(imp.contains("imported=2"));
+    let listed = assert_ok(&run_anvil(root, &["tasks", "list", "--status", "not_started"]), "list");
+    assert!(listed.contains("F001 [not_started] VOZ-RF-01 Crear bucket [verify]"));
+    assert!(listed.contains("F003 [not_started] VOZ-RF-03 VAD 512"));
+
+    let verified = assert_ok(&run_anvil(root, &["tasks", "verify", "F001", "--record"]), "verify");
+    assert!(verified.contains("PASS F001"));
+    let exported = assert_ok(&run_anvil(root, &["tasks", "export", "--project", "voz"]), "export");
+    let parsed: Value = serde_json::from_str(&exported).unwrap();
+    assert_eq!(parsed["features"][0]["status"], json!("done"));
+}

@@ -368,3 +368,42 @@ fn conversational_prompts_and_chatty_titles_are_strictly_filtered() {
     assert!(skipped.skipped);
     assert_eq!(list_tasks(tmp.path()).expect("list").len(), 1);
 }
+
+#[test]
+fn short_sequential_ids_custom_id_natural_sort_and_migration() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    let m1 = start_task_as(tmp.path(), "alice", "First short task").expect("m1");
+    let m2 = start_task_as(tmp.path(), "bob", "Second short task").expect("m2");
+    assert_eq!(m1.task_id, "T-001");
+    assert_eq!(m2.task_id, "T-002");
+
+    let custom = anvil_tasks::start_task_with_id(tmp.path(), "alice", "Custom code task", Some("F039"))
+        .expect("custom id");
+    assert_eq!(custom.task_id, "F039");
+    assert!(
+        anvil_tasks::start_task_with_id(tmp.path(), "alice", "Duplicate code", Some("F039")).is_err()
+    );
+
+    assert_eq!(anvil_tasks::compare_task_ids("T-002", "T-010"), std::cmp::Ordering::Less);
+    assert_eq!(anvil_tasks::compare_task_ids("F002", "F038"), std::cmp::Ordering::Less);
+
+    // Seed a legacy `T-YYYYMMDD-<ULID>` folder and migrate it chronologically to `T-003`.
+    let legacy_id = "T-20261121-01M7YC7MM5WX2CGP";
+    let legacy_dir = tmp.path().join(".harness/tasks").join(legacy_id);
+    std::fs::create_dir_all(legacy_dir.join("entries")).expect("legacy dir");
+    std::fs::write(
+        legacy_dir.join("meta.json"),
+        format!(
+            r#"{{"task_id":"{legacy_id}","created_by":"alice","request":"Legacy task","created_at":"2026-11-21T00:00:00Z"}}"#
+        ),
+    )
+    .expect("legacy meta");
+    let moved = anvil_tasks::migrate_legacy_task_ids(tmp.path()).expect("migrate");
+    assert_eq!(moved, vec![(legacy_id.to_owned(), "T-003".to_owned())]);
+    assert!(!legacy_dir.exists());
+    assert!(tmp.path().join(".harness/tasks/T-003/meta.json").is_file());
+    assert!(anvil_tasks::migrate_legacy_task_ids(tmp.path()).expect("idempotent").is_empty());
+}

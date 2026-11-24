@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M7YC7MM6JRWGFZ832PA0Z7RY",
+  "task_id": "T-001",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Implement anvil engineering harness Phases 1-5 (core, AST, graph, memory, MCP, tasks, adapters, deps, QA, release)",
+  "files_touched": [],
+  "timestamp": "2026-11-21T06:20:54.312161600Z"
+}

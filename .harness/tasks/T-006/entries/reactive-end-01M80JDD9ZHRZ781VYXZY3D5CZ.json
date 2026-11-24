@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M80JDD9ZHRZ781VYXZY3D5CZ",
+  "task_id": "T-006",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Release anvil v0.4.0: multi-subproject init, file-aware hooks, lean --adapter sync, and expanded permission AST rules",
+  "files_touched": [],
+  "timestamp": "2026-11-22T02:47:23.744565500Z"
+}

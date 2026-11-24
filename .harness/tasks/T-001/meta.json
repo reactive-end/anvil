@@ -1,0 +1,6 @@
+{
+  "task_id": "T-001",
+  "created_by": "reactive-end",
+  "request": "Implement anvil engineering harness Phases 1-5 (core, AST, graph, memory, MCP, tasks, adapters, deps, QA, release)",
+  "created_at": "2026-11-21T06:20:54.277367Z"
+}

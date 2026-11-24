@@ -226,6 +226,8 @@ pub fn is_read_only_tool(tool_name: Option<&str>) -> bool {
             | "mem_timeline"
             | "mem_get"
             | "mem_context"
+            | "task_list"
+            | "task_get"
             | "code_exec"
             | "context_pack"
     ) || bare.starts_with("graph_")

@@ -6,8 +6,9 @@ use std::path::Path;
 use anyhow::{Result, bail};
 use anvil_core::git::{self, DiffScope};
 use anvil_tasks::{
-    TaskStatus, append_entry_as, build_root_tasks_json, clear_untracked_edits, list_tasks,
-    load_active_task, load_untracked_edits, mark_summary_recorded_with_files, record_curated_task,
+    TaskStatus, append_entry_as, build_root_tasks_json, clear_untracked_edits,
+    consolidate_repo_tasks, load_active_task, load_untracked_edits,
+    mark_summary_recorded_with_files, read_single_task, record_curated_task_with_id,
     record_task_skip, resolve_author_fast,
 };
 use serde_json::{Value, json};
@@ -22,6 +23,7 @@ pub fn call_task_tool(server: &McpServer, name: &str, args: &Value) -> Result<Va
         "task_done" => handle_task_done(root, args),
         "task_skip" => handle_task_skip(root, args),
         "task_list" => handle_task_list(root, args),
+        "task_get" => handle_task_get(root, args),
         other => bail!("unknown task tool: {other}"),
     }
 }
@@ -30,12 +32,19 @@ fn handle_task_record(root: &Path, args: &Value) -> Result<Value> {
     let title = req_str(args, "title")?;
     let summary = req_str(args, "summary")?;
     let status = match args.get("status").and_then(Value::as_str) {
+        Some("not_started") => TaskStatus::NotStarted,
         Some("in_progress") => TaskStatus::InProgress,
         Some("blocked") => TaskStatus::Blocked,
         _ => TaskStatus::Done,
     };
+    let explicit_id = args
+        .get("task_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
     let explicit_files = opt_string_vec(args, "files");
-    let (meta, entry) = record_curated_task(root, title, summary, status, &explicit_files, None)?;
+    let (meta, entry) =
+        record_curated_task_with_id(root, title, summary, status, &explicit_files, None, explicit_id)?;
     Ok(json!({
         "task_id": meta.task_id,
         "title": meta.request,
@@ -78,23 +87,41 @@ fn handle_task_list(root: &Path, args: &Value) -> Result<Value> {
         .get("limit")
         .and_then(Value::as_u64)
         .and_then(|v| usize::try_from(v).ok())
-        .unwrap_or(10)
+        .unwrap_or(15)
         .clamp(1, 100);
-    let metas = list_tasks(root)?;
-    let slice: Vec<Value> = metas
+    let status_filter = match args.get("status").and_then(Value::as_str) {
+        Some("not_started") => Some(TaskStatus::NotStarted),
+        Some("in_progress") => Some(TaskStatus::InProgress),
+        Some("blocked") => Some(TaskStatus::Blocked),
+        Some("done") => Some(TaskStatus::Done),
+        Some(other) => bail!("invalid task status filter `{other}`"),
+        None => None,
+    };
+    let consolidated = consolidate_repo_tasks(root)?;
+    let slice: Vec<Value> = consolidated
+        .tasks
         .into_iter()
+        .filter(|t| status_filter.is_none_or(|s| t.status == s))
         .rev()
         .take(limit)
-        .map(|m| {
+        .map(|t| {
             json!({
-                "task_id": m.task_id,
-                "title": m.request,
-                "created_by": m.created_by,
-                "created_at": m.created_at,
+                "task_id": t.task_id,
+                "title": t.request,
+                "status": t.status.to_string(),
+                "project": t.project,
+                "has_verify": t.verify.is_some(),
+                "evidence": t.evidence,
             })
         })
         .collect();
     Ok(json!({ "tasks": slice }))
+}
+
+fn handle_task_get(root: &Path, args: &Value) -> Result<Value> {
+    let task_id = req_str(args, "task_id")?;
+    let task = read_single_task(root, task_id)?;
+    Ok(serde_json::to_value(task)?)
 }
 
 fn collect_task_files(root: &Path, task_id: &str, explicit: &[String]) -> Vec<String> {

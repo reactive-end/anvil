@@ -210,20 +210,7 @@ fn mem_save_schema() -> Value {
 
 fn task_tool_schemas() -> Vec<Value> {
     vec![
-        tool_schema(
-            "task_record",
-            "Create and record a genuine engineering task (feature, refactor, or bugfix) with an LLM-curated title (e.g. 'Reorganización visual del módulo X'; NEVER copy raw user chat or questions). Prefer `task_done` to continue an existing task or `task_skip` for minor tweaks.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "title": { "type": "string", "description": "Concise 3-18 word engineering title (never raw chat or questions)." },
-                    "summary": { "type": "string", "description": "Concise 1-2 sentence technical summary of changes." },
-                    "status": { "type": "string", "enum": ["done", "in_progress", "blocked"], "default": "done" },
-                    "files": { "type": "array", "items": { "type": "string" } }
-                },
-                "required": ["title", "summary"]
-            }),
-        ),
+        task_record_schema(),
         tool_schema(
             "task_done",
             "Complete an existing task ID or append follow-up edits belonging to that same deliverable instead of creating a duplicate task.",
@@ -250,15 +237,45 @@ fn task_tool_schemas() -> Vec<Value> {
         ),
         tool_schema(
             "task_list",
-            "List recent tasks in `.harness/tasks/` so continuations can reuse an existing task ID.",
+            "List tasks in `.harness/tasks/` (optionally filtered by status) with compact summaries without loading full feature specs.",
             json!({
                 "type": "object",
                 "properties": {
-                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 }
+                    "status": { "type": "string", "enum": ["not_started", "in_progress", "blocked", "done"] },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 }
                 }
             }),
         ),
+        tool_schema(
+            "task_get",
+            "Read full details for a single task/feature ID (`behavior`, `verify` command, `evidence`, status, and recent entries).",
+            json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" }
+                },
+                "required": ["task_id"]
+            }),
+        ),
     ]
+}
+
+fn task_record_schema() -> Value {
+    tool_schema(
+        "task_record",
+        "Create and record a genuine engineering task (feature, refactor, or bugfix) with an LLM-curated title (e.g. 'Reorganización visual del módulo X'; NEVER copy raw user chat or questions). Prefer `task_done` to continue an existing task or `task_skip` for minor tweaks.",
+        json!({
+            "type": "object",
+            "properties": {
+                "task_id": { "type": "string", "description": "Optional short code like `F039` or `AUTH-01`; auto-generates `T-001`, `T-002`, ... when omitted." },
+                "title": { "type": "string", "description": "Concise 3-18 word engineering title (never raw chat or questions)." },
+                "summary": { "type": "string", "description": "Concise 1-2 sentence technical summary of changes." },
+                "status": { "type": "string", "enum": ["not_started", "done", "in_progress", "blocked"], "default": "done" },
+                "files": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["title", "summary"]
+        }),
+    )
 }
 
 fn tool_schema(name: &str, description: &str, input_schema: Value) -> Value {

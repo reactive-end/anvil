@@ -24,6 +24,7 @@ pub const CODE_MODE_ALLOWLIST: &[&str] = &[
     "mem_get",
     "mem_context",
     "task_list",
+    "task_get",
 ];
 
 struct McpDispatcher<'a>(&'a mut McpServer);

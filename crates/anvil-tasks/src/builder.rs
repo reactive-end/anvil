@@ -3,10 +3,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::ledger::tasks_root;
+use crate::ledger::{compare_task_ids, task_dir, tasks_root};
 use crate::model::{ConsolidatedTask, ConsolidatedTasksFile, TaskEntry, TaskMeta, TaskStatus};
 use crate::{atomic_write_json, read_json_file};
 
@@ -15,10 +15,27 @@ const MAX_SUMMARY_CHARS: usize = 480;
 
 /// Rebuilds `<repo>/tasks.json` deterministically from `.harness/tasks/*/meta.json` and `entries/*.json`.
 pub fn build_root_tasks_json(repo: &Path) -> Result<ConsolidatedTasksFile> {
-    let records = read_all_task_records(repo)?;
-    let consolidated = consolidate_tasks(records);
+    let consolidated = consolidate_repo_tasks(repo)?;
     atomic_write_json(&repo.join("tasks.json"), &consolidated)?;
     Ok(consolidated)
+}
+
+/// Consolidates all `.harness/tasks/` records in memory without modifying `tasks.json`.
+pub fn consolidate_repo_tasks(repo: &Path) -> Result<ConsolidatedTasksFile> {
+    let records = read_all_task_records(repo)?;
+    Ok(consolidate_tasks(records))
+}
+
+/// Loads and consolidates a single task ID from `.harness/tasks/<task_id>/`.
+pub fn read_single_task(repo: &Path, task_id: &str) -> Result<ConsolidatedTask> {
+    let dir = task_dir(repo, task_id);
+    let meta_path = dir.join("meta.json");
+    if !meta_path.is_file() {
+        bail!("task `{task_id}` not found at {}", meta_path.display());
+    }
+    let meta: TaskMeta = read_json_file(&meta_path)?;
+    let entries = read_entries_dir(&dir.join("entries"))?;
+    Ok(consolidate_single_task(meta, entries))
 }
 
 /// Reads every task directory's `meta.json` and `entries/*.json` from disk.
@@ -49,7 +66,7 @@ pub(crate) fn read_all_task_records(repo: &Path) -> Result<Vec<(TaskMeta, Vec<Ta
 pub(crate) fn consolidate_tasks(
     mut records: Vec<(TaskMeta, Vec<TaskEntry>)>,
 ) -> ConsolidatedTasksFile {
-    records.sort_by(|a, b| a.0.task_id.cmp(&b.0.task_id));
+    records.sort_by(|a, b| compare_task_ids(&a.0.task_id, &b.0.task_id));
     let mut tasks = Vec::with_capacity(records.len());
 
     for (meta, entries) in records {
@@ -69,6 +86,10 @@ fn consolidate_single_task(meta: TaskMeta, raw_entries: Vec<TaskEntry>) -> Conso
     let entries = dedup_and_sort_entries(raw_entries);
     let status = entries.last().map_or(TaskStatus::InProgress, |e| e.status);
     let updated_at = entries.last().map_or(meta.created_at, |e| e.timestamp);
+    let evidence = entries
+        .iter()
+        .rev()
+        .find_map(|e| e.evidence.as_ref().filter(|s| !s.trim().is_empty()).cloned());
 
     let contributors = collect_contributors(&meta.created_by, &entries);
     let branches = collect_branches(&entries);
@@ -78,6 +99,10 @@ fn consolidate_single_task(meta: TaskMeta, raw_entries: Vec<TaskEntry>) -> Conso
     ConsolidatedTask {
         task_id: meta.task_id,
         request: meta.request,
+        project: meta.project,
+        behavior: meta.behavior,
+        verify: meta.verify,
+        evidence,
         status,
         created_by: meta.created_by,
         contributors,

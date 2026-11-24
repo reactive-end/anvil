@@ -1,0 +1,6 @@
+{
+  "task_id": "T-009",
+  "created_by": "reactive-end",
+  "request": "Fix Antigravity 2.0 Path key extraction and Stop task materialization fallback",
+  "created_at": "2026-11-23T20:02:23.887776300Z"
+}
