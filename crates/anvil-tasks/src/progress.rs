@@ -188,7 +188,9 @@ pub fn build_resume_brief(
         files.extend(st.touched_files.iter().cloned());
     }
     let latest_steps = latest_step_fields(&task.entries);
-    let next_steps = if !latest_steps.1.is_empty() {
+    let next_steps = if task.status == TaskStatus::Done {
+        Vec::new()
+    } else if !latest_steps.1.is_empty() {
         latest_steps.1
     } else {
         same_active.map_or_else(Vec::new, |st| st.next_steps.clone())
@@ -248,11 +250,10 @@ fn latest_step_fields(entries: &[TaskEntry]) -> (Vec<String>, Vec<String>, Optio
             }
         }
     }
-    let next_steps = entries
-        .iter()
-        .rev()
-        .find(|e| !e.next_steps.is_empty())
-        .map_or_else(Vec::new, |e| e.next_steps.clone());
+    let next_steps = match entries.last() {
+        Some(last) if last.status != TaskStatus::Done => last.next_steps.clone(),
+        _ => Vec::new(),
+    };
     let blocker = entries.last().and_then(|e| e.blocker.clone());
     (done_acc, next_steps, blocker)
 }

@@ -1,6 +1,5 @@
 //! LLM-curated task governance, conversational noise filtering, and title hygiene validation.
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -10,13 +9,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::active::{
-    ACTIVE_TASK_LOCK_TIMEOUT_MS, ActiveTaskState, active_task_lock_path, hash_prompt,
-    load_active_task_unlocked, load_pending_prompt_unlocked, mark_summary_recorded_with_files,
-    pending_prompt_path, save_active_task_unlocked,
+    ACTIVE_TASK_LOCK_TIMEOUT_MS, ActiveTaskState, active_task_lock_path, active_task_path,
+    hash_prompt, load_active_task_unlocked, load_pending_prompt_unlocked,
+    mark_summary_recorded_with_files, pending_prompt_path, save_active_task_unlocked,
 };
 use crate::builder::build_root_tasks_json;
+use crate::files::{collect_task_files, is_project_file};
 use crate::identity::{resolve_author, resolve_author_fast};
-use crate::ledger::{append_entry_as, start_task_in_group, task_dir};
+use crate::ledger::{append_entry_as, create_task_meta_in_group, task_dir};
 use crate::model::{TaskEntry, TaskMeta, TaskStatus};
 use crate::{atomic_write_json, read_json_file};
 
@@ -60,21 +60,24 @@ pub fn validate_curated_task_title(raw: &str) -> Result<String> {
 pub fn record_session_edit(repo: &Path, rel_path: &str) -> Result<bool> {
     let norm = rel_path.trim().replace('\\', "/");
     let norm = norm.strip_prefix("./").unwrap_or(&norm);
-    if norm.is_empty() || norm.starts_with(".harness/") || norm == "tasks.json" {
+    if !is_project_file(norm) {
         return Ok(false);
     }
     with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
-        if let Some(mut active) = load_active_task_unlocked(repo)?
-            && !active.skipped
-            && active.status == TaskStatus::InProgress
-            && task_dir(repo, &active.task_id).join("meta.json").exists()
-        {
-            if !active.touched_files.iter().any(|f| f == norm) {
-                active.touched_files.push(norm.to_owned());
-                active.touched_files.sort();
-                save_active_task_unlocked(repo, &active)?;
+        if let Some(mut active) = load_active_task_unlocked(repo)? {
+            if active.skipped {
+                return Ok(false);
             }
-            return Ok(false);
+            if active.status == TaskStatus::InProgress
+                && task_dir(repo, &active.task_id).join("meta.json").exists()
+            {
+                if !active.touched_files.iter().any(|f| f == norm) {
+                    active.touched_files.push(norm.to_owned());
+                    active.touched_files.sort();
+                    save_active_task_unlocked(repo, &active)?;
+                }
+                return Ok(false);
+            }
         }
 
         let path = untracked_edits_path(repo);
@@ -107,9 +110,25 @@ pub fn load_untracked_edits(repo: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Returns when the oldest untracked session edit happened, if any.
+pub fn load_first_untracked_edit_at(repo: &Path) -> Option<DateTime<Utc>> {
+    let path = untracked_edits_path(repo);
+    read_json_file::<UntrackedEdits>(&path).ok()?.first_edited_at
+}
+
 /// Removes `.harness/.state/untracked-edits.json` if present.
 pub fn clear_untracked_edits(repo: &Path) {
     let _ = fs::remove_file(untracked_edits_path(repo));
+}
+
+/// Clears `.harness/.state/active-task.json` when it holds an ephemeral `skipped` marker from a turn.
+pub fn clear_skipped_active_task(repo: &Path) {
+    let _ = with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        if load_active_task_unlocked(repo)?.is_some_and(|st| st.skipped) {
+            let _ = fs::remove_file(active_task_path(repo));
+        }
+        Ok(())
+    });
 }
 
 /// Records an explicit LLM decision to skip task creation for minor tweaks/chores,
@@ -214,8 +233,8 @@ pub fn record_curated_task_in_group(
         Some(a) => a.to_owned(),
         None => resolve_author_fast(repo).or_else(|_| resolve_author(repo))?,
     };
-    let merged_files = merge_session_files(repo, files);
-    let meta = start_task_in_group(
+    let merged_files = collect_task_files(repo, None, files);
+    let meta = create_task_meta_in_group(
         repo,
         &resolved_author,
         &clean_title,
@@ -234,21 +253,4 @@ pub fn record_curated_task_in_group(
     mark_summary_recorded_with_files(repo, &meta.task_id, status, &entry.files_touched)?;
     clear_untracked_edits(repo);
     Ok((meta, entry))
-}
-
-fn merge_session_files(repo: &Path, explicit: &[String]) -> Vec<String> {
-    if !explicit.is_empty() {
-        return explicit.to_vec();
-    }
-    let mut set: BTreeSet<String> = load_untracked_edits(repo).into_iter().collect();
-    if let Ok(changed) = anvil_core::git::changed_files(repo, anvil_core::git::DiffScope::WorkingTree)
-    {
-        for f in changed {
-            let norm = f.replace('\\', "/");
-            if !norm.is_empty() && !norm.starts_with(".harness/") && norm != "tasks.json" {
-                set.insert(norm);
-            }
-        }
-    }
-    set.into_iter().collect()
 }

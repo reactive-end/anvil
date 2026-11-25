@@ -11,8 +11,9 @@ use anvil_tasks::identity::identity_cache_path;
 use anvil_tasks::ledger::{start_task_as, task_dir};
 use anvil_tasks::merge_driver::resolve_merge;
 use anvil_tasks::{
-    ConsolidatedTasksFile, TaskStatus, build_root_tasks_json, ensure_task_for_prompt, list_tasks,
-    load_active_task, mark_summary_recorded, resolve_author_fast,
+    TASKS_INDEX_SCHEMA_VERSION, TaskStatus, TasksIndexFile, build_root_tasks_json,
+    ensure_task_for_prompt, list_tasks, load_active_task, mark_summary_recorded,
+    resolve_author_fast,
 };
 use chrono::{Duration, Utc};
 use serde_json::json;
@@ -161,20 +162,22 @@ fn resolve_merge_never_resurrects_deleted_tasks() {
     let base_path = repo.join("base.json");
     let ours_path = repo.join("ours.json");
     let theirs_path = repo.join("theirs.json");
-    let base_json = serde_json::to_string_pretty(&base_file).expect("serialize base");
+    let base_index = TasksIndexFile::from(&base_file);
+    let base_json = serde_json::to_string_pretty(&base_index).expect("serialize base");
     fs::write(&base_path, &base_json).expect("write base");
     fs::write(&ours_path, &base_json).expect("write stale ours");
 
     fs::remove_dir_all(task_dir(repo, &deleted.task_id)).expect("delete task from .harness/tasks");
     let after_delete = build_root_tasks_json(repo).expect("rebuild after delete");
+    let after_index = TasksIndexFile::from(&after_delete);
     fs::write(
         &theirs_path,
-        serde_json::to_string_pretty(&after_delete).expect("serialize theirs"),
+        serde_json::to_string_pretty(&after_index).expect("serialize theirs"),
     )
     .expect("write theirs");
 
     let merged = resolve_merge(&base_path, &ours_path, &theirs_path, repo).expect("resolve_merge");
-    let parsed: ConsolidatedTasksFile =
+    let parsed: TasksIndexFile =
         serde_json::from_str(&fs::read_to_string(&ours_path).expect("read merged"))
             .expect("parse merged");
     assert_eq!(merged, parsed);
@@ -184,8 +187,8 @@ fn resolve_merge_never_resurrects_deleted_tasks() {
     // Fallback when `.harness/tasks/` is absent must also ignore `%O` (`base`) so tasks
     // deleted from both `ours` and `theirs` are never resurrected.
     let empty_repo = TempDir::new().expect("empty repo");
-    let empty_json = serde_json::to_string_pretty(&ConsolidatedTasksFile {
-        version: 1,
+    let empty_json = serde_json::to_string_pretty(&TasksIndexFile {
+        version: TASKS_INDEX_SCHEMA_VERSION,
         task_count: 0,
         updated_at: None,
         tasks: Vec::new(),

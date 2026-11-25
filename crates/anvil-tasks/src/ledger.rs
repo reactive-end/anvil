@@ -11,7 +11,6 @@ use ulid::Ulid;
 
 use anvil_core::fs_util::{atomic_write, sanitize_author, with_file_lock};
 
-use crate::active::{load_active_task, save_active_task};
 use crate::identity::resolve_author;
 use crate::model::{TaskEntry, TaskMeta, TaskStatus};
 use crate::progress::{ProgressUpdate, write_task_progress_md};
@@ -149,11 +148,33 @@ pub fn start_task_in_group(
     explicit_id: Option<&str>,
 ) -> Result<TaskMeta> {
     let clean_author = sanitize_author(author);
+    let meta = create_task_meta_in_group(repo, &clean_author, request, group, explicit_id)?;
+    let initial_summary = format!("Started task: {}", truncate_chars(request.trim(), 120));
+    append_entry_as(
+        repo,
+        &meta.task_id,
+        &clean_author,
+        TaskStatus::InProgress,
+        &initial_summary,
+        &[],
+    )?;
+    Ok(meta)
+}
+
+/// Allocates and persists a task `meta.json` under `.harness/tasks/` without writing an initial entry.
+pub(crate) fn create_task_meta_in_group(
+    repo: &Path,
+    author: &str,
+    request: &str,
+    group: Option<&str>,
+    explicit_id: Option<&str>,
+) -> Result<TaskMeta> {
+    let clean_author = sanitize_author(author);
     let clean_group = group.map(sanitize_group_name).transpose()?;
     let now = Utc::now();
     let lock_path = repo.join(".harness/.state/tasks-id.lock");
 
-    let meta = with_file_lock(&lock_path, ID_LOCK_TIMEOUT_MS, || {
+    with_file_lock(&lock_path, ID_LOCK_TIMEOUT_MS, || {
         let task_id = resolve_new_task_id(repo, clean_group.as_deref(), explicit_id)?;
         let dir = task_dir(repo, &task_id);
         fs::create_dir_all(dir.join("entries"))
@@ -169,18 +190,7 @@ pub fn start_task_in_group(
         };
         atomic_write_json(&dir.join("meta.json"), &meta)?;
         Ok(meta)
-    })?;
-
-    let initial_summary = format!("Started task: {}", truncate_chars(request.trim(), 120));
-    append_entry_as(
-        repo,
-        &meta.task_id,
-        &clean_author,
-        TaskStatus::InProgress,
-        &initial_summary,
-        &[],
-    )?;
-    Ok(meta)
+    })
 }
 
 fn resolve_new_task_id(
@@ -475,9 +485,23 @@ pub fn migrate_legacy_task_ids(repo: &Path) -> Result<Vec<(String, String)>> {
         Ok(pairs)
     })?;
     if !renamed.is_empty() {
+        update_active_task_after_migration(repo, &renamed);
         let _ = crate::builder::build_root_tasks_json(repo)?;
     }
     Ok(renamed)
+}
+
+fn update_active_task_after_migration(repo: &Path, renamed: &[(String, String)]) {
+    let lock = crate::active::active_task_lock_path(repo);
+    let _ = with_file_lock(&lock, 2_000, || {
+        if let Ok(Some(mut active)) = crate::active::load_active_task_unlocked(repo)
+            && let Some((_, new_id)) = renamed.iter().find(|(old, _)| old == &active.task_id)
+        {
+            active.task_id = new_id.clone();
+            let _ = crate::active::save_active_task_unlocked(repo, &active);
+        }
+        Ok(())
+    });
 }
 
 fn collect_legacy_metas(root: &Path) -> Result<Vec<TaskMeta>> {
@@ -528,13 +552,6 @@ fn migrate_one_legacy_dir(repo: &Path, meta: &TaskMeta) -> Result<String> {
     fs::rename(&old_dir, task_dir(repo, &new_id))
         .with_context(|| format!("failed to rename {} -> {new_id}", old_dir.display()))?;
     let _ = write_task_progress_md(repo, &new_id);
-
-    if let Ok(Some(mut active)) = load_active_task(repo)
-        && active.task_id == meta.task_id
-    {
-        active.task_id = new_id.clone();
-        let _ = save_active_task(repo, &active);
-    }
     Ok(new_id)
 }
 

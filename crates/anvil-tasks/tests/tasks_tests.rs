@@ -10,8 +10,8 @@ use anvil_tasks::ledger::{
 };
 use anvil_tasks::merge_driver::{install_git_merge_driver, resolve_merge};
 use anvil_tasks::{
-    ConsolidatedTasksFile, TaskStatus, build_root_tasks_json, ensure_task_for_prompt,
-    load_active_task, mark_summary_recorded,
+    TASKS_INDEX_SCHEMA_VERSION, TaskStatus, TasksIndexFile, build_root_tasks_json,
+    ensure_task_for_prompt, load_active_task, mark_summary_recorded,
 };
 use tempfile::TempDir;
 
@@ -129,6 +129,20 @@ fn builder_is_deterministic_and_aggregates_contributors() {
     assert_eq!(task.files_touched, vec!["src/builder.rs", "src/model.rs"]);
     assert!(task.summary.contains("alice:"));
     assert!(task.summary.contains("bob:"));
+    assert_slim_index_shape(&first_bytes, &meta.task_id, 3, 2);
+}
+
+fn assert_slim_index_shape(raw_json: &str, task_id: &str, entries: usize, files: usize) {
+    assert!(!raw_json.contains("\"entries\""));
+    assert!(!raw_json.contains("\"files_touched\""));
+    let index: TasksIndexFile = serde_json::from_str(raw_json).expect("parse slim index");
+    assert_eq!(index.version, TASKS_INDEX_SCHEMA_VERSION);
+    assert_eq!(index.tasks[0].entry_count, entries);
+    assert_eq!(index.tasks[0].files_count, files);
+    assert_eq!(
+        index.tasks[0].progress_file,
+        format!(".harness/tasks/{task_id}/progress.md")
+    );
 }
 
 #[test]
@@ -148,24 +162,65 @@ fn install_merge_driver_and_resolve_merge_work() {
     assert!(configured.contains("anvil tasks merge-driver"));
 
     let base_repo = TempDir::new().expect("base");
-    let meta = start_task_as(base_repo.path(), "alice", "Shared task").expect("start");
+    let _meta = start_task_as(base_repo.path(), "alice", "Shared task").expect("start");
     let base_file = build_root_tasks_json(base_repo.path()).expect("base build");
+    let base_index = TasksIndexFile::from(&base_file);
     let base_path = tmp.path().join("base.json");
-    fs::write(&base_path, serde_json::to_string_pretty(&base_file).expect("json")).expect("write");
+    fs::write(&base_path, serde_json::to_string_pretty(&base_index).expect("json")).expect("write");
 
     let ours_path = tmp.path().join("ours.json");
     let theirs_path = tmp.path().join("theirs.json");
+    let mut ours = base_index.clone();
+    ours.tasks[0].contributors.push("dev-a".to_owned());
+    ours.tasks[0].entry_count = 2;
+    ours.tasks[0].files_count = 1;
+    ours.tasks[0].summary = "Dev A change".to_owned();
+    fs::write(&ours_path, serde_json::to_string_pretty(&ours).expect("json")).expect("write ours");
+
+    let mut theirs = base_index;
+    theirs.tasks[0].contributors.push("dev-b".to_owned());
+    theirs.tasks[0].status = TaskStatus::Done;
+    theirs.tasks[0].entry_count = 2;
+    theirs.tasks[0].files_count = 1;
+    theirs.tasks[0].summary = "Dev B change".to_owned();
+    fs::write(&theirs_path, serde_json::to_string_pretty(&theirs).expect("json")).expect("write theirs");
+
+    let merged = resolve_merge(&base_path, &ours_path, &theirs_path, tmp.path()).expect("merge");
+    let parsed: TasksIndexFile =
+        serde_json::from_str(&fs::read_to_string(&ours_path).expect("read merged")).expect("parse");
+    assert_eq!(merged, parsed);
+    assert_eq!(parsed.version, TASKS_INDEX_SCHEMA_VERSION);
+    assert_eq!(parsed.tasks[0].entry_count, 3);
+    assert_eq!(parsed.tasks[0].files_count, 2);
+    assert_eq!(parsed.tasks[0].contributors, vec!["alice", "dev-a", "dev-b"]);
+}
+
+#[test]
+fn resolve_merge_accepts_legacy_v1_and_outputs_v2_index() {
+    let tmp = TempDir::new().expect("tempdir");
+    let base_repo = TempDir::new().expect("base");
+    let meta = start_task_as(base_repo.path(), "alice", "Legacy v1 upgrade").expect("start");
+    let base_file = build_root_tasks_json(base_repo.path()).expect("base");
+
+    let base_path = tmp.path().join("base.json");
+    let ours_path = tmp.path().join("ours.json");
+    let theirs_path = tmp.path().join("theirs.json");
+    fs::write(&base_path, serde_json::to_string_pretty(&base_file).expect("json")).expect("write");
+
     let mut ours = base_file.clone();
     let e_a = append_entry_as(
         base_repo.path(),
         &meta.task_id,
         "dev-a",
         TaskStatus::InProgress,
-        "Dev A change",
+        "Dev A v1",
         &["a.rs".to_owned()],
     )
     .expect("entry a");
     ours.tasks[0].entries.push(e_a);
+    ours.tasks[0].contributors.push("dev-a".to_owned());
+    ours.tasks[0].entry_count = 2;
+    ours.tasks[0].files_touched.push("a.rs".to_owned());
     fs::write(&ours_path, serde_json::to_string_pretty(&ours).expect("json")).expect("write ours");
 
     let mut theirs = base_file;
@@ -174,19 +229,24 @@ fn install_merge_driver_and_resolve_merge_work() {
         &meta.task_id,
         "dev-b",
         TaskStatus::Done,
-        "Dev B change",
+        "Dev B v1",
         &["b.rs".to_owned()],
     )
     .expect("entry b");
     theirs.tasks[0].entries.push(e_b);
+    theirs.tasks[0].contributors.push("dev-b".to_owned());
+    theirs.tasks[0].entry_count = 2;
+    theirs.tasks[0].files_touched.push("b.rs".to_owned());
     fs::write(&theirs_path, serde_json::to_string_pretty(&theirs).expect("json")).expect("write theirs");
 
     let merged = resolve_merge(&base_path, &ours_path, &theirs_path, tmp.path()).expect("merge");
-    let parsed: ConsolidatedTasksFile =
-        serde_json::from_str(&fs::read_to_string(&ours_path).expect("read merged")).expect("parse");
-    assert_eq!(merged, parsed);
-    assert_eq!(parsed.tasks[0].entries.len(), 3);
-    assert_eq!(parsed.tasks[0].contributors, vec!["alice", "dev-a", "dev-b"]);
+    let raw = fs::read_to_string(&ours_path).expect("read merged");
+    assert!(!raw.contains("\"entries\""));
+    assert!(!raw.contains("\"files_touched\""));
+    assert_eq!(merged.version, TASKS_INDEX_SCHEMA_VERSION);
+    assert_eq!(merged.tasks[0].entry_count, 3);
+    assert_eq!(merged.tasks[0].files_count, 2);
+    assert_eq!(merged.tasks[0].contributors, vec!["alice", "dev-a", "dev-b"]);
 }
 
 #[test]
@@ -396,6 +456,23 @@ fn progress_md_and_resume_brief_track_and_recover_work() {
     let skipped = anvil_tasks::record_task_skip(tmp.path(), "Minor typo adjustment").expect("skip");
     assert!(skipped.skipped);
     assert_eq!(list_tasks(tmp.path()).expect("list").len(), 1);
+}
+
+#[test]
+fn task_skip_persists_across_edits_until_explicit_clear() {
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo(tmp.path(), "alice");
+    write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
+
+    let skipped = anvil_tasks::record_task_skip(tmp.path(), "Minor typo adjustment").expect("skip");
+    assert!(skipped.skipped);
+    assert!(
+        !anvil_tasks::record_session_edit(tmp.path(), "src/minor.ts").expect("skip holds"),
+        "active skipped turn must suppress edit nagging"
+    );
+    assert!(anvil_tasks::load_untracked_edits(tmp.path()).is_empty());
+    anvil_tasks::clear_skipped_active_task(tmp.path());
+    assert!(anvil_tasks::load_active_task(tmp.path()).expect("ok").is_none());
 }
 
 #[test]

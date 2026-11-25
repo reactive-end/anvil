@@ -91,7 +91,76 @@ pub struct ConsolidatedTask {
     pub entries: Vec<TaskEntry>,
 }
 
-/// Root `tasks.json` file deterministically rebuilt from `.harness/tasks/`.
+/// Schema version of the lightweight root `tasks.json` index.
+pub const TASKS_INDEX_SCHEMA_VERSION: u32 = 2;
+
+/// Lightweight summary row persisted in root `tasks.json` (full history lives under `.harness/tasks/<ID>/`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskIndexEntry {
+    pub task_id: String,
+    pub request: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    pub status: TaskStatus,
+    pub created_by: String,
+    #[serde(default)]
+    pub contributors: Vec<String>,
+    #[serde(default)]
+    pub branches: Vec<String>,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    #[serde(default)]
+    pub entry_count: usize,
+    #[serde(default)]
+    pub files_count: usize,
+    pub progress_file: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<&ConsolidatedTask> for TaskIndexEntry {
+    fn from(task: &ConsolidatedTask) -> Self {
+        Self {
+            task_id: task.task_id.clone(),
+            request: task.request.clone(),
+            project: task.project.clone(),
+            status: task.status,
+            created_by: task.created_by.clone(),
+            contributors: task.contributors.clone(),
+            branches: task.branches.clone(),
+            summary: task.summary.clone(),
+            evidence: task.evidence.clone(),
+            entry_count: task.entry_count,
+            files_count: task.files_touched.len(),
+            progress_file: crate::progress::task_progress_rel_path(&task.task_id),
+            created_at: task.created_at,
+            updated_at: task.updated_at,
+        }
+    }
+}
+
+/// Compact root `tasks.json` index rebuilt from `.harness/tasks/`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TasksIndexFile {
+    pub version: u32,
+    pub task_count: usize,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub tasks: Vec<TaskIndexEntry>,
+}
+
+impl From<&ConsolidatedTasksFile> for TasksIndexFile {
+    fn from(file: &ConsolidatedTasksFile) -> Self {
+        Self {
+            version: TASKS_INDEX_SCHEMA_VERSION,
+            task_count: file.task_count,
+            updated_at: file.updated_at,
+            tasks: file.tasks.iter().map(TaskIndexEntry::from).collect(),
+        }
+    }
+}
+
+/// Full in-memory consolidated view (and legacy v1 format) from `meta.json` + `entries/*.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConsolidatedTasksFile {
     pub version: u32,

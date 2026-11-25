@@ -13,7 +13,7 @@ use anvil_tasks::ledger::{append_entry_as, start_task_as, write_task_plan};
 use anvil_tasks::merge_driver::{
     DEFAULT_DRIVER_CMD, install_git_merge_driver, install_git_merge_driver_with_cmd, resolve_merge,
 };
-use anvil_tasks::{ConsolidatedTasksFile, TaskStatus, build_root_tasks_json};
+use anvil_tasks::{TasksIndexFile, TaskStatus, build_root_tasks_json, read_single_task};
 use tempfile::TempDir;
 
 type TestCase = (&'static str, fn() -> anyhow::Result<()>);
@@ -259,15 +259,28 @@ fn assert_merged_state(repo: &Path, task_id: &str) -> anyhow::Result<()> {
 
     let raw_tasks = fs::read_to_string(repo.join("tasks.json"))?;
     anyhow::ensure!(!raw_tasks.contains("<<<<<<<"), "conflict marker in tasks.json");
-    let consolidated: ConsolidatedTasksFile = serde_json::from_str(&raw_tasks)?;
-    anyhow::ensure!(consolidated.task_count == 1);
+    anyhow::ensure!(!raw_tasks.contains("\"entries\""), "slim tasks.json must omit entries");
+    anyhow::ensure!(
+        !raw_tasks.contains("\"files_touched\""),
+        "slim tasks.json must omit files_touched"
+    );
+    let index: TasksIndexFile = serde_json::from_str(&raw_tasks)?;
+    anyhow::ensure!(index.version == 2, "expected v2 slim tasks.json");
+    anyhow::ensure!(index.task_count == 1);
 
-    let task = &consolidated.tasks[0];
-    anyhow::ensure!(task.entries.len() == 3, "expected lead + dev-a + dev-b entries");
-    anyhow::ensure!(task.entries.iter().any(|e| e.author == "dev-a"));
-    anyhow::ensure!(task.entries.iter().any(|e| e.author == "dev-b"));
-    anyhow::ensure!(task.files_touched.contains(&"src/storage.rs".to_owned()));
-    anyhow::ensure!(task.files_touched.contains(&"src/api.rs".to_owned()));
+    let row = &index.tasks[0];
+    anyhow::ensure!(row.entry_count == 3, "expected lead + dev-a + dev-b entry count");
+    anyhow::ensure!(row.files_count == 2, "expected 2 touched files in count");
+    anyhow::ensure!(row.contributors.iter().any(|c| c == "dev-a"));
+    anyhow::ensure!(row.contributors.iter().any(|c| c == "dev-b"));
+    anyhow::ensure!(row.progress_file == format!(".harness/tasks/{task_id}/progress.md"));
+
+    let full = read_single_task(repo, task_id)?;
+    anyhow::ensure!(full.entries.len() == 3, "expected lead + dev-a + dev-b entries on disk");
+    anyhow::ensure!(full.entries.iter().any(|e| e.author == "dev-a"));
+    anyhow::ensure!(full.entries.iter().any(|e| e.author == "dev-b"));
+    anyhow::ensure!(full.files_touched.contains(&"src/storage.rs".to_owned()));
+    anyhow::ensure!(full.files_touched.contains(&"src/api.rs".to_owned()));
     Ok(())
 }
 

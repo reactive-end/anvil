@@ -9,16 +9,19 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::ledger::{
     compare_task_ids, discover_task_dirs, task_dir, tasks_root, validate_task_id_path,
 };
-use crate::model::{ConsolidatedTask, ConsolidatedTasksFile, TaskEntry, TaskMeta, TaskStatus};
+use crate::model::{
+    ConsolidatedTask, ConsolidatedTasksFile, TaskEntry, TaskMeta, TaskStatus, TasksIndexFile,
+};
 use crate::{atomic_write_json, read_json_file};
 
 const TASKS_SCHEMA_VERSION: u32 = 1;
 const MAX_SUMMARY_CHARS: usize = 480;
 
-/// Rebuilds `<repo>/tasks.json` deterministically from `.harness/tasks/*/meta.json` and `entries/*.json`.
+/// Rebuilds `<repo>/tasks.json` as a compact v2 index while returning full in-memory consolidation.
 pub fn build_root_tasks_json(repo: &Path) -> Result<ConsolidatedTasksFile> {
     let consolidated = consolidate_repo_tasks(repo)?;
-    atomic_write_json(&repo.join("tasks.json"), &consolidated)?;
+    let index = TasksIndexFile::from(&consolidated);
+    atomic_write_json(&repo.join("tasks.json"), &index)?;
     Ok(consolidated)
 }
 
