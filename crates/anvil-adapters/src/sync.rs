@@ -72,11 +72,107 @@ pub fn init_umbrella_root(
         let doc = render_umbrella_doc("CLAUDE.md — Multi-Repo Workspace Router", subrepos);
         sync_managed_doc(&root.join("CLAUDE.md"), &doc, &mut report)?;
     }
+    sync_umbrella_secondary_ides(root, target, subrepos, &mcp_entries, &mut report)?;
     if target.includes_antigravity() || should_sync_codex(root, target) {
         let doc = render_umbrella_doc("AGENTS.md — Multi-Repo Workspace Router", subrepos);
         sync_managed_doc(&root.join("AGENTS.md"), &doc, &mut report)?;
     }
     Ok((target, report))
+}
+
+fn sync_umbrella_secondary_ides(
+    root: &Path,
+    target: AdapterTarget,
+    subrepos: &[UmbrellaSubrepo],
+    mcp_entries: &[(String, PathBuf)],
+    report: &mut SyncReport,
+) -> Result<()> {
+    if should_sync_cursor(root, target) {
+        record_write(
+            cursor::mcp_config_path(root),
+            cursor::merge_umbrella_mcp_config(root, mcp_entries)?,
+            report,
+        );
+        let doc = render_umbrella_doc("Cursor Rules — Multi-Repo Workspace Router", subrepos);
+        record_write(
+            cursor::rules_path(root),
+            cursor::sync_rules_with_template(root, &doc)?,
+            report,
+        );
+    }
+    if should_sync_windsurf(root, target) {
+        record_write(
+            windsurf::mcp_config_path(root),
+            windsurf::merge_umbrella_mcp_config(root, mcp_entries)?,
+            report,
+        );
+        let doc = render_umbrella_doc("Windsurf Rules — Multi-Repo Workspace Router", subrepos);
+        record_write(
+            windsurf::rules_path(root),
+            windsurf::sync_rules_with_template(root, &doc)?,
+            report,
+        );
+    }
+    if should_sync_codex(root, target) {
+        record_write(
+            codex::config_path(root),
+            codex::merge_umbrella_config_toml(root, mcp_entries)?,
+            report,
+        );
+    }
+    Ok(())
+}
+
+/// Discovers initialized child repositories under a Thin Umbrella workspace root (depth 1-2).
+pub fn discover_umbrella_subrepos(root: &Path) -> Vec<UmbrellaSubrepo> {
+    let mut found = Vec::new();
+    collect_umbrella_depth(root, root, 0, &mut found);
+    found.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
+    found
+}
+
+fn collect_umbrella_depth(
+    root: &Path,
+    dir: &Path,
+    depth: usize,
+    out: &mut Vec<UmbrellaSubrepo>,
+) {
+    if depth >= 2 {
+        return;
+    }
+    let Ok(rd) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if !ft.is_dir() || ft.is_symlink() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with('.')
+            || matches!(
+                name_str.as_ref(),
+                "node_modules" | "target" | "dist" | "build" | "vendor"
+            )
+        {
+            continue;
+        }
+        let sub_dir = entry.path();
+        if sub_dir.join(".harness").join("config.json").is_file() {
+            let rel = anvil_core::fs_util::relativize_path(root, &sub_dir);
+            let stacks = AnvilConfig::load(&sub_dir).map(|c| c.stacks).unwrap_or_default();
+            out.push(UmbrellaSubrepo {
+                rel_path: rel,
+                abs_path: sub_dir,
+                stacks,
+            });
+            continue;
+        }
+        collect_umbrella_depth(root, &sub_dir, depth + 1, out);
+    }
 }
 
 fn sanitize_subrepo_slug(rel_path: &str) -> String {
@@ -184,7 +280,11 @@ fn infer_default_adapters(repo_root: &Path) -> AdapterTarget {
     {
         return parsed;
     }
-    let has_agy = repo_root.join(".agents").exists() || repo_root.join("AGENTS.md").exists();
+    let has_codex = repo_root.join(".codex").exists();
+    let has_secondary =
+        has_codex || repo_root.join(".cursor").exists() || repo_root.join(".windsurf").exists();
+    let has_agy =
+        repo_root.join(".agents").exists() || (repo_root.join("AGENTS.md").exists() && !has_secondary);
     let has_claude = repo_root.join(".claude").exists()
         || repo_root.join("CLAUDE.md").exists()
         || repo_root.join(".mcp.json").exists();
@@ -252,8 +352,14 @@ fn sync_into(
     if sync_codex {
         record_write(codex::config_path(repo_root), codex::merge_config_toml(repo_root)?, report);
     }
-    if target.includes_antigravity() || sync_codex {
+    if target.includes_antigravity() {
         sync_managed_doc(&repo_root.join("AGENTS.md"), templates::AGENTS_MD, report)?;
+    } else if sync_codex {
+        sync_managed_doc(
+            &repo_root.join("AGENTS.md"),
+            templates::CODEX_AGENTS_MD,
+            report,
+        )?;
     }
 
     sync_gitignore(repo_root, report)?;

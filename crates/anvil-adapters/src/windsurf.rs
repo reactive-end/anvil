@@ -23,7 +23,21 @@ pub fn merge_mcp_config(repo_root: &Path) -> Result<bool> {
     merge_mcp_servers_json(&mcp_config_path(repo_root), ".windsurf/mcp_config.json")
 }
 
+/// Non-destructively merges per-subrepo `anvil-<slug>` MCP entries into `.windsurf/mcp_config.json`.
+pub fn merge_umbrella_mcp_config(root: &Path, subrepos: &[(String, PathBuf)]) -> Result<bool> {
+    crate::antigravity::config::merge_umbrella_mcp_servers_json(
+        &mcp_config_path(root),
+        ".windsurf/mcp_config.json",
+        subrepos,
+    )
+}
+
 /// Writes or updates `.windsurf/rules/anvil.md`, preserving user text outside managed markers.
 pub fn sync_rules(repo_root: &Path) -> Result<bool> {
-    sync_managed_file(&rules_path(repo_root), templates::AGENTS_MD)
+    sync_managed_file(&rules_path(repo_root), templates::WINDSURF_RULES_MD)
+}
+
+/// Writes or updates `.windsurf/rules/anvil.md` with an explicit managed markdown template.
+pub fn sync_rules_with_template(repo_root: &Path, template: &str) -> Result<bool> {
+    sync_managed_file(&rules_path(repo_root), template)
 }

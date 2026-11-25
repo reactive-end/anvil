@@ -6,6 +6,26 @@ pub const AGENTS_MD: &str = include_str!("../../../templates/AGENTS.md");
 /// Embedded `CLAUDE.md` thin adapter template for Claude Code.
 pub const CLAUDE_MD: &str = include_str!("../../../templates/CLAUDE.md");
 
+/// Embedded Cursor `.cursor/rules/anvil.mdc` body template.
+pub const CURSOR_RULES_MD: &str = include_str!("../../../templates/CURSOR.md");
+
+/// Embedded Windsurf `.windsurf/rules/anvil.md` template.
+pub const WINDSURF_RULES_MD: &str = include_str!("../../../templates/WINDSURF.md");
+
+/// Embedded `AGENTS.md` thin adapter template for standalone Codex repos.
+pub const CODEX_AGENTS_MD: &str = include_str!("../../../templates/CODEX.md");
+
+/// Embedded Claude Code agent that plans, decides, and reviews.
+pub const ORCHESTRATOR_AGENT_MD: &str =
+    include_str!("../../../templates/agents/anvil-orchestrator.md");
+
+/// Embedded Claude Code agent that executes delegated steps.
+pub const EXECUTOR_AGENT_MD: &str = include_str!("../../../templates/agents/anvil-executor.md");
+
+/// Embedded `/orchestrate` skill for running the pair inside an existing session.
+pub const ORCHESTRATE_SKILL_MD: &str =
+    include_str!("../../../templates/agents/orchestrate-skill.md");
+
 /// A built-in skill embedded at compile time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmbeddedSkill {

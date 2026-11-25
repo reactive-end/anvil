@@ -10,7 +10,7 @@ Run visual QA whenever a change touches UI (`Ui` or `StyleOnly` diff category) o
 ## 1. Interactive Driver Onboarding
 
 Check `.harness/config.json` (`qa_driver.web` and `qa_driver.mobile`). If the relevant driver is `unconfigured`, **ask the user interactively** which driver to enable before proceeding:
-- **Web**: `chrome_devtools` (Chrome DevTools MCP) | `playwright` | `browser` (built-in browser) | `skip`
+- **Web**: `chrome_dev_tools` (Chrome DevTools MCP) | `playwright` | `browser` (built-in browser) | `skip`
 - **Mobile**: `adb_mobile_mcp` (Android Emulator `adb` + `mobile-mcp`) | `roborazzi` (Kotlin/Compose screenshot diffs) | `maestro` | `skip`
 
 Persist the chosen driver in `.harness/config.json` so subsequent runs are automatic.

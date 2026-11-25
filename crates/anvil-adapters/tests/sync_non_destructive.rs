@@ -425,3 +425,53 @@ fn umbrella_root_docs_include_availability_guard() {
         assert!(content.contains("skip this entire block"), "{doc_name} missing skip instruction");
     }
 }
+
+#[test]
+fn ide_specific_templates_multiline_codex_and_claude_hook_merge_preserve_neighbors() {
+    let cursor_repo = tempdir().expect("cursor");
+    sync::init_repo_with_adapter(cursor_repo.path(), Some(AdapterTarget::Cursor)).expect("cursor init");
+    let mdc = fs::read_to_string(cursor_repo.path().join(".cursor/rules/anvil.mdc")).expect("mdc");
+    assert!(mdc.contains("Cursor Thin Adapter"));
+    assert!(mdc.contains(".cursor/mcp.json"));
+    assert!(!mdc.contains("Antigravity Thin Adapter"));
+
+    let codex_repo = tempdir().expect("codex");
+    fs::create_dir_all(codex_repo.path().join(".codex")).expect("mkdir .codex");
+    fs::write(
+        codex_repo.path().join(".codex/config.toml"),
+        "[mcp_servers.anvil]\ncommand = \"old\"\nargs = [\n  \"--old\",\n  \"mcp\",\n]\n\n[other]\nk = 1\n",
+    )
+    .expect("seed multiline toml");
+    sync::init_repo_with_adapter(codex_repo.path(), Some(AdapterTarget::Codex)).expect("codex init");
+    let toml = fs::read_to_string(codex_repo.path().join(".codex/config.toml")).expect("toml");
+    assert!(toml.contains("args = [\"mcp\"]"));
+    assert!(!toml.contains("\"--old\""));
+    assert!(toml.contains("[other]\nk = 1"));
+    let codex_agents = fs::read_to_string(codex_repo.path().join("AGENTS.md")).expect("codex agents");
+    assert!(codex_agents.contains("Codex Thin Adapter"));
+    assert!(!codex_agents.contains(".agents/mcp_config.json"));
+
+    fs::remove_dir_all(codex_repo.path().join(".harness")).expect("clear .harness");
+    sync::init_repo(codex_repo.path()).expect("re-infer codex with AGENTS.md");
+    assert_eq!(
+        AnvilConfig::load(codex_repo.path()).expect("cfg").adapters,
+        AdapterTarget::Codex
+    );
+
+    let claude_repo = tempdir().expect("claude");
+    fs::create_dir_all(claude_repo.path().join(".claude")).expect("mkdir .claude");
+    fs::write(
+        claude_repo.path().join(".claude/settings.json"),
+        r#"{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"my-user-hook"},{"type":"command","command":"anvil hook old"}]}]}}"#,
+    )
+    .expect("seed co-located claude hooks");
+    sync::init_repo_with_adapter(claude_repo.path(), Some(AdapterTarget::Claude)).expect("claude init");
+    let settings: Value = serde_json::from_str(
+        &fs::read_to_string(claude_repo.path().join(".claude/settings.json")).expect("read"),
+    )
+    .expect("parse");
+    let hooks = settings["hooks"]["PreToolUse"][0]["hooks"].as_array().expect("hooks arr");
+    assert_eq!(hooks.len(), 2);
+    assert_eq!(hooks[0]["command"], "my-user-hook");
+    assert_eq!(hooks[1]["command"], "anvil hook PreToolUse --adapter claude");
+}

@@ -68,33 +68,30 @@ fn upsert_claude_hook_entry(entries: &mut Vec<Value>, command: &str, use_matcher
         "type": "command",
         "command": command
     });
-    let new_entry = if use_matcher {
-        json!({
-            "matcher": "*",
-            "hooks": [hook_item]
-        })
-    } else {
-        json!({
-            "hooks": [hook_item]
-        })
-    };
-
-    if let Some(pos) = entries.iter().position(is_anvil_claude_entry) {
-        entries[pos] = new_entry;
-    } else {
-        entries.push(new_entry);
+    if let Some(existing) = entries.iter_mut().find(|e| is_anvil_claude_entry(e))
+        && let Some(arr) = existing.get_mut("hooks").and_then(Value::as_array_mut)
+        && let Some(item) = arr.iter_mut().find(|h| is_anvil_hook_item(h))
+    {
+        *item = hook_item;
+        return;
     }
+    let new_entry = if use_matcher {
+        json!({ "matcher": "*", "hooks": [hook_item] })
+    } else {
+        json!({ "hooks": [hook_item] })
+    };
+    entries.push(new_entry);
 }
 
 fn is_anvil_claude_entry(entry: &Value) -> bool {
     entry
         .get("hooks")
         .and_then(Value::as_array)
-        .is_some_and(|arr| {
-            arr.iter().any(|h| {
-                h.get("command")
-                    .and_then(Value::as_str)
-                    .is_some_and(|cmd| cmd.starts_with("anvil hook "))
-            })
-        })
+        .is_some_and(|arr| arr.iter().any(is_anvil_hook_item))
+}
+
+fn is_anvil_hook_item(item: &Value) -> bool {
+    item.get("command")
+        .and_then(Value::as_str)
+        .is_some_and(|cmd| cmd.starts_with("anvil hook "))
 }

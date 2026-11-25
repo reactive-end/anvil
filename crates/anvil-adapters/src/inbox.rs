@@ -104,6 +104,22 @@ pub fn clear_inbox(repo_root: &Path) -> Result<()> {
     })
 }
 
+/// Removes all queued inbox messages from a specific `source` under advisory file lock.
+pub fn remove_source(repo_root: &Path, source: &str) -> Result<()> {
+    if !inbox_path(repo_root).exists() {
+        return Ok(());
+    }
+    with_file_lock(&inbox_lock_path(repo_root), INBOX_LOCK_TIMEOUT_MS, || {
+        let mut messages = load_inbox_unlocked(repo_root)?;
+        let before = messages.len();
+        messages.retain(|m| m.source != source);
+        if messages.len() != before {
+            save_inbox_unlocked(repo_root, messages)?;
+        }
+        Ok(())
+    })
+}
+
 /// Formats queued or inline messages into a compact system/context string.
 pub fn format_context(messages: &[InboxMessage]) -> Option<String> {
     if messages.is_empty() {
