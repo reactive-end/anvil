@@ -53,12 +53,12 @@ Embeds a pure-Rust JavaScript engine (`boa_engine`) enabling agents and CLI user
 - **Hybrid Visual QA (`anvil-qa`):** pairs programmatic Web DOM and Mobile view-tree checks (Playwright, Chrome DevTools, ADB/`uiautomator`, `logcat`, Roborazzi, and headless Godot GUT/render QA) with before/after visual verification.
 
 ### 7. Conflict-Free Task Ledger & Feature Lists (`anvil-tasks`)
-Tracks tasks with short sequential codes (`T-001`, `T-002`, ...) or 1-level grouped directories (`.harness/tasks/<group>/<ID>/` via `--group`/`--flat` or `--id F039`), immutable per-author ULID entries (→ consolidated `tasks.json`), and crash-safe per-task `progress.md` checkpoints backed by a Git merge driver. Supports strictly single-task execution and interruption recovery (`anvil tasks start|update|done|resume`, `SessionStart` Resume Briefs), decomposing monolithic `feature_list.json` requirement lists (`anvil tasks import` with native OS / arrow-key TUI file browser), verifying `verify` commands (`anvil tasks verify --record`), exporting snapshots (`anvil tasks export`), migrating legacy IDs (`anvil tasks migrate-ids`), and full MCP lifecycle tools (`task_start`, `task_update`, `task_done`, `task_resume`, `task_list`, `task_get`).
+Tracks tasks with short sequential codes (`T-001`, `T-002`, ...) or 1-level grouped directories (`.harness/tasks/<group>/<ID>/` via `--group`/`--flat` or `--id F039`), immutable per-author ULID entries, and crash-safe per-task `progress.md` checkpoints. Root `tasks.json` is kept as a compact v2 index pointing to `.harness/tasks/<ID>/progress.md` (without duplicating `entries` or `files_touched`), backed by a Git merge driver (`anvil tasks merge-driver`) — teams wanting zero root PR churn can optionally add `tasks.json` to `.gitignore` with zero runtime impact. Also supports strictly single-task execution and interruption recovery (`anvil tasks start|update|done|resume`, `SessionStart` Resume Briefs), decomposing monolithic `feature_list.json` requirement lists (`anvil tasks import` with native OS / arrow-key TUI file browser), verifying `verify` commands (`anvil tasks verify --record`), exporting snapshots (`anvil tasks export`), migrating legacy IDs (`anvil tasks migrate-ids`), and full MCP lifecycle tools (`task_start`, `task_update`, `task_done`, `task_resume`, `task_list`, `task_get`).
 
 ### 8. Adapters, MCP Server & CLI (`anvil-adapters`, `anvil-mcp`, `anvil-cli`)
 - **Thin Adapters (`anvil-adapters`):** translate lifecycle hooks (`SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `Stop`), **Security Guard**, **Token Guard**, **Availability Guard** (gracefully skips `anvil:managed` blocks when `anvil` is absent from `PATH`), and synced configs/rules for Antigravity, Claude Code, Cursor, Windsurf, and Codex (including thin-umbrella multi-repo routing).
 - **Unified MCP Server (`anvil-mcp`):** exposes 22 code-graph, memory, task, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
-- **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), diagnostics (`anvil doctor`), and an optional resident TCP daemon.
+- **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), a Claude Code orchestrator/executor model pair (`anvil orchestrator`), diagnostics (`anvil doctor`), and an optional resident TCP daemon.
 
 ## Quick Start
 
@@ -80,7 +80,28 @@ anvil tasks resume
 # Query the codebase in one sandboxed JS call via Code Mode
 anvil code exec "return anvil.graph_query({ term: 'init', limit: 5 });"
 
+# Claude Code: pair a planning model with a cheaper execution model (model + effort each)
+anvil orchestrator setup
+anvil orchestrator on               # enforce roles: the orchestrator judges, executors write within SCOPE
+
+# Executor model and effort selector above the Claude Code prompt (the orchestrator uses the native picker)
+anvil plugin install
+
 # Optional local SonarQube status & repo health check
 anvil sonar status
 anvil doctor
 ```
+
+## Safety Model
+
+Anvil hooks only deny, ask, or stay silent. They never approve a tool call, so the permission system of the host stays in charge. The Security Guard inspects command text (including wrappers, nested shells, substitutions, here-documents, and PowerShell) as a safety net against accidents. It is not a sandbox: scripts on disk and dynamically built commands are outside its reach.
+
+Tier 1 has a latency target (`tier_budgets.tier1_secs`) and a separate hard limit per process (`tier_budgets.tier1_timeout_secs`, 300 by default). Runs that hit the limit are reported as `TIMEOUT`.
+
+## Orchestrator Mode
+
+While the mode is on, Anvil hooks enforce the roles in Claude Code. The main thread inspects, verifies, and delegates, but cannot edit files or write through the shell. `anvil-executor` is the only role that writes, limited to the `SCOPE:` paths of its brief, and cannot commit, manage tasks, or spawn agents. Agents cannot turn the mode off. File tools and visible shell writes are checked; a program the executor runs can still write elsewhere, so the orchestrator reviews the diff. The mode is enforced in Claude Code only; other tools working in the same repository are not affected.
+
+## License
+
+[MIT](LICENSE)
