@@ -104,9 +104,41 @@ fn try_skip_style_attr(line: &str, idx: usize) -> Option<usize> {
     let quote_or_brace = *bytes.get(pos)?;
     match quote_or_brace {
         b'"' | b'\'' => skip_quoted(bytes, pos + 1, quote_or_brace),
-        b'{' => skip_braced(bytes, pos + 1),
+        b'{' => skip_braced(bytes, pos + 1).filter(|&end| {
+            end > pos + 1 && is_pure_style_braced(&bytes[pos + 1..end - 1])
+        }),
         _ => None,
     }
+}
+
+fn is_pure_style_braced(inner: &[u8]) -> bool {
+    let mut in_quote: Option<u8> = None;
+    let mut escaped = false;
+    for (idx, &b) in inner.iter().enumerate() {
+        if let Some(q) = in_quote {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == q {
+                in_quote = None;
+            }
+            continue;
+        }
+        if matches!(b, b'"' | b'\'' | b'`') {
+            in_quote = Some(b);
+            continue;
+        }
+        let next = inner.get(idx + 1).copied();
+        let has_logic = matches!(b, b'(' | b'?')
+            || (b == b'=' && next == Some(b'>'))
+            || (b == b'&' && next == Some(b'&'))
+            || (b == b'|' && next == Some(b'|'));
+        if has_logic {
+            return false;
+        }
+    }
+    true
 }
 
 fn skip_quoted(bytes: &[u8], mut pos: usize, delim: u8) -> Option<usize> {

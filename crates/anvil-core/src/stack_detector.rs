@@ -39,6 +39,11 @@ impl WorkspaceDetection {
     /// Returns `true` when `config` was modified.
     pub fn merge_into_config(&self, config: &mut AnvilConfig) -> bool {
         let before = config.clone();
+        let existing_sonar: rustc_hash::FxHashMap<String, bool> = config
+            .subrepos
+            .iter()
+            .map(|s| (s.path.clone(), s.sonar_enabled))
+            .collect();
         let mut all_stacks: FxHashSet<StackKind> = config.stacks.iter().copied().collect();
         let mut all_tools: FxHashSet<ToolKind> = config.tools.iter().copied().collect();
         config.subrepos.clear();
@@ -57,7 +62,7 @@ impl WorkspaceDetection {
                     path: repo.rel_path.clone(),
                     stacks,
                     tools,
-                    sonar_enabled: false,
+                    sonar_enabled: existing_sonar.get(&repo.rel_path).copied().unwrap_or(false),
                 });
             }
         }
@@ -267,8 +272,9 @@ fn inspect_repo_dir(dir: &Path, rel_path: &str) -> Result<Option<DetectedRepo>> 
     ecosystems::detect_flutter_rust_tools(dir, &mut stacks, &mut tools);
 
     let has_git = dir.join(".git").exists();
+    let has_pkg_json = dir.join("package.json").is_file();
     let is_child = rel_path != ".";
-    if stacks.is_empty() && tools.is_empty() && !(is_child && has_git) {
+    if stacks.is_empty() && tools.is_empty() && !(is_child && (has_git || has_pkg_json)) {
         return Ok(None);
     }
     let name = dir

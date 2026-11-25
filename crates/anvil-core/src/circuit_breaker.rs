@@ -116,6 +116,9 @@ impl CircuitBreaker {
     ) -> Result<CircuitStatus> {
         with_file_lock(&self.lock_path(), LOCK_TIMEOUT_MS, || {
             let mut status = self.status()?;
+            if status.is_open() {
+                return Ok(status);
+            }
             let normalized = normalize_error(raw_error);
             let fp = fingerprint_normalized(&normalized);
             let now = Utc::now();
@@ -303,11 +306,39 @@ pub fn command_family_key(command: &str) -> String {
     }
 
     if MULTI_SUBCOMMAND_RUNNERS.contains(&prog.as_str())
-        && let Some(sub) = tokens[idx..].iter().find(|t| !t.starts_with('-'))
+        && let Some(sub) = find_subcommand(&tokens[idx..])
     {
         return format!("{prog} {}", sub.to_ascii_lowercase());
     }
     prog
+}
+
+fn find_subcommand<'a>(args: &[&'a str]) -> Option<&'a str> {
+    const VALUE_FLAGS: &[&str] = &[
+        "-p",
+        "--package",
+        "--prefix",
+        "-C",
+        "--manifest-path",
+        "-f",
+        "--file",
+        "--root",
+        "--repo",
+    ];
+    let mut i = 0usize;
+    while i < args.len() {
+        let tok = args[i];
+        if VALUE_FLAGS.contains(&tok) {
+            i += 2;
+            continue;
+        }
+        if tok.starts_with('-') {
+            i += 1;
+            continue;
+        }
+        return Some(tok);
+    }
+    None
 }
 
 fn is_env_assignment(token: &str) -> bool {

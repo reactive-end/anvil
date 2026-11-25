@@ -33,6 +33,7 @@ fn ansi_stripped_and_tsc_matches_token_boundaries_only() -> Result<()> {
     assert_eq!(res.lines, vec!["src/Button.tsx:14:7 [TS2322] Type mismatch"]);
 
     assert_eq!(select_parser("npx vue-tsc --noEmit").name(), "tsc");
+    assert_eq!(select_parser("tsgo --noEmit").name(), "tsc");
     assert_eq!(select_parser("ngc -p tsconfig.json").name(), "tsc");
     assert_eq!(select_parser("pytest -k test_postcreate").name(), "pytest/ruff");
     assert_eq!(select_parser("cargo test -p tsc-helper").name(), "cargo");
@@ -145,5 +146,16 @@ fn cargo_parser_handles_check_clippy_test_and_rustc() -> Result<()> {
     assert!(fail.lines.iter().any(|l| l == "src/lib.rs:10:5 warning: unused variable: `x`"));
     assert!(fail.lines.iter().any(|l| l == "test auth::tests::rejects_bad_token ... FAILED"));
     assert!(fail.lines.iter().any(|l| l.starts_with("test result: FAILED.")));
+    Ok(())
+}
+
+#[test]
+fn single_giant_line_is_capped_to_token_budget() -> Result<()> {
+    let giant_line = format!("fatal error: {}", "x".repeat(600));
+    let capped_first = compress_output(None, "make build", 2, &giant_line, 10, 20)?;
+    assert!(capped_first.truncated);
+    assert_eq!(capped_first.lines.len(), 1);
+    assert!(capped_first.lines[0].len() < 80);
+    assert!(capped_first.lines[0].ends_with("..."));
     Ok(())
 }

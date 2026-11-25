@@ -14,6 +14,7 @@ fn config_defaults_match_spec() {
     assert_eq!(cfg.deps_max_age_months, 24);
     assert_eq!(cfg.tier_budgets.tier0_ms, 500);
     assert_eq!(cfg.tier_budgets.tier1_secs, 15);
+    assert_eq!(cfg.tier_budgets.tier1_timeout().as_secs(), 300);
     assert_eq!(cfg.tier_budgets.compressor_max_lines, 50);
     assert_eq!(cfg.tier_budgets.compressor_max_tokens, 1200);
     assert!(cfg.root_allowlist.iter().any(|s| s == "tasks.json"));

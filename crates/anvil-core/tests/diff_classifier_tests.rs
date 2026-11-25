@@ -114,4 +114,12 @@ fn vue_svelte_and_astro_classify_as_ui_or_style_only() {
         )]);
         assert_eq!(style.primary_category, DiffCategory::StyleOnly, "path={path}");
     }
+
+    let svelte_route = classify_paths(&["src/routes/+page.svelte", "src/routes/users.tsx"]);
+    assert_eq!(svelte_route.primary_category, DiffCategory::Ui);
+
+    let dynamic_expr = "@@ -1,2 +1,2 @@\n-  <div className=\"a\" />\n+  <div className={isActive ? 'a' : 'b'} />\n";
+    let dyn_res = classify_files(&[ChangedFile::with_hunks("src/Card.tsx", dynamic_expr)]);
+    assert_eq!(dyn_res.primary_category, DiffCategory::Ui);
+    assert!(!dyn_res.skip_logic_tests);
 }

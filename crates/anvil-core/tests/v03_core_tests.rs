@@ -143,8 +143,8 @@ fn stats_record_accumulate_and_reset() {
         },
         StatsEvent::SymbolReadSaved { tokens_saved: 120 },
         StatsEvent::OutlineSaved { tokens_saved: 80 },
-        StatsEvent::TokenGuard { blocked: true },
-        StatsEvent::TokenGuard { blocked: false },
+        StatsEvent::TokenGuard { blocked: true, tokens_avoided: 40 },
+        StatsEvent::TokenGuard { blocked: false, tokens_avoided: 0 },
         StatsEvent::RuleHit {
             rule: "no-ts-ignore".to_owned(),
         },
@@ -266,6 +266,20 @@ fn compressed_grep_skips_noise_binaries_and_oversized_files() {
 
     let limited = compressed_grep(root, "findUserToken", 1, 500).expect("grep max_matches");
     assert!(limited.truncated && limited.matches.len() == 1 && limited.total_matches == 2);
+
+    write_file(root, ".gitignore", b"ignored_out/\n*.log\n");
+    write_file(root, "ignored_out/gen.ts", b"const findUserToken = 1;\n");
+    write_file(root, "debug.log", b"findUserToken\n");
+    write_file(root, ".harness/.worktrees/wt1/sub.ts", b"const findUserToken = 2;\n");
+    let clean = compressed_grep(root, "findUserToken", 10, 500).expect("clean gitignore/worktree");
+    assert_eq!(clean.matches, res.matches, "ignored dirs, logs, and worktrees must not match");
+    assert_eq!(clean.files_searched, 2, "only src/service.ts and .gitignore are searched");
+
+    let long_match = format!("const findUserToken = \"{}\";\n", "x".repeat(400));
+    write_file(root, "src/long.ts", long_match.as_bytes());
+    let capped = compressed_grep(root, "findUserToken", 10, 20).expect("capped long match");
+    assert!(capped.truncated && !capped.matches.is_empty());
+    assert!(capped.matches.iter().any(|m| m.ends_with("...") && m.len() <= 80));
 }
 
 #[test]
@@ -318,4 +332,19 @@ fn godot_parser_log_rotation_and_tier0_cache_work() {
     assert!(!reloaded.is_clean_hit(&root.join("src/ok.ts"), "src/ok.ts", "different-hash"));
     assert!(is_noise_file(".godot/imported/icon.ctex"));
     assert!(is_noise_file("assets/hero.png.import"));
+    assert!(is_noise_file("Node_Modules/pkg/index.js"));
+    assert!(is_noise_file("CARGO.LOCK"));
+
+    let diff_spaces = concat!(
+        "diff --git \"a/src/diseño final.ts\" \"b/src/diseño final.ts\"\n",
+        "index 1111111..2222222 100644\n",
+        "--- \"a/src/diseño final.ts\"\n",
+        "+++ \"b/src/diseño final.ts\"\n",
+        "@@ -1 +1 @@\n+export const x = 1;\n",
+        "diff --git \"a/CARGO.LOCK\" \"b/CARGO.LOCK\"\n",
+        "+dep\n",
+    );
+    let comp = compress_diff(diff_spaces, 50, 500);
+    assert_eq!(comp.skipped_files, vec!["CARGO.LOCK"]);
+    assert!(comp.text.contains("export const x = 1;"));
 }

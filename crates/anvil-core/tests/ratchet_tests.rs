@@ -238,3 +238,38 @@ fn test_candidate_sets_fp_checked_and_promote_supports_severity_override() -> Re
     assert_eq!(diags[0].severity, anvil_core::traits::Severity::Error);
     Ok(())
 }
+
+#[test]
+fn test_candidate_evaluates_multiline_patterns_and_lang_aware_comments() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(root.join("src/bad.ts"), "try {\n  run();\n} catch (e) {\n}\n")?;
+    fs::write(root.join("src/styles.css"), "#card { --bg: 1; color: red !important; }\n")?;
+
+    let mut ml_input = sample_input("no-empty-catch");
+    ml_input.pattern = r"try\s*\{[\s\S]*?\}\s*catch\s*\([^)]*\)\s*\{\s*\}".to_owned();
+    ml_input.languages = vec!["ts".to_owned()];
+    ml_input.high_impact = true;
+    let ml_cand = log_candidate_with_options(
+        root,
+        ml_input,
+        CandidateOptions {
+            multiline: true,
+            ..Default::default()
+        },
+    )?;
+
+    let report = test_candidate(root, &ml_cand.id)?;
+    assert_eq!(report.files_scanned, 1);
+    assert_eq!(report.match_count, 1);
+
+    let mut css_input = sample_input("no-important-css");
+    css_input.pattern = r"!important".to_owned();
+    css_input.languages = vec!["css".to_owned()];
+    css_input.high_impact = true;
+    let css_cand = log_candidate(root, css_input)?;
+    let css_report = test_candidate(root, &css_cand.id)?;
+    assert_eq!(css_report.match_count, 1);
+    Ok(())
+}

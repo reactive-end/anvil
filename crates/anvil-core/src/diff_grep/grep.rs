@@ -13,7 +13,21 @@ use crate::fs_util::relativize_path;
 use crate::stats::estimate_tokens;
 
 const MAX_GREP_FILE_BYTES: u64 = 512 * 1024;
-const IGNORED_DIRS: [&str; 6] = [".git", "target", "node_modules", "dist", "build", ".next"];
+const IGNORED_DIRS: [&str; 13] = [
+    ".git",
+    "target",
+    "node_modules",
+    "dist",
+    "build",
+    ".next",
+    "vendor",
+    ".venv",
+    "__pycache__",
+    ".dart_tool",
+    ".gradle",
+    ".godot",
+    "coverage",
+];
 
 /// Token-bounded grep output across non-noise repository text files.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +71,8 @@ pub fn compressed_grep(
     };
 
     if repo_root.is_dir() {
-        walk_dir(repo_root, repo_root, &regex, &mut state)?;
+        let ignored = load_gitignore_patterns(repo_root);
+        walk_dir(repo_root, repo_root, &regex, &ignored, &mut state)?;
     }
 
     let text = state.matches.join("\n");
@@ -74,7 +89,16 @@ pub fn compressed_grep(
     })
 }
 
-fn walk_dir(root: &Path, dir: &Path, regex: &Regex, state: &mut GrepState) -> Result<()> {
+fn walk_dir(
+    root: &Path,
+    dir: &Path,
+    regex: &Regex,
+    gitignore: &[(String, bool)],
+    state: &mut GrepState,
+) -> Result<()> {
+    if state.truncated {
+        return Ok(());
+    }
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(_) => return Ok(()),
@@ -87,6 +111,9 @@ fn walk_dir(root: &Path, dir: &Path, regex: &Regex, state: &mut GrepState) -> Re
     children.sort();
 
     for path in children {
+        if state.truncated {
+            break;
+        }
         let Ok(meta) = fs::symlink_metadata(&path) else {
             continue;
         };
@@ -94,11 +121,14 @@ fn walk_dir(root: &Path, dir: &Path, regex: &Regex, state: &mut GrepState) -> Re
             continue;
         }
         let rel = relativize_path(root, &path);
+        if is_gitignored_rel(&rel, gitignore) {
+            continue;
+        }
         if meta.is_dir() {
             if should_skip_dir(&path, &rel) {
                 continue;
             }
-            walk_dir(root, &path, regex, state)?;
+            walk_dir(root, &path, regex, gitignore, state)?;
         } else if meta.is_file() && meta.len() <= MAX_GREP_FILE_BYTES && !is_noise_file(&rel) {
             search_file(&path, &rel, regex, state);
         }
@@ -107,12 +137,60 @@ fn walk_dir(root: &Path, dir: &Path, regex: &Regex, state: &mut GrepState) -> Re
 }
 
 fn should_skip_dir(path: &Path, rel: &str) -> bool {
-    if rel == ".harness/.state" || rel.starts_with(".harness/.state/") {
+    if rel == ".harness/.state"
+        || rel.starts_with(".harness/.state/")
+        || rel == ".harness/.worktrees"
+        || rel.starts_with(".harness/.worktrees/")
+    {
         return true;
     }
     path.file_name()
         .and_then(|n| n.to_str())
         .is_some_and(|name| IGNORED_DIRS.contains(&name))
+}
+
+fn load_gitignore_patterns(root: &Path) -> Vec<(String, bool)> {
+    let Ok(raw) = fs::read_to_string(root.join(".gitignore")) else {
+        return Vec::new();
+    };
+    raw.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+                return None;
+            }
+            let anchored = trimmed.starts_with('/');
+            let mut pat = trimmed.trim_start_matches('/').trim_end_matches('/').to_owned();
+            if let Some(stripped) = pat.strip_suffix("/**") {
+                pat = stripped.trim_end_matches('/').to_owned();
+            } else if let Some(stripped) = pat.strip_suffix("/*") {
+                pat = stripped.trim_end_matches('/').to_owned();
+            }
+            if pat.is_empty() {
+                return None;
+            }
+            let single_segment = !anchored && !pat.contains('/');
+            Some((pat, single_segment))
+        })
+        .collect()
+}
+
+fn is_gitignored_rel(rel: &str, patterns: &[(String, bool)]) -> bool {
+    patterns.iter().any(|(pat, single_segment)| match_gitignore_pat(rel, pat, *single_segment))
+}
+
+fn match_gitignore_pat(rel: &str, pat: &str, single_segment: bool) -> bool {
+    if let Some(suffix) = pat.strip_prefix("*.") {
+        return rel.rsplit('/').next().is_some_and(|name| name.ends_with(&format!(".{suffix}")));
+    }
+    if pat.contains(['*', '?', '[']) {
+        return false;
+    }
+    if single_segment {
+        rel.split('/').any(|seg| seg == pat)
+    } else {
+        rel == pat || rel.starts_with(&format!("{pat}/"))
+    }
 }
 
 fn search_file(path: &Path, rel: &str, regex: &Regex, state: &mut GrepState) {
@@ -151,11 +229,35 @@ fn push_match(state: &mut GrepState, formatted: String) {
         return;
     }
     let sep = usize::from(!state.matches.is_empty());
-    let needed = sep + formatted.len();
-    if state.used_chars.saturating_add(needed) > state.char_budget {
+    let remaining = state.char_budget.saturating_sub(state.used_chars + sep);
+    if remaining == 0 || (remaining < 16 && !state.matches.is_empty()) {
         state.truncated = true;
         return;
     }
-    state.used_chars += needed;
-    state.matches.push(formatted);
+    let entry = if formatted.len() > remaining {
+        state.truncated = true;
+        truncate_utf8_ellipsis(&formatted, remaining)
+    } else {
+        formatted
+    };
+    state.used_chars += sep + entry.len();
+    state.matches.push(entry);
+}
+
+fn truncate_utf8_ellipsis(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_owned();
+    }
+    if max_bytes <= 3 {
+        let mut end = max_bytes.min(s.len());
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        return s[..end].to_owned();
+    }
+    let mut end = (max_bytes - 3).min(s.len());
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &s[..end])
 }

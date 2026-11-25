@@ -114,6 +114,11 @@ fn path_author_and_local_bin_helpers_work_portably() -> Result<()> {
     fs::create_dir_all(&bin_dir)?;
     let tool_name = if cfg!(windows) { "mytool.cmd" } else { "mytool" };
     fs::write(bin_dir.join(tool_name), "echo ok")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(bin_dir.join(tool_name), fs::Permissions::from_mode(0o755))?;
+    }
 
     let resolved = resolve_local_or_path_bin(tmp.path(), "mytool").expect("local bin");
     assert_eq!(resolved.parent(), Some(bin_dir.as_path()));

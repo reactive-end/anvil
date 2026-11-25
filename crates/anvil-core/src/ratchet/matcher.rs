@@ -44,7 +44,8 @@ fn matches_language(rel_path: &str, languages: &[String]) -> bool {
     })
 }
 
-fn glob_matches(pattern: &str, path: &str) -> bool {
+/// Matches a repository-relative path against a `*`/`**` glob.
+pub fn glob_matches(pattern: &str, path: &str) -> bool {
     let norm_pat = pattern.replace('\\', "/");
     let norm_pat = norm_pat.strip_prefix("./").unwrap_or(&norm_pat);
     let norm_path = path.strip_prefix("./").unwrap_or(path);
@@ -168,9 +169,11 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
 }
 
-pub(super) fn is_match_in_comment_or_string(line: &str, match_start: usize) -> bool {
+pub(super) fn is_match_in_comment_or_string(rel_path: &str, line: &str, match_start: usize) -> bool {
     let bytes = line.as_bytes();
     let limit = match_start.min(bytes.len());
+    let allow_hash = uses_hash_comments(rel_path);
+    let allow_dash = uses_dash_comments(rel_path);
     let mut i = 0usize;
     let mut in_quote: Option<u8> = None;
     let mut escaped = false;
@@ -187,7 +190,10 @@ pub(super) fn is_match_in_comment_or_string(line: &str, match_start: usize) -> b
             i += 1;
             continue;
         }
-        if bytes[i..].starts_with(b"//") || bytes[i..].starts_with(b"--") || bytes[i] == b'#' {
+        if bytes[i..].starts_with(b"//")
+            || (allow_dash && bytes[i..].starts_with(b"--"))
+            || (allow_hash && bytes[i] == b'#')
+        {
             return true;
         }
         if bytes[i..].starts_with(b"/*") {
@@ -210,6 +216,46 @@ pub(super) fn is_match_in_comment_or_string(line: &str, match_start: usize) -> b
         i += 1;
     }
     in_quote.is_some()
+}
+
+fn uses_hash_comments(rel_path: &str) -> bool {
+    let name = rel_path.rsplit(['/', '\\']).next().unwrap_or(rel_path);
+    if matches!(
+        name.to_ascii_lowercase().as_str(),
+        "dockerfile" | "makefile" | "gemfile" | "rakefile"
+    ) {
+        return true;
+    }
+    let ext = rel_path
+        .rsplit('.')
+        .next()
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    matches!(
+        ext.as_str(),
+        "py" | "pyi"
+            | "sh"
+            | "bash"
+            | "zsh"
+            | "rb"
+            | "yml"
+            | "yaml"
+            | "toml"
+            | "gd"
+            | "php"
+            | "phtml"
+            | "pl"
+            | "r"
+    )
+}
+
+fn uses_dash_comments(rel_path: &str) -> bool {
+    let ext = rel_path
+        .rsplit('.')
+        .next()
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    matches!(ext.as_str(), "sql" | "lua" | "hs")
 }
 
 pub(super) fn collect_repo_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {

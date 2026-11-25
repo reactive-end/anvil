@@ -3,8 +3,18 @@
 use crate::traits::{Diagnostic, Severity};
 
 const SKIP_MARKERS: &[&str] = &[
-    ".skip(",
-    ".only(",
+    "it.skip(",
+    "test.skip(",
+    "describe.skip(",
+    "context.skip(",
+    "suite.skip(",
+    "fixture.skip(",
+    "specify.skip(",
+    "it.only(",
+    "test.only(",
+    "describe.only(",
+    "context.only(",
+    "suite.only(",
     "xit(",
     "xdescribe(",
     "xtest(",
@@ -23,8 +33,16 @@ const ASSERTION_MARKERS: &[&str] = &[
     "expect(",
     "assertEquals(",
     "assertNotEquals(",
+    "assertSame(",
+    "assertCount(",
+    "assertNull(",
+    "assertNotNull(",
     "assertTrue(",
     "assertFalse(",
+    "assert_eq(",
+    "assert_ne(",
+    "assert_true(",
+    "assert_false(",
     "assert_ok(",
     "should(",
     "verify(",
@@ -44,6 +62,8 @@ pub fn is_test_file(rel_path: &str) -> bool {
         || name.ends_with("_test.rs")
         || name.ends_with("_tests.rs")
         || name.ends_with("_test.py")
+        || name.ends_with("_test.dart")
+        || name.ends_with("_test.gd")
         || name.ends_with("test.kt")
         || name.ends_with("test.php")
         || (name.starts_with("test_") && name.ends_with(".py"))
@@ -54,29 +74,17 @@ pub fn check_test_tampering_diff(rel_path: &str, unified_diff: &str) -> Vec<Diag
     if !is_test_file(rel_path) || unified_diff.trim().is_empty() {
         return Vec::new();
     }
-    let mut added = Vec::new();
-    let mut removed = Vec::new();
-    for line in unified_diff.lines() {
-        if line.starts_with("+++") || line.starts_with("---") {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix('+') {
-            added.push(rest);
-        } else if let Some(rest) = line.strip_prefix('-') {
-            removed.push(rest);
-        }
-    }
-
+    let (added, removed) = split_diff_lines(unified_diff);
     let allow_override = added
         .iter()
-        .any(|l| has_valid_allow_comment(l, "no-test-tampering"));
+        .any(|(_, l)| has_valid_allow_comment(l, "no-test-tampering"));
     if allow_override {
         return Vec::new();
     }
 
     let mut diags = collect_skip_tampering(rel_path, &added);
-    let removed_asserts = count_assertions(&removed);
-    let added_asserts = count_assertions(&added);
+    let removed_asserts = count_assertions(removed.iter().copied());
+    let added_asserts = count_assertions(added.iter().map(|(_, l)| *l));
     if removed_asserts >= 2 && removed_asserts > added_asserts {
         diags.push(Diagnostic {
             rule: "no-test-tampering".to_owned(),
@@ -96,19 +104,80 @@ pub fn check_test_tampering_diff(rel_path: &str, unified_diff: &str) -> Vec<Diag
     diags
 }
 
-fn collect_skip_tampering(rel_path: &str, added: &[&str]) -> Vec<Diagnostic> {
-    let mut out = Vec::new();
-    for line in added {
-        let trimmed = line.trim();
-        if trimmed.starts_with("//") || trimmed.starts_with('#') {
+/// Splits a unified diff into added lines (with post-image line numbers) and removed lines.
+fn split_diff_lines(unified_diff: &str) -> (Vec<(u32, &str)>, Vec<&str>) {
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut line_no = 1u32;
+    for line in unified_diff.lines() {
+        if line.starts_with("@@") {
+            line_no = parse_hunk_start(line).unwrap_or(1);
+        } else if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        } else if let Some(rest) = line.strip_prefix('+') {
+            added.push((line_no, rest));
+            line_no += 1;
+        } else if let Some(rest) = line.strip_prefix('-') {
+            removed.push(rest);
+        } else {
+            line_no += 1;
+        }
+    }
+    (added, removed)
+}
+
+fn parse_hunk_start(header: &str) -> Option<u32> {
+    let post_image = header.split_whitespace().find_map(|tok| tok.strip_prefix('+'))?;
+    post_image.split(',').next()?.parse().ok()
+}
+
+/// Blanks string-literal contents so test fixtures quoting a marker are not mistaken for code.
+fn strip_string_literals(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.char_indices();
+    while let Some((idx, ch)) = chars.next() {
+        out.push(ch);
+        if !matches!(ch, '"' | '\'' | '`') || closing_quote(&line[idx + 1..], ch).is_none() {
             continue;
         }
-        if let Some(marker) = SKIP_MARKERS.iter().find(|&&m| line.contains(m)) {
+        let mut escaped = false;
+        for (_, inner) in chars.by_ref() {
+            if inner == ch && !escaped {
+                out.push(ch);
+                break;
+            }
+            escaped = inner == '\\' && !escaped;
+        }
+    }
+    out
+}
+
+fn closing_quote(rest: &str, quote: char) -> Option<usize> {
+    let mut escaped = false;
+    for (idx, ch) in rest.char_indices() {
+        if ch == quote && !escaped {
+            return Some(idx);
+        }
+        escaped = ch == '\\' && !escaped;
+    }
+    None
+}
+
+fn collect_skip_tampering(rel_path: &str, added: &[(u32, &str)]) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for (line_no, line) in added {
+        let trimmed = line.trim();
+        let is_rust_attr = trimmed.starts_with("#[") || trimmed.starts_with("#![");
+        if trimmed.starts_with("//") || (trimmed.starts_with('#') && !is_rust_attr) {
+            continue;
+        }
+        let code = strip_string_literals(line);
+        if let Some(marker) = SKIP_MARKERS.iter().find(|&&m| code.contains(m)) {
             out.push(Diagnostic {
                 rule: "no-test-tampering".to_owned(),
                 severity: Severity::Error,
                 file: rel_path.to_owned(),
-                line: 1,
+                line: *line_no,
                 column: 1,
                 message: format!("test-skipping marker `{marker}` introduced in test diff"),
                 suggestion: Some(
@@ -139,18 +208,20 @@ fn has_valid_allow_comment(line: &str, rule: &str) -> bool {
     reason.chars().filter(|c| !c.is_whitespace()).count() >= 3
 }
 
-fn count_assertions(lines: &[&str]) -> usize {
+fn count_assertions<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
     lines
-        .iter()
         .filter(|l| {
             let trimmed = l.trim();
             !trimmed.starts_with("//") && !trimmed.starts_with('#')
         })
+        .map(strip_string_literals)
         .map(|l| {
-            ASSERTION_MARKERS
+            let marker_hits: usize = ASSERTION_MARKERS
                 .iter()
                 .map(|m| l.matches(m).count())
-                .sum::<usize>()
+                .sum();
+            let py_assert = usize::from(l.trim_start().starts_with("assert "));
+            marker_hits + py_assert
         })
         .sum()
 }

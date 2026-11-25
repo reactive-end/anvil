@@ -164,7 +164,9 @@ fn eval_single_line_rule(
             continue;
         }
         for m in rule.regex.find_iter(line) {
-            if !rule.match_comments_and_strings && is_match_in_comment_or_string(line, m.start()) {
+            if !rule.match_comments_and_strings
+                && is_match_in_comment_or_string(norm_path, line, m.start())
+            {
                 continue;
             }
             diagnostics.push(build_diagnostic(
@@ -213,8 +215,38 @@ pub fn test_candidate(repo_root: &Path, candidate_id: &str) -> Result<CandidateT
         .with_context(|| format!("candidate `{candidate_id}` has no regex pattern"))?;
     let re = Regex::new(pat)
         .with_context(|| format!("invalid candidate regex pattern for `{candidate_id}`"))?;
+    let is_multiline = candidate.multiline || pat.starts_with("(?s)") || pat.contains("\\n");
 
     let start = Instant::now();
+    let (files_scanned, match_count, sample_matches) =
+        scan_candidate_repo(repo_root, &candidate, &re, is_multiline)?;
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+    let under_budget = elapsed_ms < MAX_RUNTIME_MS;
+
+    if files_scanned > 0 && match_count == 0 && under_budget && !candidate.fp_checked {
+        let mut updated = candidate.clone();
+        updated.fp_checked = true;
+        updated.false_positives_found = 0;
+        updated.updated_at = chrono::Utc::now();
+        super::save_candidate(&repo_root.join(".harness").join("candidates"), &updated)?;
+    }
+    Ok(CandidateTestReport {
+        id: candidate.id,
+        rule_name: candidate.rule_name,
+        files_scanned,
+        match_count,
+        elapsed_ms,
+        under_budget,
+        sample_matches,
+    })
+}
+
+fn scan_candidate_repo(
+    repo_root: &Path,
+    candidate: &super::RatchetCandidate,
+    re: &Regex,
+    is_multiline: bool,
+) -> Result<(usize, usize, Vec<CandidateTestMatch>)> {
     let mut files = Vec::new();
     collect_repo_files(repo_root, &mut files)?;
 
@@ -237,38 +269,74 @@ pub fn test_candidate(repo_root: &Path, candidate_id: &str) -> Result<CandidateT
             continue;
         };
         files_scanned += 1;
-        scan_file_matches(&re, &rel, &content, &mut match_count, &mut sample_matches);
+        if is_multiline {
+            scan_multiline_matches(
+                re,
+                &rel,
+                &content,
+                candidate.match_comments_and_strings,
+                &mut match_count,
+                &mut sample_matches,
+            );
+        } else {
+            scan_file_matches(
+                re,
+                &rel,
+                &content,
+                candidate.match_comments_and_strings,
+                &mut match_count,
+                &mut sample_matches,
+            );
+        }
     }
+    Ok((files_scanned, match_count, sample_matches))
+}
 
-    let elapsed_ms = start.elapsed().as_millis() as u64;
-    let under_budget = elapsed_ms < MAX_RUNTIME_MS;
-    if files_scanned > 0 && match_count == 0 && under_budget && !candidate.fp_checked {
-        let mut updated = candidate.clone();
-        updated.fp_checked = true;
-        updated.false_positives_found = 0;
-        updated.updated_at = chrono::Utc::now();
-        super::save_candidate(&repo_root.join(".harness").join("candidates"), &updated)?;
+fn scan_multiline_matches(
+    re: &Regex,
+    rel: &str,
+    content: &str,
+    match_comments_and_strings: bool,
+    match_count: &mut usize,
+    samples: &mut Vec<CandidateTestMatch>,
+) {
+    for m in re.find_iter(content) {
+        let prefix = &content[..m.start()];
+        let line_idx = prefix.bytes().filter(|&b| b == b'\n').count();
+        let line_start = prefix.rfind('\n').map_or(0, |p| p + 1);
+        let line_text = content[line_start..].lines().next().unwrap_or("");
+        if !match_comments_and_strings
+            && !m.as_str().contains('\n')
+            && is_match_in_comment_or_string(rel, line_text, m.start() - line_start)
+        {
+            continue;
+        }
+        *match_count += 1;
+        if samples.len() < MAX_SAMPLE_MATCHES {
+            samples.push(CandidateTestMatch {
+                file: rel.to_owned(),
+                line: (line_idx + 1) as u32,
+                snippet: line_text.trim().chars().take(120).collect(),
+            });
+        }
     }
-    Ok(CandidateTestReport {
-        id: candidate.id,
-        rule_name: candidate.rule_name,
-        files_scanned,
-        match_count,
-        elapsed_ms,
-        under_budget,
-        sample_matches,
-    })
 }
 
 fn scan_file_matches(
     re: &Regex,
     rel: &str,
     content: &str,
+    match_comments_and_strings: bool,
     match_count: &mut usize,
     samples: &mut Vec<CandidateTestMatch>,
 ) {
     for (idx, line) in content.lines().enumerate() {
-        let hits = re.find_iter(line).count();
+        let hits = re
+            .find_iter(line)
+            .filter(|m| {
+                match_comments_and_strings || !is_match_in_comment_or_string(rel, line, m.start())
+            })
+            .count();
         if hits == 0 {
             continue;
         }

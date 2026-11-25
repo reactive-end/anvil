@@ -15,7 +15,7 @@ impl OutputParser for TscParser {
     }
 
     fn matches(&self, command: &str) -> bool {
-        command_has_tool_token(command, &["tsc", "ngc", "vue-tsc"])
+        command_has_tool_token(command, &["tsc", "ngc", "vue-tsc", "tsgo"])
     }
 
     fn parse(&self, _command: &str, exit_code: i32, raw_output: &str) -> CompressedOutput {

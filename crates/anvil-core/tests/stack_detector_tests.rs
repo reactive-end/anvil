@@ -219,5 +219,28 @@ fn skips_gitignored_child_repositories() -> Result<()> {
     det.apply_to_config(&mut cfg);
     assert!(cfg.stacks.contains(&StackKind::Rust));
     assert!(!cfg.stacks.contains(&StackKind::TypeScript));
+
+    let mut existing = AnvilConfig {
+        subrepos: vec![anvil_core::config::SubrepoConfig {
+            name: "sandbox".to_owned(),
+            path: "test/sandbox".to_owned(),
+            stacks: vec![],
+            tools: vec![],
+            sonar_enabled: true,
+        }],
+        ..AnvilConfig::default()
+    };
+    let det_multi = anvil_core::stack_detector::WorkspaceDetection {
+        is_multi_repo: true,
+        repos: vec![anvil_core::stack_detector::DetectedRepo {
+            name: "sandbox".to_owned(),
+            rel_path: "test/sandbox".to_owned(),
+            stacks: vec![StackKind::TypeScript],
+            tools: vec![],
+            has_git: false,
+        }],
+    };
+    det_multi.merge_into_config(&mut existing);
+    assert!(existing.subrepos[0].sonar_enabled);
     Ok(())
 }

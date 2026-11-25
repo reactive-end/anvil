@@ -90,13 +90,14 @@ pub fn check_cognitive_complexity(
     }
     let lines: Vec<&str> = source.lines().collect();
     let is_indent_lang = rel_path.ends_with(".py") || rel_path.ends_with(".gd");
-    let blocks = collect_fn_blocks(&lines, is_indent_lang);
+    let is_rust = rel_path.ends_with(".rs");
+    let blocks = collect_fn_blocks(&lines, is_indent_lang, is_rust);
     let mut diags = Vec::new();
     for (name, start_idx, end_idx) in blocks {
         if has_allow_comment(&lines, start_idx, "sonar:cognitive-complexity") {
             continue;
         }
-        let score = score_block_complexity(&lines[start_idx..=end_idx], is_indent_lang);
+        let score = score_block_complexity(&lines[start_idx..=end_idx], is_indent_lang, is_rust);
         if score > max_complexity {
             diags.push(Diagnostic {
                 rule: "sonar:cognitive-complexity".to_owned(),
@@ -277,7 +278,11 @@ fn sonar_get_json(url: &str, token: Option<&str>) -> Result<Value> {
     Ok(val)
 }
 
-fn collect_fn_blocks(lines: &[&str], is_indent_lang: bool) -> Vec<(String, usize, usize)> {
+fn collect_fn_blocks(
+    lines: &[&str],
+    is_indent_lang: bool,
+    is_rust: bool,
+) -> Vec<(String, usize, usize)> {
     let mut out = Vec::new();
     let mut idx = 0usize;
     while idx < lines.len() {
@@ -288,7 +293,7 @@ fn collect_fn_blocks(lines: &[&str], is_indent_lang: bool) -> Vec<(String, usize
         let end_idx = if is_indent_lang {
             find_indent_block_end(lines, idx)
         } else {
-            find_brace_block_end(lines, idx)
+            find_brace_block_end(lines, idx, is_rust)
         };
         if end_idx > idx {
             out.push((name, idx, end_idx));
@@ -327,12 +332,12 @@ fn match_fn_header(line: &str) -> Option<String> {
         .then(|| cand.to_owned())
 }
 
-fn find_brace_block_end(lines: &[&str], start: usize) -> usize {
+fn find_brace_block_end(lines: &[&str], start: usize, is_rust: bool) -> usize {
     let mut depth = 0i32;
     let mut opened = false;
     let mut in_block_comment = false;
     for (offset, line) in lines[start..].iter().enumerate() {
-        let code = strip_strings_and_comments(line, &mut in_block_comment, false);
+        let code = strip_strings_and_comments(line, &mut in_block_comment, false, is_rust);
         for ch in code.chars() {
             if ch == '{' {
                 depth += 1;
@@ -365,20 +370,20 @@ fn find_indent_block_end(lines: &[&str], start: usize) -> usize {
     last
 }
 
-fn score_block_complexity(lines: &[&str], is_indent_lang: bool) -> usize {
+fn score_block_complexity(lines: &[&str], is_indent_lang: bool, is_rust: bool) -> usize {
     if is_indent_lang {
         return score_indent_complexity(lines);
     }
-    score_brace_complexity(lines)
+    score_brace_complexity(lines, is_rust)
 }
 
-fn score_brace_complexity(lines: &[&str]) -> usize {
+fn score_brace_complexity(lines: &[&str], is_rust: bool) -> usize {
     let mut total = 0usize;
     let mut brace_depth = 0i32;
     let mut nesting_depths: Vec<i32> = Vec::new();
     let mut in_block_comment = false;
     for line in lines.iter().skip(1) {
-        let code = strip_strings_and_comments(line, &mut in_block_comment, false);
+        let code = strip_strings_and_comments(line, &mut in_block_comment, false, is_rust);
         let t = code.trim();
         if t.is_empty() {
             continue;
@@ -389,7 +394,7 @@ fn score_brace_complexity(lines: &[&str]) -> usize {
             total += 1 + nesting;
         }
         total += count_logical_ops(t);
-        if t.contains('?') && t.contains(':') {
+        if has_ternary_op(t, is_rust) {
             total += 1 + nesting;
         }
         brace_depth += count_char(t, '{') - count_char(t, '}');
@@ -403,12 +408,35 @@ fn score_brace_complexity(lines: &[&str]) -> usize {
     total
 }
 
+fn has_ternary_op(trimmed: &str, is_rust: bool) -> bool {
+    if is_rust {
+        return false;
+    }
+    let bytes = trimmed.as_bytes();
+    let Some(q_idx) = bytes.iter().enumerate().position(|(i, &b)| {
+        if b != b'?' {
+            return false;
+        }
+        let prev = i.checked_sub(1).and_then(|p| bytes.get(p).copied());
+        let next = bytes.get(i + 1).copied();
+        prev != Some(b'?') && !matches!(next, Some(b'?' | b'.' | b':'))
+    }) else {
+        return false;
+    };
+    let tail = &bytes[q_idx + 1..];
+    tail.iter().enumerate().any(|(i, &b)| {
+        b == b':'
+            && i.checked_sub(1).and_then(|p| tail.get(p).copied()) != Some(b':')
+            && tail.get(i + 1).copied() != Some(b':')
+    })
+}
+
 fn score_indent_complexity(lines: &[&str]) -> usize {
     let mut total = 0usize;
     let mut indent_stack: Vec<usize> = Vec::new();
     let mut dummy_comment = false;
     for line in lines.iter().skip(1) {
-        let code = strip_strings_and_comments(line, &mut dummy_comment, true);
+        let code = strip_strings_and_comments(line, &mut dummy_comment, true, false);
         let t = code.trim();
         if t.is_empty() {
             continue;
@@ -428,7 +456,12 @@ fn score_indent_complexity(lines: &[&str]) -> usize {
     total
 }
 
-fn strip_strings_and_comments(line: &str, in_block_comment: &mut bool, hash_comments: bool) -> String {
+fn strip_strings_and_comments(
+    line: &str,
+    in_block_comment: &mut bool,
+    hash_comments: bool,
+    is_rust: bool,
+) -> String {
     let chars: Vec<char> = line.chars().collect();
     let mut out = String::with_capacity(chars.len());
     let mut i = 0usize;
@@ -437,29 +470,16 @@ fn strip_strings_and_comments(line: &str, in_block_comment: &mut bool, hash_comm
         let c = chars[i];
         let next = chars.get(i + 1).copied();
         if *in_block_comment {
-            if c == '*' && next == Some('/') {
-                *in_block_comment = false;
-                i += 2;
-            } else {
-                i += 1;
-            }
+            let ended = c == '*' && next == Some('/');
+            *in_block_comment = !ended;
+            i += if ended { 2 } else { 1 };
             continue;
         }
         if let Some(q) = quote {
-            if c == '\\' {
-                i += 2;
-                continue;
-            }
-            if c == q {
-                quote = None;
-            }
-            i += 1;
+            i += advance_quoted(c, q, &mut quote);
             continue;
         }
-        if c == '/' && next == Some('/') {
-            break;
-        }
-        if hash_comments && c == '#' {
+        if (c == '/' && next == Some('/')) || (hash_comments && c == '#') {
             break;
         }
         if c == '/' && next == Some('*') {
@@ -467,16 +487,52 @@ fn strip_strings_and_comments(line: &str, in_block_comment: &mut bool, hash_comm
             i += 2;
             continue;
         }
-        if matches!(c, '"' | '\'' | '`') {
-            quote = Some(c);
-            out.push(' ');
+        if c == '\'' && is_rust {
+            if let Some(next_i) = skip_rust_char_literal(&chars, i) {
+                out.push(' ');
+                i = next_i;
+                continue;
+            }
+            out.push(c);
             i += 1;
             continue;
         }
-        out.push(c);
+        if matches!(c, '"' | '\'' | '`') {
+            quote = Some(c);
+            out.push(' ');
+        } else {
+            out.push(c);
+        }
         i += 1;
     }
     out
+}
+
+fn advance_quoted(c: char, active: char, quote: &mut Option<char>) -> usize {
+    if c == '\\' {
+        return 2;
+    }
+    if c == active {
+        *quote = None;
+    }
+    1
+}
+
+fn skip_rust_char_literal(chars: &[char], start: usize) -> Option<usize> {
+    if chars.get(start + 1) == Some(&'\\') {
+        let limit = (start + 14).min(chars.len());
+        for (idx, &ch) in chars.iter().enumerate().take(limit).skip(start + 3) {
+            if ch == '\'' {
+                return Some(idx + 1);
+            }
+            if matches!(ch, '\n' | '\r' | ' ' | ';') {
+                break;
+            }
+        }
+        return None;
+    }
+    (chars.get(start + 2) == Some(&'\'') && chars.get(start + 1) != Some(&'\''))
+        .then_some(start + 3)
 }
 
 fn leading_indent_cols(line: &str) -> usize {

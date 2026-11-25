@@ -8,6 +8,7 @@ pub use eval::{
     CandidateTestMatch, CandidateTestReport, CompiledPromotedRules, compile_promoted_rules,
     evaluate_compiled, evaluate_promoted_rules, load_promoted_rules, test_candidate,
 };
+pub use matcher::glob_matches;
 pub use types::{
     CandidateInput, CandidateOptions, PromotedRule, RatchetCandidate, RatchetEvaluation,
     RuleCandidate,

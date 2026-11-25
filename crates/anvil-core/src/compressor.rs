@@ -22,6 +22,7 @@ use regex::Regex;
 use ulid::Ulid;
 
 use crate::traits::{CompressedOutput, OutputParser};
+use crate::proc_util::{TIMEOUT_EXIT_CODE, TIMEOUT_MARKER};
 
 pub const DEFAULT_MAX_LINES: usize = 50;
 pub const DEFAULT_MAX_TOKENS: usize = 1200;
@@ -39,6 +40,10 @@ pub fn compress_output(
     let cleaned = strip_ansi(raw_output);
     let mut parsed = select_parser(command).parse(command, exit_code, &cleaned);
 
+    if let Some(limit) = timeout_limit(exit_code, &cleaned) {
+        mark_timed_out(&mut parsed, limit);
+    }
+
     if parsed.passed {
         parsed.lines.clear();
         parsed.truncated = false;
@@ -54,6 +59,24 @@ pub fn compress_output(
         parsed.raw_log_path = Some(log_path);
     }
     Ok(parsed)
+}
+
+/// Extracts the limit from the marker `proc_util` appends when it kills a process.
+fn timeout_limit(exit_code: i32, output: &str) -> Option<&str> {
+    if exit_code != TIMEOUT_EXIT_CODE {
+        return None;
+    }
+    output.rsplit_once(TIMEOUT_MARKER)?.1.split_whitespace().next()
+}
+
+/// Reports an interrupted run as a timeout rather than as whatever the partial output looked like.
+fn mark_timed_out(parsed: &mut CompressedOutput, limit: &str) {
+    let note = format!(
+        "TIMEOUT: killed after {limit} before finishing; results are partial (raise `tier_budgets.tier1_timeout_secs`)"
+    );
+    parsed.passed = false;
+    parsed.summary = format!("{note}. {}", parsed.summary);
+    parsed.lines.insert(0, note);
 }
 
 /// Strips ANSI CSI color/formatting escape sequences (`\x1b[...m` etc.).
@@ -134,14 +157,36 @@ pub(crate) fn cap_lines(lines: &[String], max_lines: usize, max_tokens: usize) -
             break;
         }
         let next_chars = used_chars.saturating_add(line.len()).saturating_add(1);
-        if !out.is_empty() && next_chars > char_budget {
+        if next_chars > char_budget {
             truncated = true;
+            if out.is_empty() && char_budget > 1 {
+                let clipped = truncate_line_utf8(line, char_budget - 1);
+                out.push(clipped);
+            }
             break;
         }
         used_chars = next_chars;
         out.push(line.clone());
     }
     (out, truncated)
+}
+
+fn truncate_line_utf8(line: &str, max_bytes: usize) -> String {
+    if line.len() <= max_bytes {
+        return line.to_owned();
+    }
+    if max_bytes <= 3 {
+        let mut end = max_bytes.min(line.len());
+        while end > 0 && !line.is_char_boundary(end) {
+            end -= 1;
+        }
+        return line[..end].to_owned();
+    }
+    let mut end = (max_bytes - 3).min(line.len());
+    while end > 0 && !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &line[..end])
 }
 
 fn write_raw_log(repo_root: &Path, raw_output: &str) -> Result<PathBuf> {

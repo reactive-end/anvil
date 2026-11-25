@@ -127,12 +127,6 @@ fn classify_single(file: &ChangedFile) -> DiffCategory {
     if is_style_extension(&normalized) {
         return DiffCategory::StyleOnly;
     }
-    if is_contract_path(&normalized) {
-        return DiffCategory::Contract;
-    }
-    if is_config_path(&normalized, file_name) {
-        return DiffCategory::Config;
-    }
     if is_ui_path(&normalized) {
         if let Some(hunks) = &file.hunks
             && style::hunks_are_style_only(hunks)
@@ -140,6 +134,12 @@ fn classify_single(file: &ChangedFile) -> DiffCategory {
             return DiffCategory::StyleOnly;
         }
         return DiffCategory::Ui;
+    }
+    if is_contract_path(&normalized) {
+        return DiffCategory::Contract;
+    }
+    if is_config_path(&normalized, file_name) {
+        return DiffCategory::Config;
     }
     DiffCategory::Logic
 }

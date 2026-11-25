@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -132,8 +133,12 @@ pub struct SubrepoConfig {
 pub struct TierBudgets {
     #[serde(default = "default_tier0_ms")]
     pub tier0_ms: u64,
+    /// Latency target for a Tier 1 pass.
     #[serde(default = "default_tier1_secs")]
     pub tier1_secs: u64,
+    /// Hard wall-clock limit per Tier 1 typecheck or test process (cold builds included).
+    #[serde(default = "default_tier1_timeout_secs")]
+    pub tier1_timeout_secs: u64,
     #[serde(default = "default_max_lines")]
     pub compressor_max_lines: usize,
     #[serde(default = "default_max_tokens")]
@@ -145,9 +150,17 @@ impl Default for TierBudgets {
         Self {
             tier0_ms: default_tier0_ms(),
             tier1_secs: default_tier1_secs(),
+            tier1_timeout_secs: default_tier1_timeout_secs(),
             compressor_max_lines: default_max_lines(),
             compressor_max_tokens: default_max_tokens(),
         }
+    }
+}
+
+impl TierBudgets {
+    /// Returns the hard per-process Tier 1 timeout, never below the latency target.
+    pub fn tier1_timeout(&self) -> Duration {
+        Duration::from_secs(self.tier1_timeout_secs.max(self.tier1_secs).max(5))
     }
 }
 
@@ -224,6 +237,36 @@ impl Default for SonarConfig {
     }
 }
 
+/// Configurable thresholds for `PreToolUse` Token Guard file read checks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenGuardConfig {
+    #[serde(default = "default_tg_max_text_lines")]
+    pub max_text_lines: usize,
+    #[serde(default = "default_tg_max_read_lines")]
+    pub max_read_lines: usize,
+    #[serde(default = "default_tg_max_noise_read_lines")]
+    pub max_noise_read_lines: usize,
+    #[serde(default = "default_tg_max_binary_bytes")]
+    pub max_binary_bytes: u64,
+    #[serde(default = "default_tg_max_pdf_bytes")]
+    pub max_pdf_bytes: u64,
+    #[serde(default = "default_tg_max_pdf_pages")]
+    pub max_pdf_pages: usize,
+}
+
+impl Default for TokenGuardConfig {
+    fn default() -> Self {
+        Self {
+            max_text_lines: default_tg_max_text_lines(),
+            max_read_lines: default_tg_max_read_lines(),
+            max_noise_read_lines: default_tg_max_noise_read_lines(),
+            max_binary_bytes: default_tg_max_binary_bytes(),
+            max_pdf_bytes: default_tg_max_pdf_bytes(),
+            max_pdf_pages: default_tg_max_pdf_pages(),
+        }
+    }
+}
+
 /// Top-level `.harness/config.json` configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnvilConfig {
@@ -255,6 +298,8 @@ pub struct AnvilConfig {
     pub forbid_import_cycles: bool,
     #[serde(default)]
     pub sonar: SonarConfig,
+    #[serde(default)]
+    pub token_guard: TokenGuardConfig,
 }
 
 impl Default for AnvilConfig {
@@ -274,6 +319,7 @@ impl Default for AnvilConfig {
             boundaries: Vec::new(),
             forbid_import_cycles: false,
             sonar: SonarConfig::default(),
+            token_guard: TokenGuardConfig::default(),
         }
     }
 }
@@ -323,6 +369,10 @@ fn default_tier1_secs() -> u64 {
     15
 }
 
+fn default_tier1_timeout_secs() -> u64 {
+    300
+}
+
 fn default_max_lines() -> usize {
     50
 }
@@ -353,6 +403,30 @@ fn default_cognitive_max() -> usize {
 
 fn default_duplication_min_lines() -> usize {
     8
+}
+
+fn default_tg_max_text_lines() -> usize {
+    800
+}
+
+fn default_tg_max_read_lines() -> usize {
+    400
+}
+
+fn default_tg_max_noise_read_lines() -> usize {
+    200
+}
+
+fn default_tg_max_binary_bytes() -> u64 {
+    5 * 1024 * 1024
+}
+
+fn default_tg_max_pdf_bytes() -> u64 {
+    10 * 1024 * 1024
+}
+
+fn default_tg_max_pdf_pages() -> usize {
+    20
 }
 
 fn default_root_allowlist() -> Vec<String> {

@@ -55,10 +55,11 @@ pub fn is_noise_file(rel_path: &str) -> bool {
     } else {
         segments.len().saturating_sub(1)
     };
-    if segments[..dir_count]
-        .iter()
-        .any(|seg| NOISE_DIR_SEGMENTS.contains(seg))
-    {
+    if segments[..dir_count].iter().any(|seg| {
+        NOISE_DIR_SEGMENTS
+            .iter()
+            .any(|noise| seg.eq_ignore_ascii_case(noise))
+    }) {
         return true;
     }
 
@@ -67,7 +68,10 @@ pub fn is_noise_file(rel_path: &str) -> bool {
     }
 
     let file_name = segments[segments.len() - 1];
-    if NOISE_EXACT_NAMES.contains(&file_name) {
+    if NOISE_EXACT_NAMES
+        .iter()
+        .any(|noise| file_name.eq_ignore_ascii_case(noise))
+    {
         return true;
     }
 

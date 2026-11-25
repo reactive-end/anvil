@@ -101,6 +101,11 @@ pub fn compute_rules_hash(repo_root: &Path, config: &AnvilConfig) -> String {
         hasher.update(esc.as_bytes());
         hasher.update(b"\0");
     }
+    hasher.update(b"allowlist\0");
+    for item in &config.root_allowlist {
+        hasher.update(item.as_bytes());
+        hasher.update(b"\0");
+    }
     let rules_dir = repo_root.join(".harness").join("rules");
     if let Ok(entries) = fs::read_dir(&rules_dir) {
         let mut files: Vec<PathBuf> = entries

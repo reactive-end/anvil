@@ -94,7 +94,7 @@ fn is_redundant_meta(line: &str) -> bool {
 fn extract_diff_path(header_line: &str) -> Option<String> {
     let rest = header_line.strip_prefix("diff --git ")?.trim();
     if let Some(idx) = rest.rfind("\" \"b/") {
-        let b_part = &rest[idx + 3..];
+        let b_part = &rest[idx + 5..];
         return Some(b_part.trim_end_matches('"').to_owned());
     }
     if let Some((_, b_part)) = rest.rsplit_once(" b/") {

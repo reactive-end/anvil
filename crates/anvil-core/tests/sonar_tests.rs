@@ -109,3 +109,17 @@ fn web_api_client_parses_quality_gate_and_issues_with_basic_auth() {
     assert_eq!(issues[0].rule, "rust:S3776");
     handle.join().unwrap();
 }
+
+#[test]
+fn rust_lifetimes_and_try_operator_do_not_corrupt_cognitive_complexity() {
+    let rust_src = r#"
+fn parse_cfg<'a>(input: &'a str, key: &str) -> Option<&'a str> {
+    let rest: Option<&str> = input.strip_prefix(key);
+    let val: &str = rest?.trim();
+    let again: &str = val.strip_prefix(':')?.trim();
+    Some(again)
+}
+"#;
+    let diags = check_cognitive_complexity("src/parser.rs", rust_src, 1);
+    assert!(diags.is_empty(), "lifetimes and ? operator must score 0: {diags:?}");
+}

@@ -26,7 +26,12 @@ pub struct AnvilStats {
     pub tokens_saved_outline: u64,
     pub code_mode_calls: u64,
     pub tokens_saved_code_mode: u64,
+    pub compressor_runs: u64,
+    pub tokens_raw_compressor: u64,
     pub token_guard_blocks: u64,
+    pub tokens_avoided_token_guard: u64,
+    pub security_prompts: u64,
+    pub stop_blocks: u64,
     pub token_guard_warnings: u64,
     pub hook_latencies_ms: Vec<u64>,
     pub rule_hits: FxHashMap<String, u64>,
@@ -41,7 +46,13 @@ pub enum StatsEvent {
     SymbolReadSaved { tokens_saved: u64 },
     OutlineSaved { tokens_saved: u64 },
     CodeModeExec { calls_executed: u64, tokens_saved: u64 },
-    TokenGuard { blocked: bool },
+    TokenGuard {
+        blocked: bool,
+        #[serde(default)]
+        tokens_avoided: u64,
+    },
+    SecurityPrompt,
+    StopBlocked,
     RuleHit { rule: String },
 }
 
@@ -78,7 +89,12 @@ pub fn record_event(repo_root: &Path, event: StatsEvent) -> Result<()> {
         .open(&path)
         .with_context(|| format!("failed to open {}", path.display()))?;
     file.write_all(line.as_bytes())
-        .with_context(|| format!("failed to append {}", path.display()))
+        .with_context(|| format!("failed to append {}", path.display()))?;
+    drop(file);
+    if fs::metadata(&path).is_ok_and(|m| m.len() >= STATS_JSONL_COMPACT_BYTES) {
+        let _ = compact_stats(repo_root);
+    }
+    Ok(())
 }
 
 /// Loads accumulated stats by folding `stats.json` and `stats.jsonl`, compacting when needed.
@@ -112,7 +128,21 @@ fn compact_stats(repo_root: &Path) -> Result<()> {
     let jsonl = stats_jsonl_path(repo_root);
     let lock_path = path.with_extension("json.lock");
     with_file_lock(&lock_path, LOCK_TIMEOUT_MS, || {
+        if !jsonl.exists() {
+            return Ok(());
+        }
         let mut stats = read_stats_or_default(&path)?;
+        let staged = path.with_file_name(format!(
+            "stats.jsonl.compact.{}.{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        if fs::rename(&jsonl, &staged).is_ok() {
+            fold_jsonl(&staged, &mut stats);
+            write_stats(&path, &stats)?;
+            let _ = fs::remove_file(&staged);
+            return Ok(());
+        }
         fold_jsonl(&jsonl, &mut stats);
         write_stats(&path, &stats)?;
         let _ = fs::write(&jsonl, b"");
@@ -157,16 +187,20 @@ fn write_stats(path: &Path, stats: &AnvilStats) -> Result<()> {
     atomic_write(path, format!("{json}\n").as_bytes())
 }
 
+fn record_hook_latency(stats: &mut AnvilStats, elapsed_ms: u64) {
+    stats.hook_calls = stats.hook_calls.saturating_add(1);
+    stats.total_hook_ms = stats.total_hook_ms.saturating_add(elapsed_ms);
+    stats.hook_latencies_ms.push(elapsed_ms);
+    if stats.hook_latencies_ms.len() > MAX_LATENCY_SAMPLES {
+        let drop_n = stats.hook_latencies_ms.len() - MAX_LATENCY_SAMPLES;
+        stats.hook_latencies_ms.drain(..drop_n);
+    }
+}
+
 fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
     match event {
         StatsEvent::HookCall { elapsed_ms } => {
-            stats.hook_calls = stats.hook_calls.saturating_add(1);
-            stats.total_hook_ms = stats.total_hook_ms.saturating_add(elapsed_ms);
-            stats.hook_latencies_ms.push(elapsed_ms);
-            if stats.hook_latencies_ms.len() > MAX_LATENCY_SAMPLES {
-                let drop_n = stats.hook_latencies_ms.len() - MAX_LATENCY_SAMPLES;
-                stats.hook_latencies_ms.drain(..drop_n);
-            }
+            record_hook_latency(stats, elapsed_ms);
         }
         StatsEvent::CheckCacheHit => {
             stats.check_cache_hits = stats.check_cache_hits.saturating_add(1);
@@ -176,6 +210,10 @@ fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
             compact_bytes,
         } => {
             let saved_tokens = estimate_tokens(raw_bytes.saturating_sub(compact_bytes));
+            stats.compressor_runs = stats.compressor_runs.saturating_add(1);
+            stats.tokens_raw_compressor = stats
+                .tokens_raw_compressor
+                .saturating_add(estimate_tokens(raw_bytes));
             stats.tokens_saved_compressor =
                 stats.tokens_saved_compressor.saturating_add(saved_tokens);
         }
@@ -194,16 +232,65 @@ fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
             stats.tokens_saved_code_mode =
                 stats.tokens_saved_code_mode.saturating_add(tokens_saved);
         }
-        StatsEvent::TokenGuard { blocked } => {
+        StatsEvent::TokenGuard {
+            blocked,
+            tokens_avoided,
+        } => {
+            stats.tokens_avoided_token_guard =
+                stats.tokens_avoided_token_guard.saturating_add(tokens_avoided);
             if blocked {
                 stats.token_guard_blocks = stats.token_guard_blocks.saturating_add(1);
             } else {
                 stats.token_guard_warnings = stats.token_guard_warnings.saturating_add(1);
             }
         }
+        StatsEvent::SecurityPrompt => {
+            stats.security_prompts = stats.security_prompts.saturating_add(1);
+        }
+        StatsEvent::StopBlocked => {
+            stats.stop_blocks = stats.stop_blocks.saturating_add(1);
+        }
         StatsEvent::RuleHit { rule } => {
             let counter = stats.rule_hits.entry(rule).or_insert(0);
             *counter = counter.saturating_add(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn record_event_auto_compacts_jsonl_once_exceeding_64kib() {
+        let dir = TempDir::new().expect("tempdir");
+        let root = dir.path();
+        fs::create_dir_all(root.join(".harness/.state")).expect("mkdir");
+
+        // Each RuleHit line is 46 bytes; 1_600 events write ~72 KiB and force one compaction.
+        let total = 1_600u64;
+        for i in 0..total {
+            record_event(
+                root,
+                StatsEvent::RuleHit {
+                    rule: format!("no-eval-variant-{i:04}"),
+                },
+            )
+            .expect("record event");
+        }
+
+        let jsonl_len = fs::metadata(stats_jsonl_path(root))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        assert!(
+            jsonl_len < STATS_JSONL_COMPACT_BYTES,
+            "stats.jsonl should auto-compact below 64 KiB, got {jsonl_len}"
+        );
+        assert!(stats_path(root).is_file(), "stats.json must be materialized");
+        let loaded = load_stats(root).expect("load stats");
+        let sum: u64 = loaded.rule_hits.values().sum();
+        assert_eq!(sum, total);
     }
 }

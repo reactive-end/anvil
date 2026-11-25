@@ -135,3 +135,20 @@ fn command_family_key_and_scoped_command_success() -> Result<()> {
     assert!(matched.last_command_key.is_none());
     Ok(())
 }
+
+#[test]
+fn command_family_key_skips_flag_values_and_keeps_open_snapshot() -> Result<()> {
+    assert_eq!(command_family_key("cargo -p anvil-core test"), "cargo test");
+    assert_eq!(command_family_key("git -C subrepo status"), "git status");
+
+    let tmp = TempDir::new()?;
+    let cb = CircuitBreaker::new(tmp.path(), 3);
+    for _ in 0..3 {
+        cb.record_failure("tsc", "TS2322 mismatch", "tsc")?;
+    }
+    let after_open = cb.record_failure("vitest", "different error", "vitest")?;
+    assert_eq!(after_open.state, CircuitState::Open);
+    assert_eq!(after_open.consecutive_failures, 3);
+    assert_eq!(after_open.last_tool.as_deref(), Some("tsc"));
+    Ok(())
+}
