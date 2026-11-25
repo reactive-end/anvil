@@ -1,0 +1,25 @@
+{
+  "entry_id": "01M8A74DCTRDKH5QG2VX4DF0JH",
+  "task_id": "T-022",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "anvil orchestrator setup|status|on|off generates anvil-orchestrator/anvil-executor agents (model + effort per role) and the /orchestrate skill",
+  "evidence": "e2e test green; Claude CLI 2.1.296 init event confirms model claude-opus-5-5, no Edit tool, via --agent and settings.local agent key. Executor delegation not run live (CLI OAuth expired)",
+  "files_touched": [
+    "crates/anvil-adapters/src/claude_code/agents.rs",
+    "crates/anvil-adapters/src/sync.rs",
+    "crates/anvil-adapters/src/templates.rs",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands.rs",
+    "crates/anvil-cli/src/commands/orchestrator.rs",
+    "crates/anvil-cli/tests/runner_circuit_and_adapters_e2e.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/config/orchestrator.rs",
+    "templates/agents/anvil-executor.md",
+    "templates/agents/anvil-orchestrator.md",
+    "templates/agents/orchestrate-skill.md"
+  ],
+  "timestamp": "2026-11-25T20:42:38.911086900Z"
+}

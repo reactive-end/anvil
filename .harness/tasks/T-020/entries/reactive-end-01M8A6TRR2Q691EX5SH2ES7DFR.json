@@ -1,0 +1,16 @@
+{
+  "entry_id": "01M8A6TRR2Q691EX5SH2ES7DFR",
+  "task_id": "T-020",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Token Guard denies unbounded shell dumps; stats report compressor reduction, tokens avoided, stop blocks and security prompts",
+  "evidence": "cargo test -p anvil-cli -p anvil-core and clippy green",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/hook/token_guard.rs",
+    "crates/anvil-cli/src/commands/hook/token_guard_shell.rs",
+    "crates/anvil-cli/src/commands/stats.rs",
+    "crates/anvil-core/src/stats.rs"
+  ],
+  "timestamp": "2026-11-25T20:37:22.854735300Z"
+}

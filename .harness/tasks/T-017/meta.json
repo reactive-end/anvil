@@ -1,0 +1,6 @@
+{
+  "task_id": "T-017",
+  "created_by": "reactive-end",
+  "request": "Fix red tests, clippy failure and Ubuntu CI",
+  "created_at": "2026-11-25T20:23:39.236854Z"
+}

@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8A5AN7N9M9ABYK6084J8H8P",
+  "task_id": "T-015",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: PreToolUse passthrough: never auto-approve tool calls",
+  "files_touched": [],
+  "timestamp": "2026-11-25T20:11:06.400778600Z"
+}

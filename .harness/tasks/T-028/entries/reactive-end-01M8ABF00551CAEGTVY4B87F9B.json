@@ -1,0 +1,15 @@
+{
+  "entry_id": "01M8ABF00551CAEGTVY4B87F9B",
+  "task_id": "T-028",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Orchestrator role enforcement and reminder apply only to Claude Code hooks; Antigravity is no longer blocked. Installed binary not yet replaced.",
+  "evidence": "cargo test --workspace all ok (run by reviewer); anvil check PASS; new e2e test failed before the fix and passes after; clippy -D warnings clean (executor-reported)",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/tests/runner_circuit_and_adapters_e2e.rs"
+  ],
+  "timestamp": "2026-11-25T21:58:19.947334500Z"
+}

@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8A5GX18E6DGWKD0P6A4DTKD",
+  "task_id": "T-016",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Harden Security Guard against wrapper, newline, substitution and PowerShell evasions",
+  "files_touched": [],
+  "timestamp": "2026-11-25T20:14:30.990404800Z"
+}

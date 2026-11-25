@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8A5AN9R8RGSW0J8CQG1C28P",
+  "task_id": "T-015",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Allow outcome must emit no permission decision in Claude Code (and Antigravity if contract permits)",
+  "files_touched": [],
+  "timestamp": "2026-11-25T20:11:06.464868600Z"
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "T-016",
+  "created_by": "reactive-end",
+  "request": "Harden Security Guard against wrapper, newline, substitution and PowerShell evasions",
+  "created_at": "2026-11-25T20:14:30.950451Z"
+}

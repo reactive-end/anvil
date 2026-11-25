@@ -1,0 +1,24 @@
+{
+  "entry_id": "01M8A9S3WEVS18VYFMF9XP5C98",
+  "task_id": "T-025",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "Reviewed and accepted the desktop-catalog models (catalog.ts, models.ts, language.ts, menus, view, register). One layout fix outstanding: submenu must open after the role menu.",
+  "evidence": "anvil check PASS; executor-reported: plugin validate passed, plugin test 28 pass, tsc exit 0",
+  "files_touched": [
+    "integrations/claude-code/anvil-mode/hooks/catalog.ts",
+    "integrations/claude-code/anvil-mode/hooks/language.ts",
+    "integrations/claude-code/anvil-mode/hooks/menus.tsx",
+    "integrations/claude-code/anvil-mode/hooks/models.ts",
+    "integrations/claude-code/anvil-mode/hooks/register.tsx",
+    "integrations/claude-code/anvil-mode/hooks/view.tsx"
+  ],
+  "next_steps": [
+    "Review the view.tsx fix",
+    "Give deploy command and ask for screenshot",
+    "task_done T-025"
+  ],
+  "blocker": "Waiting for anvil-executor (a1ff53abd9c8be050) to finish the openMenu order fix; rendering not seen",
+  "timestamp": "2026-11-25T21:28:54.454159Z"
+}

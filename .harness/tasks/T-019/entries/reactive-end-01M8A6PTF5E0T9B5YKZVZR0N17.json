@@ -1,0 +1,21 @@
+{
+  "entry_id": "01M8A6PTF5E0T9B5YKZVZR0N17",
+  "task_id": "T-019",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Added tier1_timeout_secs (300s) separate from the latency target, explicit TIMEOUT reporting, process-tree kill with partial output",
+  "evidence": "anvil check PASS on own 143-file diff; workspace tests and clippy green",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/run.rs",
+    "crates/anvil-core/src/compressor.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/proc_util.rs",
+    "crates/anvil-core/tests/config_tests.rs",
+    "crates/anvil-core/tests/proc_util_tests.rs",
+    "crates/anvil-graph/src/impact/tests_native.rs",
+    "crates/anvil-graph/src/impact/tests_runner.rs",
+    "crates/anvil-graph/src/impact/typecheck.rs"
+  ],
+  "timestamp": "2026-11-25T20:35:13.548054400Z"
+}

@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8A6ERWE1280R01VC7GQTBST",
+  "task_id": "T-019",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Make Tier 1 timeouts realistic, explicit and process-tree safe",
+  "files_touched": [],
+  "timestamp": "2026-11-25T20:30:49.781139800Z"
+}

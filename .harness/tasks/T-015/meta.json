@@ -1,0 +1,6 @@
+{
+  "task_id": "T-015",
+  "created_by": "reactive-end",
+  "request": "PreToolUse passthrough: never auto-approve tool calls",
+  "created_at": "2026-11-25T20:11:06.353071700Z"
+}

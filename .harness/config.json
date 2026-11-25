@@ -143,6 +143,7 @@
   "tier_budgets": {
     "tier0_ms": 500,
     "tier1_secs": 15,
+    "tier1_timeout_secs": 300,
     "compressor_max_lines": 50,
     "compressor_max_tokens": 1200
   },
@@ -187,5 +188,23 @@
     "token_env": "SONAR_TOKEN",
     "cognitive_complexity_max": 15,
     "duplication_min_lines": 8
+  },
+  "token_guard": {
+    "max_text_lines": 800,
+    "max_read_lines": 400,
+    "max_noise_read_lines": 200,
+    "max_binary_bytes": 5242880,
+    "max_pdf_bytes": 10485760,
+    "max_pdf_pages": 20
+  },
+  "orchestrator": {
+    "orchestrator": {
+      "model": "opus",
+      "effort": "high"
+    },
+    "executor": {
+      "model": "sonnet",
+      "effort": "high"
+    }
   }
 }

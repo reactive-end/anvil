@@ -1,0 +1,23 @@
+{
+  "entry_id": "01M8A8GK5S99TYD45B6QMET5FX",
+  "task_id": "T-024",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Orchestrator mode enforces judge/executor roles with bounded scopes; anvil-mode mod adds the selector; new binary installed",
+  "evidence": "371 tests, clippy and anvil check pass; mod 3/3 tests, validate and tsc clean; live: main Edit denied, Sonnet 5.5 executor edited in scope and was denied out of scope",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/claude_code.rs",
+    "crates/anvil-adapters/src/contract.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/orchestrator.rs",
+    "crates/anvil-cli/tests/runner_circuit_and_adapters_e2e.rs",
+    "crates/anvil-core/src/orchestrator_mode.rs",
+    "integrations/claude-code/anvil-mode/hooks/register.tsx"
+  ],
+  "timestamp": "2026-11-25T21:06:46.622892800Z"
+}

@@ -1,0 +1,16 @@
+{
+  "entry_id": "01M8A7ESK9QJGQTHF1A14KQJQR",
+  "task_id": "T-023",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "README safety model, license and orchestrator docs; adapters synced; full verification green",
+  "evidence": "363 tests pass, clippy -D warnings clean, anvil check PASS on 178 changed files (Windows only)",
+  "files_touched": [
+    ".gitignore",
+    "CLAUDE.md",
+    "README.md",
+    "templates/CLAUDE.md"
+  ],
+  "timestamp": "2026-11-25T20:48:19.087545100Z"
+}

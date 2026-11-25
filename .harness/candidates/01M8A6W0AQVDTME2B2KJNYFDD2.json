@@ -1,0 +1,26 @@
+{
+  "id": "01M8A6W0AQVDTME2B2KJNYFDD2",
+  "rule_name": "no-user-absolute-paths-in-tests",
+  "description": "Tests must not depend on absolute paths of a developer machine; use TempDir or an env var",
+  "pattern": "[A-Z]:[\\/](Development|Users)[\\/]\\w+[\\/]",
+  "languages": [
+    "rust"
+  ],
+  "file_globs": [
+    "crates/*/tests/**/*.rs"
+  ],
+  "severity": "error",
+  "multiline": false,
+  "match_comments_and_strings": false,
+  "recurrence": 1,
+  "high_impact": false,
+  "deterministic": true,
+  "estimated_runtime_ms": 10,
+  "fp_checked": false,
+  "false_positives_found": 0,
+  "examples": [
+    "Path::new(r\"C:\\Development\\Fliiper\\fliiper-front\") silently skipped the benchmark in CI"
+  ],
+  "created_at": "2026-11-25T20:38:03.351215Z",
+  "updated_at": "2026-11-25T20:38:03.351215Z"
+}

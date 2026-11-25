@@ -1,0 +1,6 @@
+{
+  "task_id": "T-018",
+  "created_by": "reactive-end",
+  "request": "Scope Stop gates and task files to the current session; make no-test-tampering literal-aware",
+  "created_at": "2026-11-25T20:26:05.735883500Z"
+}

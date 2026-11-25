@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8A663H9BZ6Y06CW65ARXDTD",
+  "task_id": "T-018",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Scope Stop gates and task files to the current session; make no-test-tampering literal-aware",
+  "files_touched": [],
+  "timestamp": "2026-11-25T20:26:05.774805400Z"
+}

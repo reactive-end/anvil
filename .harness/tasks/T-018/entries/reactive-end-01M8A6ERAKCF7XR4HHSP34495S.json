@@ -1,0 +1,23 @@
+{
+  "entry_id": "01M8A6ERAKCF7XR4HHSP34495S",
+  "task_id": "T-018",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Stop gates only files changed since session baseline; ledger files scoped to the task; tampering rule ignores string literals and reports real lines",
+  "evidence": "cargo test --workspace and clippy -D warnings green",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/session_scope.rs",
+    "crates/anvil-cli/src/commands/hook/task_auto.rs",
+    "crates/anvil-cli/src/commands/tasks.rs",
+    "crates/anvil-cli/tests/cli_lifecycle_e2e.rs",
+    "crates/anvil-core/src/test_tampering.rs",
+    "crates/anvil-core/tests/test_tampering_tests.rs",
+    "crates/anvil-mcp/src/tools_tasks.rs",
+    "crates/anvil-tasks/src/curate.rs",
+    "crates/anvil-tasks/src/files.rs",
+    "crates/anvil-tasks/src/lib.rs"
+  ],
+  "timestamp": "2026-11-25T20:30:49.211914900Z"
+}

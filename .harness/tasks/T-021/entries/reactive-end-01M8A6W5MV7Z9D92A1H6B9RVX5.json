@@ -1,0 +1,15 @@
+{
+  "entry_id": "01M8A6W5MV7Z9D92A1H6B9RVX5",
+  "task_id": "T-021",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Added MIT LICENSE; graph benchmark runs on a generated workspace (ANVIL_BENCH_REPO optional); logged first ratchet candidate for machine-specific paths in tests",
+  "evidence": "cargo test -p anvil-graph --test graph_benchmark green: 240 files, cold build 132ms, incremental 63ms",
+  "files_touched": [
+    "LICENSE",
+    "crates/anvil-graph/tests/fliiper_benchmark.rs",
+    "crates/anvil-graph/tests/graph_benchmark.rs"
+  ],
+  "timestamp": "2026-11-25T20:38:08.832075600Z"
+}
