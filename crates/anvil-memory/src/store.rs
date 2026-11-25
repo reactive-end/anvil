@@ -8,7 +8,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use anvil_core::traits::FreshnessState;
 use chrono::Utc;
-use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::model::{MemoryChunkRecord, Observation, normalize_rel_path};
@@ -17,6 +17,13 @@ use sql::{
     find_topic_meta_in_tx, freshness_to_str, insert_observation_row, row_to_observation,
     sync_observation_files, update_observation_row,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IngestedChunkMeta {
+    pub blake3_hash: String,
+    pub mtime_ns: i64,
+    pub byte_len: i64,
+}
 
 /// SQLite-backed store for memory observations and ingested chunk hashes.
 pub struct MemoryStore {
@@ -55,9 +62,9 @@ impl MemoryStore {
         &mut self.conn
     }
 
-    /// Upserts an observation by `topic_key` inside a dedicated transaction.
+    /// Upserts an observation by `topic_key` inside an IMMEDIATE transaction.
     pub fn upsert_observation(&mut self, record: &MemoryChunkRecord) -> Result<Observation> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let applied = Self::upsert_in_tx(&tx, record)?;
         tx.commit()?;
         match applied {
@@ -68,10 +75,19 @@ impl MemoryStore {
         }
     }
 
-    /// Upserts a chunk record inside an existing transaction using last-writer-wins on `updated_at`.
+    /// Upserts a chunk record inside an existing transaction using last-writer-wins on `(updated_at, id)`.
     pub fn upsert_in_tx(
         tx: &Transaction<'_>,
         record: &MemoryChunkRecord,
+    ) -> Result<Option<Observation>> {
+        Self::upsert_in_tx_with_chunk(tx, record, None)
+    }
+
+    /// Upserts a chunk record inside an existing transaction while attributing `chunk_filename`.
+    pub(crate) fn upsert_in_tx_with_chunk(
+        tx: &Transaction<'_>,
+        record: &MemoryChunkRecord,
+        chunk_filename: Option<&str>,
     ) -> Result<Option<Observation>> {
         let existing = find_topic_meta_in_tx(tx, &record.topic_key)?;
         let normalized_files: Vec<String> = record
@@ -85,14 +101,25 @@ impl MemoryStore {
 
         let (obs_id, created_at) = match existing {
             Some((existing_id, existing_created, existing_updated)) => {
-                if existing_updated > record.updated_at {
+                if existing_updated > record.updated_at
+                    || (existing_updated == record.updated_at && record.id < existing_id)
+                {
                     return Ok(None);
                 }
-                update_observation_row(tx, &existing_id, record, &files_json, &symbols_json)?;
-                (existing_id, existing_created.min(record.created_at))
+                let min_created = existing_created.min(record.created_at);
+                update_observation_row(
+                    tx,
+                    &existing_id,
+                    record,
+                    &files_json,
+                    &symbols_json,
+                    min_created,
+                    chunk_filename,
+                )?;
+                (existing_id, min_created)
             }
             None => {
-                insert_observation_row(tx, record, &files_json, &symbols_json)?;
+                insert_observation_row(tx, record, &files_json, &symbols_json, chunk_filename)?;
                 (record.id.clone(), record.created_at)
             }
         };
@@ -174,7 +201,7 @@ impl MemoryStore {
         if changed_files.is_empty() {
             return Ok(0);
         }
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut total_updated = 0usize;
         let mut seen = FxHashSet::default();
         {
@@ -232,6 +259,36 @@ impl MemoryStore {
         Ok(hashes)
     }
 
+    /// Returns a map of `filename -> IngestedChunkMeta` for all previously ingested chunk files.
+    pub(crate) fn ingested_chunk_meta(&self) -> Result<FxHashMap<String, IngestedChunkMeta>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT filename, blake3_hash, mtime_ns, byte_len FROM ingested_chunks")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                IngestedChunkMeta {
+                    blake3_hash: row.get::<_, String>(1)?,
+                    mtime_ns: row.get::<_, i64>(2)?,
+                    byte_len: row.get::<_, i64>(3)?,
+                },
+            ))
+        })?;
+        let mut map = FxHashMap::default();
+        for row in rows {
+            let (filename, meta) = row?;
+            map.insert(filename, meta);
+        }
+        Ok(map)
+    }
+
+    pub(crate) fn has_expired_observations(&self, now_ms: i64) -> Result<bool> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT 1 FROM observations WHERE expires_at IS NOT NULL AND expires_at <= ?1 LIMIT 1",
+        )?;
+        Ok(stmt.query_row([now_ms], |_| Ok(true)).optional()?.unwrap_or(false))
+    }
+
     /// Records or updates an ingested chunk filename and BLAKE3 hash inside a transaction.
     pub fn record_ingested_chunk_in_tx(
         tx: &Transaction<'_>,
@@ -239,6 +296,17 @@ impl MemoryStore {
         blake3_hash: &str,
         ingested_at: i64,
     ) -> Result<()> {
-        sql::record_ingested_chunk_in_tx(tx, filename, blake3_hash, ingested_at)
+        sql::record_ingested_chunk_in_tx(tx, filename, blake3_hash, ingested_at, 0, 0)
+    }
+
+    pub(crate) fn record_ingested_chunk_meta_in_tx(
+        tx: &Transaction<'_>,
+        filename: &str,
+        blake3_hash: &str,
+        ingested_at: i64,
+        mtime_ns: i64,
+        byte_len: i64,
+    ) -> Result<()> {
+        sql::record_ingested_chunk_in_tx(tx, filename, blake3_hash, ingested_at, mtime_ns, byte_len)
     }
 }

@@ -303,7 +303,7 @@ fn task_update_schema() -> Value {
             "properties": {
                 "task_id": { "type": "string" },
                 "summary": { "type": "string" },
-                "status": { "type": "string", "enum": ["in_progress", "blocked", "done"], "default": "in_progress" },
+                "status": { "type": "string", "enum": ["not_started", "in_progress", "blocked", "done"], "default": "in_progress" },
                 "done_steps": { "type": "array", "items": { "type": "string" } },
                 "next_steps": { "type": "array", "items": { "type": "string" } },
                 "blocker": { "type": "string" },

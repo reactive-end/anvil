@@ -27,13 +27,14 @@ pub(crate) fn insert_observation_row(
     record: &MemoryChunkRecord,
     files_json: &str,
     symbols_json: &str,
+    chunk_filename: Option<&str>,
 ) -> Result<()> {
     let mut stmt = tx.prepare_cached(
         "INSERT INTO observations (
              id, topic_key, kind, title, what, why, location, learned,
              related_files, related_symbols, freshness, freshness_reason,
-             author, created_at, updated_at, expires_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'fresh', NULL, ?11, ?12, ?13, ?14)",
+             author, created_at, updated_at, expires_at, chunk_filename
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'fresh', NULL, ?11, ?12, ?13, ?14, ?15)",
     )?;
     stmt.execute(params![
         record.id,
@@ -50,6 +51,7 @@ pub(crate) fn insert_observation_row(
         record.created_at,
         record.updated_at,
         record.expires_at,
+        chunk_filename,
     ])?;
     Ok(())
 }
@@ -60,14 +62,17 @@ pub(crate) fn update_observation_row(
     record: &MemoryChunkRecord,
     files_json: &str,
     symbols_json: &str,
+    min_created: i64,
+    chunk_filename: Option<&str>,
 ) -> Result<()> {
     let mut stmt = tx.prepare_cached(
         "UPDATE observations
          SET kind = ?1, title = ?2, what = ?3, why = ?4, location = ?5,
              learned = ?6, related_files = ?7, related_symbols = ?8,
              freshness = 'fresh', freshness_reason = NULL,
-             author = ?9, updated_at = ?10, expires_at = ?11
-         WHERE id = ?12",
+             author = ?9, created_at = ?10, updated_at = ?11, expires_at = ?12,
+             chunk_filename = COALESCE(?13, chunk_filename)
+         WHERE id = ?14",
     )?;
     stmt.execute(params![
         record.kind.as_str(),
@@ -79,8 +84,10 @@ pub(crate) fn update_observation_row(
         files_json,
         symbols_json,
         record.author,
+        min_created,
         record.updated_at,
         record.expires_at,
+        chunk_filename,
         existing_id,
     ])?;
     Ok(())
@@ -108,16 +115,37 @@ pub(crate) fn record_ingested_chunk_in_tx(
     filename: &str,
     blake3_hash: &str,
     ingested_at: i64,
+    mtime_ns: i64,
+    byte_len: i64,
 ) -> Result<()> {
     let mut stmt = tx.prepare_cached(
-        "INSERT INTO ingested_chunks (filename, blake3_hash, ingested_at)
-         VALUES (?1, ?2, ?3)
+        "INSERT INTO ingested_chunks (filename, blake3_hash, ingested_at, mtime_ns, byte_len)
+         VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(filename) DO UPDATE SET
              blake3_hash = excluded.blake3_hash,
-             ingested_at = excluded.ingested_at",
+             ingested_at = excluded.ingested_at,
+             mtime_ns = excluded.mtime_ns,
+             byte_len = excluded.byte_len",
     )?;
-    stmt.execute(params![filename, blake3_hash, ingested_at])?;
+    stmt.execute(params![filename, blake3_hash, ingested_at, mtime_ns, byte_len])?;
     Ok(())
+}
+
+pub(crate) fn delete_removed_chunk_in_tx(tx: &Transaction<'_>, filename: &str) -> Result<usize> {
+    let mut obs_stmt =
+        tx.prepare_cached("DELETE FROM observations WHERE chunk_filename = ?1")?;
+    let removed = obs_stmt.execute([filename])?;
+    let mut chunk_stmt =
+        tx.prepare_cached("DELETE FROM ingested_chunks WHERE filename = ?1")?;
+    chunk_stmt.execute([filename])?;
+    Ok(removed)
+}
+
+pub(crate) fn delete_expired_observations_in_tx(tx: &Transaction<'_>, now_ms: i64) -> Result<usize> {
+    let mut stmt = tx.prepare_cached(
+        "DELETE FROM observations WHERE expires_at IS NOT NULL AND expires_at <= ?1",
+    )?;
+    Ok(stmt.execute([now_ms])?)
 }
 
 pub(crate) fn freshness_to_str(state: FreshnessState) -> &'static str {

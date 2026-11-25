@@ -267,7 +267,7 @@ fn reopen_skips_ddl_without_mutating_data_version() {
         .conn()
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(user_version, 2);
+    assert_eq!(user_version, 3);
 
     let data_version_before: i64 = observer
         .conn()
@@ -339,4 +339,103 @@ fn concurrent_reader_and_writer_with_busy_timeout_avoid_sqlite_busy() {
     }
 
     writer.join().expect("writer joined");
+}
+
+#[test]
+fn concurrent_engine_saves_avoid_sqlite_busy_with_immediate_tx() {
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    let tmp = TempDir::new().expect("tempdir");
+    drop(MemoryEngine::open(tmp.path(), "alice").expect("init schema"));
+
+    let workers = 6usize;
+    let barrier = Arc::new(Barrier::new(workers));
+    let root = Arc::new(tmp.path().to_path_buf());
+    let handles: Vec<_> = (0..workers)
+        .map(|i| {
+            let root = Arc::clone(&root);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                let mut eng = MemoryEngine::open_without_sync(&root, format!("dev-{i}")).expect("open");
+                barrier.wait();
+                eng.save(make_input(
+                    MemoryKind::Decision,
+                    &format!("concurrent/topic-{i}"),
+                    &format!("Concurrent Decision {i}"),
+                    "IMMEDIATE transaction acquires write lock cleanly under busy_timeout",
+                ))
+                .expect("concurrent save");
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().expect("worker joined");
+    }
+
+    let verifier = MemoryEngine::open(tmp.path(), "ci").expect("reopen");
+    for i in 0..workers {
+        assert!(verifier.get_by_topic(&format!("concurrent/topic-{i}")).expect("get").is_some());
+    }
+}
+
+#[test]
+fn sync_cleans_deleted_chunk_orphans_expired_ttl_and_preserves_min_created_at() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut engine = MemoryEngine::open(tmp.path(), "alice").expect("open");
+
+    let first = engine
+        .save(make_input(MemoryKind::Decision, "orphan/topic", "Orphan Target", "Initial"))
+        .expect("save orphan candidate");
+    let mut expiring = make_input(MemoryKind::Decision, "ttl/non-session", "Short Decision", "Body");
+    expiring.ttl_seconds = Some(-10);
+    engine.save(expiring).expect("save already expired");
+    engine.sync().expect("sync purges expired non-session observation");
+    assert!(engine.get_by_topic("ttl/non-session").expect("get expired").is_none());
+
+    let older_chunk = MemoryChunkRecord {
+        id: "01J00000000000000000000000".to_owned(),
+        topic_key: first.topic_key.clone(),
+        kind: MemoryKind::Decision,
+        title: "Updated Timestamp".to_owned(),
+        what: "Updated with earlier created_at".to_owned(),
+        why: first.why.clone(),
+        location: first.location.clone(),
+        learned: first.learned.clone(),
+        related_files: vec![],
+        related_symbols: vec![],
+        author: "bob".to_owned(),
+        created_at: first.created_at - 5_000,
+        updated_at: first.updated_at + 1_000,
+        expires_at: None,
+    };
+    let chunks_dir = tmp.path().join(".harness/memory/chunks");
+    let extra_path = chunks_dir.join("bob-01J00000000000000000000001.jsonl");
+    fs::write(&extra_path, format!("{}\n", serde_json::to_string(&older_chunk).unwrap())).unwrap();
+    engine.sync().expect("sync newer update");
+    let after_up = engine.get_by_topic("orphan/topic").expect("get").expect("exists");
+    assert_eq!(after_up.created_at, first.created_at - 5_000);
+
+    fs::remove_file(&extra_path).expect("remove chunk file");
+    engine.sync().expect("sync removes orphan");
+    assert!(engine.get_by_topic("orphan/topic").expect("after orphan removal").is_none());
+}
+
+#[test]
+fn v2_sqlite_database_upgrades_cleanly_to_v3() {
+    let tmp = TempDir::new().expect("tempdir");
+    let db_path = tmp.path().join(".harness/.state/anvil.db");
+    fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let conn = rusqlite::Connection::open(&db_path).expect("open raw v2");
+    conn.execute_batch(
+        "CREATE TABLE observations (id TEXT PRIMARY KEY, topic_key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, title TEXT NOT NULL, what TEXT NOT NULL, why TEXT NOT NULL, location TEXT NOT NULL, learned TEXT NOT NULL, related_files TEXT NOT NULL, related_symbols TEXT NOT NULL, freshness TEXT NOT NULL, freshness_reason TEXT, author TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expires_at INTEGER);
+         CREATE TABLE ingested_chunks (filename TEXT PRIMARY KEY, blake3_hash TEXT NOT NULL, ingested_at INTEGER NOT NULL);
+         PRAGMA user_version = 2;",
+    ).expect("seed v2 schema");
+    drop(conn);
+
+    let store = MemoryStore::open(&db_path).expect("upgrade to v3");
+    let version: i64 = store.conn().query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+    assert_eq!(version, 3);
+    assert!(store.ingested_chunk_filenames().is_ok());
 }

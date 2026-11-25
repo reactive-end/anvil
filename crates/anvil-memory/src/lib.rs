@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use anvil_core::traits::SymbolFreshnessProvider;
 use chrono::Utc;
+use rusqlite::TransactionBehavior;
 
 pub use model::{
     MemoryChunkRecord, MemoryKind, Observation, ObservationInput, SearchHit, StalenessUpdate,
@@ -86,12 +87,23 @@ impl MemoryEngine {
             Some(chunks::append_record(&self.chunks_dir, &self.author, &record)?)
         };
 
-        let tx = self.store.conn_mut().transaction()?;
-        let obs = MemoryStore::upsert_in_tx(&tx, &record)?;
+        let chunk_filename = chunk_meta
+            .as_ref()
+            .and_then(|(p, _)| p.file_name().and_then(|n| n.to_str()).map(str::to_owned));
+        let tx = self.store.conn_mut().transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let obs = MemoryStore::upsert_in_tx_with_chunk(&tx, &record, chunk_filename.as_deref())?;
         if let Some((chunk_path, hash)) = &chunk_meta
             && let Some(filename) = chunk_path.file_name().and_then(|n| n.to_str())
         {
-            MemoryStore::record_ingested_chunk_in_tx(&tx, filename, hash, record.updated_at)?;
+            let (mtime_ns, byte_len) = chunks::file_mtime_and_len(chunk_path);
+            MemoryStore::record_ingested_chunk_meta_in_tx(
+                &tx,
+                filename,
+                hash,
+                record.updated_at,
+                mtime_ns,
+                byte_len,
+            )?;
         }
         tx.commit()?;
 

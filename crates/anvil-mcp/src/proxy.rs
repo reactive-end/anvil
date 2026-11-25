@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use anvil_codemode::{CodeModePolicy, ToolDispatcher, execute_script};
+use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_memory::redactor::redact_text;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -87,37 +88,58 @@ const MUTATION_TOKENS: &[&str] = &[
     "trigger",
 ];
 
-const READ_ONLY_VERBS: &[&str] = &[
+const PURE_READ_VERBS: &[&str] = &[
     "check",
-    "context",
     "count",
     "describe",
-    "diff",
     "explain",
     "fetch",
     "find",
     "get",
+    "inspect",
+    "list",
+    "query",
+    "read",
+    "search",
+    "show",
+    "view",
+];
+
+const NOUN_READ_PREFIXES: &[&str] = &[
+    "context",
+    "diff",
     "health",
     "help",
     "impact",
-    "inspect",
-    "list",
     "log",
     "logs",
     "origin",
     "outline",
     "path",
     "ping",
-    "query",
-    "read",
-    "search",
-    "show",
     "stat",
     "stats",
     "status",
     "timeline",
     "version",
-    "view",
+];
+
+const UNAMBIGUOUS_TAIL_MUTATIONS: &[&str] = &[
+    "apply",
+    "approve",
+    "archive",
+    "cancel",
+    "clear",
+    "disable",
+    "enable",
+    "invoke",
+    "rebase",
+    "reject",
+    "rename",
+    "restart",
+    "revert",
+    "save",
+    "trigger",
 ];
 
 /// Configuration file schema loaded from `.harness/mcp-proxy.json`.
@@ -163,7 +185,9 @@ impl Drop for UpstreamClient {
 
 impl UpstreamClient {
     fn spawn(root: &Path, spec: &ProxyServerSpec) -> Result<Self> {
-        let mut cmd = Command::new(&spec.command);
+        let resolved_bin = resolve_local_or_path_bin(root, &spec.command)
+            .unwrap_or_else(|| PathBuf::from(&spec.command));
+        let mut cmd = Command::new(&resolved_bin);
         cmd.args(&spec.args)
             .current_dir(root)
             .stdin(Stdio::piped())
@@ -386,19 +410,27 @@ impl ProxyGateway {
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
+        let mut catalog = Vec::new();
         for (name, spec) in specs {
             self.ensure_client(&name, &spec)?;
-            let list_res = self
+            let list_res = match self
                 .clients
                 .get_mut(&name)
                 .ok_or_else(|| anyhow::anyhow!("missing client"))?
-                .request("tools/list", json!({}))?;
+                .request("tools/list", json!({}))
+            {
+                Ok(res) => res,
+                Err(err) => {
+                    self.clients.remove(&name);
+                    return Err(err);
+                }
+            };
             if let Some(arr) = list_res.get("tools").and_then(Value::as_array) {
                 for tool in arr {
                     let tname = tool["name"].as_str().unwrap_or("").to_owned();
                     let desc = tool["description"].as_str().unwrap_or("").to_owned();
                     let sig = format_ts_signature(&name, &tname, &tool["inputSchema"]);
-                    self.catalog.push(UpstreamTool {
+                    catalog.push(UpstreamTool {
                         server: name.clone(),
                         name: tname,
                         description: desc,
@@ -407,6 +439,7 @@ impl ProxyGateway {
                 }
             }
         }
+        self.catalog = catalog;
         self.catalog_loaded = true;
         Ok(())
     }
@@ -485,7 +518,16 @@ impl ProxyGateway {
             );
         }
         let client = self.ensure_client(server, &spec)?;
-        let res = client.request("tools/call", json!({ "name": tool, "arguments": arguments }))?;
+        let res = match client.request("tools/call", json!({ "name": tool, "arguments": arguments })) {
+            Ok(v) => v,
+            Err(err) => {
+                let msg = err.to_string();
+                if msg.contains("closed stdout") || msg.contains("timed out") || msg.contains("broken pipe") {
+                    self.clients.remove(server);
+                }
+                return Err(err);
+            }
+        };
         if res.get("isError").and_then(Value::as_bool) == Some(true) {
             let msg = res["content"]
                 .as_array()
@@ -589,11 +631,18 @@ pub fn is_mutating_tool_name(tool: &str) -> bool {
     {
         return true;
     }
-    if bare_tokens
-        .first()
-        .is_some_and(|lead| READ_ONLY_VERBS.contains(&lead.as_str()))
-    {
-        return false;
+    if let Some(lead) = bare_tokens.first().map(String::as_str) {
+        if PURE_READ_VERBS.contains(&lead) {
+            let tail_action = bare_tokens
+                .last()
+                .is_some_and(|t| UNAMBIGUOUS_TAIL_MUTATIONS.contains(&t.as_str()));
+            return tail_action;
+        }
+        if NOUN_READ_PREFIXES.contains(&lead) {
+            return all_tokens
+                .iter()
+                .any(|t| MUTATION_TOKENS.contains(&t.as_str()));
+        }
     }
     all_tokens
         .iter()
@@ -654,6 +703,9 @@ mod tests {
             ("jira.getPost", false),
             ("read_run_log", false),
             ("list_posts", false),
+            ("diff_apply", true),
+            ("log_clear", true),
+            ("context_clear", true),
         ] {
             assert_eq!(is_mutating_tool_name(tool), expected, "tool={tool}");
         }

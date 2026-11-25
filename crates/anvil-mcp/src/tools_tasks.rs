@@ -1,14 +1,12 @@
 //! MCP tool handlers for LLM-curated task governance (`task_record`, `task_done`, `task_skip`, `task_list`).
 
-use std::collections::BTreeSet;
 use std::path::Path;
 
 use anyhow::{Result, bail};
-use anvil_core::git::{self, DiffScope};
 use anvil_tasks::{
     ProgressUpdate, TaskStatus, TaskTarget, activate_task_from_meta, begin_existing_task,
-    build_resume_brief, clear_untracked_edits, consolidate_repo_tasks, load_active_task,
-    load_untracked_edits, read_single_task, record_curated_task_in_group, record_task_progress,
+    build_resume_brief, clear_untracked_edits, collect_task_files, consolidate_repo_tasks,
+    read_single_task, record_curated_task_in_group, record_task_progress,
     record_task_skip, resolve_author_fast, start_task_in_group, task_progress_rel_path,
     validate_curated_task_title,
 };
@@ -94,7 +92,7 @@ fn handle_task_update(root: &Path, args: &Value) -> Result<Value> {
     let blocker = opt_str(args, "blocker");
     let evidence = opt_str(args, "evidence");
     let explicit_files = opt_string_vec(args, "files");
-    let files = collect_task_files(root, task_id, &explicit_files);
+    let files = collect_task_files(root, Some(task_id), &explicit_files);
     let author = resolve_author_fast(root).unwrap_or_else(|_| "mcp".to_owned());
 
     let (task, entry) = record_task_progress(
@@ -129,7 +127,8 @@ fn handle_task_record(root: &Path, args: &Value) -> Result<Value> {
         Some("not_started") => TaskStatus::NotStarted,
         Some("in_progress") => TaskStatus::InProgress,
         Some("blocked") => TaskStatus::Blocked,
-        _ => TaskStatus::Done,
+        Some("done") | None => TaskStatus::Done,
+        Some(other) => bail!("invalid task status `{other}`"),
     };
     let group = opt_str(args, "group");
     let explicit_id = opt_str(args, "task_id");
@@ -161,7 +160,7 @@ fn handle_task_done(root: &Path, args: &Value) -> Result<Value> {
     let summary = req_str(args, "summary")?;
     let evidence = opt_str(args, "evidence");
     let explicit_files = opt_string_vec(args, "files");
-    let files = collect_task_files(root, task_id, &explicit_files);
+    let files = collect_task_files(root, Some(task_id), &explicit_files);
     let author = resolve_author_fast(root).unwrap_or_else(|_| "mcp".to_owned());
     let (task, entry) = record_task_progress(
         root,
@@ -260,27 +259,6 @@ fn handle_task_resume(root: &Path, args: &Value) -> Result<Value> {
         "brief": brief,
         "progress_markdown": progress_markdown,
     }))
-}
-
-fn collect_task_files(root: &Path, task_id: &str, explicit: &[String]) -> Vec<String> {
-    if !explicit.is_empty() {
-        return explicit.to_vec();
-    }
-    let mut set: BTreeSet<String> = load_untracked_edits(root).into_iter().collect();
-    if let Ok(Some(active)) = load_active_task(root)
-        && active.task_id == task_id
-    {
-        set.extend(active.touched_files);
-    }
-    if let Ok(changed) = git::changed_files(root, DiffScope::WorkingTree) {
-        for f in changed {
-            let norm = f.replace('\\', "/");
-            if !norm.is_empty() && !norm.starts_with(".harness/") && norm != "tasks.json" {
-                set.insert(norm);
-            }
-        }
-    }
-    set.into_iter().collect()
 }
 
 fn opt_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {

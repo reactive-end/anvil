@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, TransactionBehavior};
 
-const CURRENT_SCHEMA_VERSION: i64 = 2;
+const CURRENT_SCHEMA_VERSION: i64 = 3;
 
 const PRAGMAS_SQL: &str = "
 PRAGMA busy_timeout = 5000;
@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS observations (
     author TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    expires_at INTEGER
+    expires_at INTEGER,
+    chunk_filename TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_observations_kind_updated
@@ -87,7 +88,9 @@ END;
 CREATE TABLE IF NOT EXISTS ingested_chunks (
     filename TEXT PRIMARY KEY,
     blake3_hash TEXT NOT NULL,
-    ingested_at INTEGER NOT NULL
+    ingested_at INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL DEFAULT 0,
+    byte_len INTEGER NOT NULL DEFAULT 0
 );
 ";
 
@@ -116,9 +119,43 @@ pub fn init_schema(conn: &mut Connection) -> Result<()> {
     if current_version < CURRENT_SCHEMA_VERSION {
         tx.execute_batch(SCHEMA_SQL)
             .context("failed to initialize anvil-memory SQLite schema")?;
+        migrate_v3_columns(&tx)?;
         tx.execute_batch(&format!("PRAGMA user_version = {CURRENT_SCHEMA_VERSION};"))
             .context("failed to update SQLite user_version")?;
     }
     tx.commit()
         .context("failed to commit anvil-memory schema transaction")
+}
+
+fn migrate_v3_columns(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    add_column_if_missing(tx, "observations", "chunk_filename", "TEXT")?;
+    add_column_if_missing(tx, "ingested_chunks", "mtime_ns", "INTEGER NOT NULL DEFAULT 0")?;
+    add_column_if_missing(tx, "ingested_chunks", "byte_len", "INTEGER NOT NULL DEFAULT 0")?;
+    tx.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_observations_chunk_filename
+             ON observations(chunk_filename)
+             WHERE chunk_filename IS NOT NULL;",
+    )
+    .context("failed to create idx_observations_chunk_filename")
+}
+
+fn add_column_if_missing(
+    tx: &rusqlite::Transaction<'_>,
+    table: &str,
+    column: &str,
+    col_def: &str,
+) -> Result<()> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let mut stmt = tx.prepare(&pragma)?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .flatten()
+        .any(|name| name == column);
+    drop(stmt);
+    if !exists {
+        let alter = format!("ALTER TABLE {table} ADD COLUMN {column} {col_def}");
+        tx.execute_batch(&alter)
+            .with_context(|| format!("failed to add column {table}.{column}"))?;
+    }
+    Ok(())
 }

@@ -3,6 +3,8 @@
 use std::collections::HashSet;
 
 use anyhow::{Context, Result, bail};
+use anvil_core::circuit_breaker::CircuitBreaker;
+use anvil_core::config::AnvilConfig;
 use anvil_core::git::{self, DiffScope};
 use anvil_core::stats::{StatsEvent, estimate_tokens, record_event};
 use anvil_graph::CodeGraphEngine;
@@ -42,6 +44,19 @@ fn handle_impact(server: &mut McpServer, args: &Value) -> Result<Value> {
         .get("typecheck")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+
+    if run_typecheck {
+        let limit = AnvilConfig::load_or_default(server.repo_root())
+            .map_or(3, |c| c.circuit_breaker_limit);
+        if let Ok(st) = CircuitBreaker::new(server.repo_root(), limit).status()
+            && st.is_open()
+        {
+            bail!(
+                "Circuit Breaker is OPEN ({} identical failures); run `anvil circuit reset` before running typecheck.",
+                st.consecutive_failures
+            );
+        }
+    }
 
     let engine = server.ensure_graph()?;
     let report = engine.blast_radius(&files, depth);
