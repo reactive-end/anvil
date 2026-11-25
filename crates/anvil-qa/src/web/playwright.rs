@@ -109,6 +109,7 @@ pub fn run_playwright_capture(
     url: &str,
     phase: &str,
     out_dir: &Path,
+    work_dir: Option<&Path>,
 ) -> Result<Vec<ViewportCapture>> {
     let phase = validate_phase(phase)?;
     fs::create_dir_all(out_dir)
@@ -121,6 +122,9 @@ pub fn run_playwright_capture(
     let cmd = build_playwright_command(&script_path);
     let mut command = Command::new(&cmd.program);
     command.args(&cmd.args);
+    if let Some(dir) = work_dir {
+        command.current_dir(dir);
+    }
     let timed = run_command_with_timeout(&mut command, Duration::from_secs(60))
         .with_context(|| format!("failed to invoke `{}` for Playwright QA", cmd.program))?;
 
