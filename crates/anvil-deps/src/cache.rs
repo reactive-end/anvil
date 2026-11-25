@@ -96,7 +96,19 @@ impl DepsCache {
         self.dirty = true;
     }
 
-    /// Persists the cache atomically only if new entries were inserted.
+    /// Removes cache entries older than `ttl_hours` and marks the cache dirty if any were pruned.
+    pub(crate) fn prune_expired(&mut self, ttl_hours: i64, now: DateTime<Utc>) {
+        let ttl_secs = ttl_hours.saturating_mul(3600);
+        let before = self.data.entries.len();
+        self.data
+            .entries
+            .retain(|_, entry| now.timestamp() - entry.cached_at_secs <= ttl_secs);
+        if self.data.entries.len() != before {
+            self.dirty = true;
+        }
+    }
+
+    /// Persists the cache atomically only if new entries were inserted or pruned.
     pub(crate) fn save_if_dirty(&self) -> Result<()> {
         if !self.dirty {
             return Ok(());
@@ -108,4 +120,42 @@ impl DepsCache {
 
 fn cache_key(ecosystem: Ecosystem, package: &str) -> String {
     format!("{}:{package}", ecosystem.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Duration;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn prune_expired_drops_stale_entries_and_keeps_fresh() {
+        let tmp = TempDir::new().expect("tempdir");
+        let now = Utc::now();
+        let mut cache = DepsCache::load(tmp.path());
+        let mk = |name: &str| PackageHealthInfo {
+            ecosystem: Ecosystem::Npm,
+            name: name.to_owned(),
+            latest_version: Some("1.0.0".to_owned()),
+            last_publish: None,
+            deprecated: false,
+            deprecation_message: None,
+            archived: false,
+            repository_url: None,
+            vulnerabilities: Vec::new(),
+        };
+        cache.insert(mk("stale-pkg"), now - Duration::hours(30));
+        cache.insert(mk("fresh-pkg"), now - Duration::hours(1));
+        cache.save_if_dirty().expect("save");
+
+        let mut reloaded = DepsCache::load(tmp.path());
+        reloaded.prune_expired(24, now);
+        assert!(reloaded.dirty);
+        reloaded.save_if_dirty().expect("save pruned");
+
+        let final_cache = DepsCache::load(tmp.path());
+        assert!(final_cache.get_fresh(Ecosystem::Npm, "fresh-pkg", 24, now).is_some());
+        assert!(!final_cache.data.entries.contains_key("npm:stale-pkg"));
+    }
 }

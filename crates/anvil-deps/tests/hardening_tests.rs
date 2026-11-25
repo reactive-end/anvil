@@ -140,6 +140,8 @@ requests==2.32.3 \
     let py_specs = parse_requirements_txt("requirements.txt", reqs).expect("requirements.txt");
     let py_names: Vec<&str> = py_specs.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(py_names, vec!["fastapi", "pydantic", "requests"]);
+    let pydantic = py_specs.iter().find(|s| s.name == "pydantic").expect("pydantic");
+    assert_eq!(pydantic.version_req.as_deref(), Some("~=2.9"));
 
     let groovy = r#"
 dependencies {

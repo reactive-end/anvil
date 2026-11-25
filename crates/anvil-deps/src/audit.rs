@@ -209,6 +209,7 @@ pub fn audit_manifests(
         }
     }
 
+    cache.prune_expired(options.cache_ttl_hours, now);
     cache.save_if_dirty()?;
     Ok(report)
 }
@@ -222,13 +223,28 @@ fn apply_fetched_misses(
     resolved: &mut [Option<PackageHealthInfo>],
     report: &mut DepsAuditReport,
 ) {
-    for (idx, result) in fetch_misses_bounded(misses, fetcher) {
+    let mut grouped: FxHashMap<(Ecosystem, String), Vec<usize>> = FxHashMap::default();
+    let mut unique_misses: Vec<(usize, &DependencySpec)> = Vec::new();
+    for &(idx, spec) in misses {
+        let key = (spec.ecosystem, spec.name.clone());
+        let indices = grouped.entry(key).or_default();
+        if indices.is_empty() {
+            unique_misses.push((idx, spec));
+        }
+        indices.push(idx);
+    }
+
+    for (idx, result) in fetch_misses_bounded(&unique_misses, fetcher) {
         let spec = &specs[idx];
         match result {
             Ok(fetched) => {
                 report.network_fetches += 1;
                 cache.insert(fetched.clone(), now);
-                resolved[idx] = Some(fetched);
+                if let Some(indices) = grouped.get(&(spec.ecosystem, spec.name.clone())) {
+                    for &target_idx in indices {
+                        resolved[target_idx] = Some(fetched.clone());
+                    }
+                }
             }
             Err(err) => {
                 report
@@ -263,7 +279,7 @@ fn collect_unique_specs(repo_root: &Path, manifests: &[PathBuf]) -> Result<Vec<D
     let mut specs = Vec::new();
     for manifest in manifests {
         for spec in parse_manifest(repo_root, manifest)? {
-            if seen.insert((spec.ecosystem, spec.name.clone())) {
+            if seen.insert((spec.ecosystem, spec.name.clone(), spec.version_req.clone())) {
                 specs.push(spec);
             }
         }

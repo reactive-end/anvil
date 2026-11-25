@@ -205,7 +205,12 @@ fn push_pep508(
     if name.is_empty() || !seen.insert(name.clone()) {
         return;
     }
-    let rest = base[name_end..].trim();
+    let mut rest = base[name_end..].trim();
+    if rest.starts_with('[')
+        && let Some(close_idx) = rest.find(']')
+    {
+        rest = rest[close_idx + 1..].trim();
+    }
     let version_req = (!rest.is_empty()).then(|| rest.to_owned());
     specs.push(DependencySpec {
         ecosystem: Ecosystem::Pypi,

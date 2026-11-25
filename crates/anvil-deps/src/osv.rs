@@ -62,7 +62,12 @@ fn ecosystem_to_osv(ecosystem: Ecosystem) -> &'static str {
 
 /// Normalizes a manifest version requirement into a bare version string suitable for OSV queries.
 pub(crate) fn clean_version_for_osv(version_req: Option<&str>) -> Option<String> {
-    let raw = version_req?.trim();
+    let mut raw = version_req?.trim();
+    if raw.starts_with('[')
+        && let Some(close_idx) = raw.find(']')
+    {
+        raw = raw[close_idx + 1..].trim();
+    }
     if raw.is_empty() || raw.contains("||") || raw.contains('*') {
         return None;
     }
@@ -191,6 +196,10 @@ mod tests {
         assert_eq!(
             clean_version_for_osv(Some("==2.32.3")),
             Some("2.32.3".to_owned())
+        );
+        assert_eq!(
+            clean_version_for_osv(Some("[standard]>=0.30.0")),
+            Some("0.30.0".to_owned())
         );
 
         assert_eq!(clean_version_for_osv(None), None);

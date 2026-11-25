@@ -369,3 +369,33 @@ fn audit_manifests_emits_vulnerable_issue_for_uncached_and_cached_packages() {
         ]
     );
 }
+
+#[test]
+fn multi_manifest_distinct_versions_share_registry_fetch_and_keep_osv_specs() {
+    let tmp = TempDir::new().expect("tempdir");
+    let now = Utc::now();
+    let fresh_ts = now - Duration::days(5);
+    fs::create_dir_all(tmp.path().join("app")).unwrap();
+    fs::create_dir_all(tmp.path().join("api")).unwrap();
+    fs::write(
+        tmp.path().join("app/package.json"),
+        r#"{ "dependencies": { "lodash": "^4.17.20" } }"#,
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("api/package.json"),
+        r#"{ "dependencies": { "lodash": "^4.17.21" } }"#,
+    )
+    .unwrap();
+
+    let fetcher = VulnMockFetcher::new(vec![mk_pkg(Ecosystem::Npm, "lodash", fresh_ts, false, false)]);
+    let manifests = vec![PathBuf::from("app/package.json"), PathBuf::from("api/package.json")];
+    let opts = AuditOptions {
+        now: Some(now),
+        ..AuditOptions::default()
+    };
+    let report = audit_manifests(tmp.path(), &manifests, &fetcher, &opts).expect("audit");
+    assert_eq!(report.checked_packages, 2);
+    assert_eq!(report.network_fetches, 1);
+    assert_eq!(report.findings.len(), 2);
+}
