@@ -53,7 +53,7 @@ pub fn collect_source_files(repo_root: &Path) -> Vec<(PathBuf, String)> {
     out
 }
 
-fn is_supported_source(path: &Path) -> bool {
+pub(crate) fn is_supported_source(path: &Path) -> bool {
     if matches!(
         anvil_ast::detect_language(path),
         Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx

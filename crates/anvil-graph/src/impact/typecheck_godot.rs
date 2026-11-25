@@ -40,7 +40,7 @@ pub(super) fn run_godot_check(
         });
     }
 
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timeout = config.tier_budgets.tier1_timeout();
     let mut combined = String::new();
     let mut exit_code = 0i32;
 

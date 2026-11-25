@@ -34,8 +34,13 @@ pub fn filter_typecheck_output(
         return compress_output(repo_root, label, 0, &filtered, max_lines, max_tokens);
     }
 
+    let timed_out = exit_code == 124 || raw_output.contains("[anvil] process timed out");
     let has_kept_error = part.kept.iter().any(|l| looks_like_error_line(l));
-    if !has_kept_error && part.suppressed_other_file > 0 && part.unattributed_errors == 0 {
+    if !timed_out
+        && !has_kept_error
+        && part.suppressed_other_file > 0
+        && part.unattributed_errors == 0
+    {
         let tool = label.split_whitespace().next().unwrap_or(label).to_owned();
         let count = part.suppressed_other_file;
         return Ok(CompressedOutput {
@@ -175,6 +180,7 @@ fn looks_like_error_line(line: &str) -> bool {
             || trimmed.starts_with("error - ")
             || trimmed.starts_with("error[")
             || trimmed.starts_with("e: ")
+            || trimmed.contains("[anvil] process timed out")
             || trimmed.contains("Parse error:")
             || trimmed.contains("Fatal error:")
             || has_php_file_line_diag(trimmed))

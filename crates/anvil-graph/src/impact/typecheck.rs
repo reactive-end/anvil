@@ -2,7 +2,6 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
@@ -88,7 +87,12 @@ fn run_stacks_in_dir(
         )?);
     }
     if stacks.contains(&StackKind::Python) {
-        run_ext_typecheck(ctx, ".py", "pyright", &[], results)?;
+        let py_bin = if resolve_local_or_path_bin(ctx.work_dir, "pyright").is_some() {
+            "pyright"
+        } else {
+            "mypy"
+        };
+        run_ext_typecheck(ctx, ".py", py_bin, &[], results)?;
     }
     if stacks.contains(&StackKind::FlutterDart) {
         run_ext_typecheck(ctx, ".dart", "dart", &["analyze"], results)?;
@@ -254,7 +258,7 @@ fn run_resolved_and_filter(
         });
     };
 
-    let timeout = Duration::from_secs(ctx.config.tier_budgets.tier1_secs.max(5));
+    let timeout = ctx.config.tier_budgets.tier1_timeout();
     let mut cmd = Command::new(&bin_path);
     cmd.args(args).current_dir(ctx.work_dir);
     let timed = match run_command_with_timeout(&mut cmd, timeout) {

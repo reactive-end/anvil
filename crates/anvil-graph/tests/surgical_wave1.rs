@@ -348,3 +348,20 @@ fn load_cached_rebuilds_cleanly_on_legacy_v2_header() {
     assert_eq!(slice.start_line, 1);
     assert_eq!(slice.end_line, 3);
 }
+
+#[test]
+fn typecheck_filter_never_marks_timeout_as_pass() {
+    let raw = "src/unrelated.ts(1,1): error TS2304: Cannot find name 'X'.\n[anvil] process timed out after 15000ms\n";
+    let res = filter_typecheck_output(
+        None,
+        "tsc --noEmit",
+        124,
+        raw,
+        &["src/app.ts".to_owned()],
+        50,
+        1200,
+    )
+    .expect("timeout filter");
+    assert!(!res.passed, "timeout must NEVER be suppressed into PASS");
+    assert_eq!(res.exit_code, 124);
+}

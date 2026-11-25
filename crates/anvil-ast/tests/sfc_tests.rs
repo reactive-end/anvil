@@ -159,3 +159,30 @@ const raw: any = await fetch('/api/v1/health', { method: 'GET' })
     assert!(has_diag(&astro, "no-explicit-any", 3, "any"));
     assert!(has_diag(&astro, "no-todo-comments", 6, "TODO"));
 }
+
+#[test]
+fn sfc_handles_multibyte_utf8_characters_without_panicking() {
+    let vue_src = "\
+<template>
+  <!-- © Sección española: ñ á 🚀 -->
+  <p>Diseño mañana 🚀 — cálculo</p>
+</template>
+<script setup lang=\"ts\">
+import { api } from '@/api/diseño'
+export const título = 'Año © 🚀';
+</script>
+";
+    let vue = analyze_file(Path::new("src/Espanol.vue"), vue_src, &cfg()).expect("vue utf8");
+    assert_eq!(vue.language, Language::TypeScript);
+    assert!(has_edge(&vue, EdgeKind::Imports, "@/api/diseño", 6));
+
+    let svelte_src = "<p>Ñandú 🚀</p>\n<script lang=\"ts\">export const ok = 'sí';</script>\n";
+    let svelte =
+        analyze_file(Path::new("src/Utf8.svelte"), svelte_src, &cfg()).expect("svelte utf8");
+    assert_eq!(svelte.language, Language::TypeScript);
+
+    let astro_src = "---\nexport const msg = 'hola ñ 🚀';\n---\n<h1>Diseño ©</h1>\n";
+    let astro =
+        analyze_file(Path::new("src/Utf8.astro"), astro_src, &cfg()).expect("astro utf8");
+    assert_eq!(astro.language, Language::TypeScript);
+}

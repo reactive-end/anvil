@@ -11,6 +11,7 @@ use crate::model::{CodeGraph, GraphNode, NodeKind};
 use crate::query::symbol_kind_str;
 
 const MAX_SYMBOL_LINES: u32 = 250;
+const MAX_SYMBOL_BYTES: usize = 32 * 1024;
 
 /// Exact symbol source slice returned by `read_symbol`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,7 +92,14 @@ fn slice_body(lines: &[&str], start_line: u32, capped_end: u32, full_end: u32) -
     let start_idx = (start_line.saturating_sub(1) as usize).min(lines.len().saturating_sub(1));
     let end_idx = (capped_end as usize).min(lines.len()).max(start_idx + 1);
     let mut body = lines[start_idx..end_idx].join("\n");
-    if full_end > capped_end {
+    if body.len() > MAX_SYMBOL_BYTES {
+        let mut cut = MAX_SYMBOL_BYTES;
+        while cut > 0 && !body.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        body.truncate(cut);
+        body.push_str("\n// ... truncated (byte budget exceeded)");
+    } else if full_end > capped_end {
         let extra = full_end - capped_end;
         body.push_str(&format!("\n// ... truncated ({extra} more lines)"));
     }

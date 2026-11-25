@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
@@ -271,7 +270,7 @@ pub(super) fn exec_compressed(
     label: &str,
     args: &[&str],
 ) -> Result<CompressedOutput> {
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timeout = config.tier_budgets.tier1_timeout();
     let mut cmd = Command::new(bin_path);
     cmd.args(args).current_dir(work_dir);
     let timed = match run_command_with_timeout(&mut cmd, timeout) {

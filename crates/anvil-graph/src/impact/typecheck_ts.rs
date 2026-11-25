@@ -81,7 +81,7 @@ pub(super) fn run_ts_typecheck(
         });
     };
 
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timeout = config.tier_budgets.tier1_timeout();
     let label = format!("{tool_name} --noEmit");
     let (mut code, mut combined) = match exec_command(&bin, &args, work_dir, timeout) {
         Ok(res) => res,

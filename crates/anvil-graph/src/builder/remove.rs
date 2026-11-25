@@ -55,20 +55,27 @@ pub(crate) fn remove_file_incremental(
 
 pub(crate) fn finalize_unused_slots(graph: &mut CodeGraph, unused: FxHashMap<String, NodeId>) {
     for (old_id, nid) in unused {
-        let ext = graph.intern_external(&old_id);
-        if let Some(rev_slot) = graph.reverse_adj.get_mut(nid as usize) {
-            let in_idxs = std::mem::take(rev_slot);
-            for e_idx in in_idxs {
-                if let Some(edge) = graph.edges.get_mut(e_idx as usize)
-                    && !edge.is_tombstone()
-                {
-                    if edge.kind == GraphEdgeKind::ExposesRoute {
-                        edge.source = INVALID_NODE_ID;
-                        graph.tombstone_edges += 1;
-                    } else {
-                        edge.target = ext;
-                    }
+        let Some(rev_slot) = graph.reverse_adj.get_mut(nid as usize) else {
+            continue;
+        };
+        let in_idxs = std::mem::take(rev_slot);
+        let mut retarget_edges = Vec::new();
+        for e_idx in in_idxs {
+            if let Some(edge) = graph.edges.get_mut(e_idx as usize)
+                && !edge.is_tombstone()
+            {
+                if edge.kind == GraphEdgeKind::ExposesRoute {
+                    edge.source = INVALID_NODE_ID;
+                    graph.tombstone_edges += 1;
+                } else {
+                    retarget_edges.push(e_idx);
                 }
+            }
+        }
+        if !retarget_edges.is_empty() {
+            let ext = graph.intern_external(&old_id);
+            for e_idx in retarget_edges {
+                graph.edges[e_idx as usize].target = ext;
             }
         }
     }

@@ -78,7 +78,7 @@ pub fn update_file(
 ) -> Result<bool> {
     let rel = CodeGraph::normalize_rel_path(rel_path);
     let abs = repo_root.join(&rel);
-    if !abs.is_file() {
+    if !abs.is_file() || !collect::is_supported_source(&abs) {
         let (removed, unused) = walker::remove_file_incremental(graph, &rel);
         walker::finalize_unused_slots(graph, unused);
         if removed {
@@ -88,9 +88,15 @@ pub fn update_file(
     }
 
     let meta = fs::metadata(&abs).with_context(|| format!("failed to stat {}", abs.display()))?;
+    if meta.len() > walker::MAX_FILE_BYTES {
+        return Ok(false);
+    }
     let stat = walker::file_stat_from_meta(&meta);
     let bytes =
         fs::read(&abs).with_context(|| format!("failed to read {}", abs.display()))?;
+    if bytes.contains(&0) {
+        return Ok(false);
+    }
     let hash = blake3::hash(&bytes).to_hex().to_string();
     if graph.file_hashes.get(&rel) == Some(&hash) {
         graph.file_stats.insert(rel, stat);

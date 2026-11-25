@@ -2,7 +2,6 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
@@ -121,7 +120,7 @@ fn run_php_lint_fallback(
             raw_log_path: None,
         });
     }
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timeout = config.tier_budgets.tier1_timeout();
     let mut combined = String::new();
     let mut exit_code = 0i32;
     for file in php_files {
@@ -158,7 +157,7 @@ fn exec_and_filter(
     label: &str,
     impacted_files: &[String],
 ) -> Result<CompressedOutput> {
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timeout = config.tier_budgets.tier1_timeout();
     let timed = match run_command_with_timeout(cmd, timeout) {
         Ok(out) => out,
         Err(err) => {

@@ -170,4 +170,21 @@ fn check_boundaries_catches_forbidden_cross_layer_imports_and_cycles() {
 
     let scoped_clean = engine.check_boundaries(&["src/ui/Button.ts".to_owned()]);
     assert!(scoped_clean.is_empty(), "expected clean scope, got: {scoped_clean:?}");
+
+    write_file(root, "src/domain/barrel.ts", "export { Button } from '../ui/Button';\n");
+    let config2 = AnvilConfig {
+        boundaries: vec![BoundaryRule {
+            name: "domain-no-ui".to_owned(),
+            from_glob: "src/domain/*.ts".to_owned(),
+            forbid_glob: "src/ui/*.ts".to_owned(),
+            reason: None,
+        }],
+        ..AnvilConfig::default()
+    };
+    let engine2 = CodeGraphEngine::build(root, config2).expect("rebuild");
+    let reexport_diags = engine2.check_boundaries(&["src/domain/barrel.ts".to_owned()]);
+    assert!(
+        reexport_diags.iter().any(|d| d.rule == "boundary:domain-no-ui"),
+        "expected boundary violation on re-export: {reexport_diags:?}"
+    );
 }

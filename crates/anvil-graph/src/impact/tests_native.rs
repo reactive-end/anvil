@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 
 use anyhow::Result;
 use anvil_core::compressor::compress_output;
@@ -198,7 +197,7 @@ fn exec_php_command(
     cmd: &mut Command,
     label: &str,
 ) -> Result<CompressedOutput> {
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(5));
+    let timeout = config.tier_budgets.tier1_timeout();
     let timed = match run_command_with_timeout(cmd, timeout) {
         Ok(out) => out,
         Err(err) => {

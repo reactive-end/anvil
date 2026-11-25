@@ -35,7 +35,8 @@ pub fn check_boundaries(
 fn build_import_adj(graph: &CodeGraph) -> FxHashMap<String, Vec<String>> {
     let mut adj: FxHashMap<String, Vec<String>> = FxHashMap::default();
     for edge in &graph.edges {
-        if !edge.is_resolved() || edge.kind != GraphEdgeKind::Imports {
+        if !edge.is_resolved() || !matches!(edge.kind, GraphEdgeKind::Imports | GraphEdgeKind::ReExports)
+        {
             continue;
         }
         let Some(src_node) = graph.get_node(edge.source) else {

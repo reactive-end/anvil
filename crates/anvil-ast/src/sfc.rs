@@ -130,7 +130,7 @@ fn extract_blocks(source: &str, is_astro: bool) -> Vec<SfcBlock> {
             i = next_pos;
             continue;
         }
-        i += 1;
+        i += source[i..].chars().next().map_or(1, char::len_utf8);
     }
 
     blocks

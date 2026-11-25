@@ -3,6 +3,7 @@
 use rustc_hash::FxHashSet;
 use serde::Serialize;
 
+use crate::impact::sibling::is_test_file;
 use crate::model::{CodeGraph, GraphEdgeKind, NodeId, NodeKind};
 
 /// Warning emitted when a small fix introduces a new abstraction with <= 1 consumer.
@@ -28,16 +29,19 @@ pub fn check_overengineering(
     added_files: &[String],
     is_small_fix: bool,
 ) -> OverengineeringReport {
+    let added_norm: FxHashSet<String> = added_files
+        .iter()
+        .map(|f| CodeGraph::normalize_rel_path(f))
+        .collect();
     let mut warnings = Vec::new();
-    for added in added_files {
-        let norm = CodeGraph::normalize_rel_path(added);
-        if !is_indexed_code_file(graph, &norm) {
+    for norm in &added_norm {
+        if is_test_file(norm) || !is_indexed_code_file(graph, norm) {
             continue;
         }
-        let consumers = count_external_consumers(graph, &norm);
+        let consumers = count_external_consumers(graph, norm);
         if consumers <= 1 {
             warnings.push(OverengineeringWarning {
-                file: norm,
+                file: norm.clone(),
                 symbol: None,
                 consumer_count: consumers,
                 reason: if is_small_fix {
@@ -52,6 +56,9 @@ pub fn check_overengineering(
     if is_small_fix {
         for changed in changed_files {
             let norm = CodeGraph::normalize_rel_path(changed);
+            if is_test_file(&norm) || !added_norm.contains(&norm) {
+                continue;
+            }
             let Some(nids) = graph.file_nodes.get(&norm) else {
                 continue;
             };
@@ -62,9 +69,7 @@ pub fn check_overengineering(
                 if node.kind != NodeKind::Symbol || !node.exported {
                     continue;
                 }
-                if count_symbol_external_consumers(graph, nid, &norm) == 0
-                    && added_files.contains(changed)
-                {
+                if count_symbol_external_consumers(graph, nid, &norm) == 0 {
                     warnings.push(OverengineeringWarning {
                         file: norm.clone(),
                         symbol: Some(node.label.clone()),
