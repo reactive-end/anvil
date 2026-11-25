@@ -70,7 +70,7 @@ fn resolve_run_timeout(config: &AnvilConfig) -> Duration {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|&s| s > 0)
-        .unwrap_or_else(|| config.tier_budgets.tier1_secs.max(120));
+        .unwrap_or_else(|| config.tier_budgets.tier1_timeout().as_secs());
     Duration::from_secs(secs)
 }
 

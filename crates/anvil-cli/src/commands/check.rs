@@ -39,7 +39,8 @@ pub struct CheckOptions {
 pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
     ui::print_banner_if_tty("Tiered Verification Pipeline");
     let config = AnvilConfig::load_or_default(root)?;
-    let run_sonar = (config.sonar.enabled || opts.sonar) && !opts.no_sonar;
+    let any_sonar = config.sonar.enabled || config.subrepos.iter().any(|s| s.sonar_enabled);
+    let run_sonar = (any_sonar || opts.sonar) && !opts.no_sonar;
     let (changed_paths, added_paths, classification) = if opts.staged {
         classify_staged_diff(root)
     } else {
@@ -56,6 +57,7 @@ pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
         classification.skip_logic_tests
     );
 
+    let tier0_started = std::time::Instant::now();
     let tier0_errors = run_tier0(
         root,
         &config,
@@ -64,6 +66,14 @@ pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
         opts.staged,
         run_sonar,
     )?;
+    let tier0_ms = u64::try_from(tier0_started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if tier0_ms > config.tier_budgets.tier0_ms {
+        println!(
+            "  {} Tier 0 took {tier0_ms}ms (budget {}ms)",
+            ui::warn_badge(),
+            config.tier_budgets.tier0_ms
+        );
+    }
     let mut tier1_failed = false;
 
     if effective_tier >= Tier::Tier1 && (opts.full || !changed_paths.is_empty()) {
@@ -149,7 +159,14 @@ fn classify_staged_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassific
     let mut paths = git::changed_files(root, DiffScope::Staged).unwrap_or_default();
     paths.sort();
     paths.dedup();
-    let changed: Vec<ChangedFile> = paths.iter().map(ChangedFile::from_path).collect();
+    let diffs = git::batched_staged_diffs(root).unwrap_or_default();
+    let changed: Vec<ChangedFile> = paths
+        .iter()
+        .map(|p| match diffs.get(p) {
+            Some(hunks) if !hunks.is_empty() => ChangedFile::with_hunks(p, hunks.clone()),
+            _ => ChangedFile::from_path(p),
+        })
+        .collect();
     let classification = classify_files(&changed);
     (paths, Vec::new(), classification)
 }
@@ -186,9 +203,7 @@ fn run_tier0(
     let mut loaded: Vec<(String, String)> = Vec::new();
     for rel in &targets {
         let abs = root.join(rel);
-        if abs.is_file()
-            && let Ok(source) = fs::read_to_string(&abs)
-        {
+        if let Some(source) = read_bounded_source(&abs) {
             loaded.push((rel.clone(), source));
         }
     }
@@ -256,6 +271,20 @@ fn collect_test_diffs(
         }
     }
     out
+}
+
+const MAX_SOURCE_SCAN_BYTES: u64 = 2 * 1024 * 1024;
+
+pub(crate) fn read_bounded_source(path: &Path) -> Option<String> {
+    let meta = fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_SOURCE_SCAN_BYTES {
+        return None;
+    }
+    let bytes = fs::read(path).ok()?;
+    if bytes.contains(&0) {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
 }
 
 fn print_diagnostics(diagnostics: &[Diagnostic], errors: &mut usize) {

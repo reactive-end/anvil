@@ -32,7 +32,17 @@ pub fn log_hook_error(root: &Path, stage: &str, err: &dyn Display) {
     if existing_len.saturating_add(line.len()) > MAX_LOG_BYTES {
         let mut buf = fs::read(&log_path).unwrap_or_default();
         buf.extend_from_slice(line.as_bytes());
-        let start = buf.len().saturating_sub(KEEP_LOG_BYTES);
+        let mut start = buf.len().saturating_sub(KEEP_LOG_BYTES);
+        if start > 0 {
+            let last_line_end = buf.len() - 1;
+            if let Some(nl) = buf[start..last_line_end].iter().position(|&b| b == b'\n') {
+                start += nl + 1;
+            } else {
+                while start < buf.len() && (buf[start] & 0b1100_0000) == 0b1000_0000 {
+                    start += 1;
+                }
+            }
+        }
         let _ = atomic_write(&log_path, &buf[start..]);
         return;
     }
@@ -79,5 +89,14 @@ mod tests {
         );
         let trimmed = fs::read_to_string(&log_path).unwrap();
         assert!(trimmed.contains("[post-tool-use] latest failure"));
+
+        // Multibyte UTF-8 log trimming never splits a codepoint or starts mid-line.
+        let mb_line = "[2026-11-25T00:00:00Z] [utf8] fallo crítico en diseño\n";
+        let repeated = mb_line.repeat(2_000);
+        fs::write(&log_path, repeated).unwrap();
+        log_hook_error(dir.path(), "post-tool-use", &"after utf8 trim");
+        let utf8_ok = fs::read_to_string(&log_path).expect("trimmed log must stay valid UTF-8");
+        assert!(utf8_ok.starts_with('['));
+        assert!(utf8_ok.contains("after utf8 trim"));
     }
 }

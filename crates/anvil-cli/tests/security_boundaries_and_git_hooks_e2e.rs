@@ -258,3 +258,26 @@ fn stop_hook_emits_zero_inbox_noise_on_readonly_turns() {
     assert!(!pre_inv_after.contains("tier1:impact"), "readonly Stop must not emit blast-radius noise: {pre_inv_after}");
     assert!(!pre_inv_after.contains("tier2:qa"), "readonly Stop must not emit QA noise: {pre_inv_after}");
 }
+
+#[test]
+fn uninitialized_root_hooks_never_pollute_state_and_umbrella_sync_stays_clean() {
+    let ws = TempDir::new().unwrap();
+    let root = ws.path();
+    fs::create_dir_all(root.join("svc-a/src")).unwrap();
+    fs::write(root.join("svc-a/package.json"), r#"{"name":"svc-a"}"#).unwrap();
+    fs::write(root.join("svc-a/src/index.ts"), "export const x = 1;\n").unwrap();
+
+    assert_ok(&run_anvil(root, &["init", "--layout", "multi-repo"]), "init umbrella");
+    assert!(!root.join(".harness").exists(), "umbrella init must not create root .harness/");
+
+    assert_ok(&run_anvil(root, &["sync"]), "umbrella sync");
+    assert!(!root.join(".harness").exists(), "umbrella sync must not create root .harness/");
+
+    let post_root = json!({
+        "hookEventName": "PostToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": { "toolName": "Bash", "toolInput": { "command": "echo ok" }, "toolOutput": { "exitCode": 0 } }
+    });
+    assert_ok(&run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "antigravity"], &post_root.to_string()), "post at umbrella root");
+    assert!(!root.join(".harness").exists(), "PostToolUse at uninitialized root must not create .harness/");
+}

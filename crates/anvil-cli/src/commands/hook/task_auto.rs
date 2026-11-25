@@ -5,18 +5,26 @@ use std::path::Path;
 use std::process::Command;
 use std::time::SystemTime;
 
-use anvil_adapters::contract::{HookOutcome, NormalizedHookInput};
+use anvil_adapters::contract::{HookEvent, HookOutcome, NormalizedHookInput};
 use anvil_tasks::ledger::tasks_root;
 use anvil_tasks::{
-    TaskStatus, build_root_tasks_json, list_tasks, load_active_task, record_pending_prompt,
+    TaskStatus, build_root_tasks_json, clear_skipped_active_task, list_tasks, load_active_task,
+    record_pending_prompt,
 };
 
 const TRIVIAL_SINGLE_FILE_MAX_LINES: usize = 12;
+const TURN_EDITS_FLAG: &str = ".harness/.state/turn-edits.flag";
 
 /// Records a non-conversational user prompt snapshot in `.harness/.state/pending-prompt.json`
-/// without creating any task on disk, and resets the current turn's edit flag.
+/// without creating any task on disk, resetting turn edit state ONLY on a fresh user prompt.
 pub fn handle_prompt_hook(root: &Path, input: &NormalizedHookInput) -> HookOutcome {
-    clear_turn_edit(root);
+    if !root.join(".harness").is_dir() {
+        return HookOutcome::allow();
+    }
+    if input.event == HookEvent::UserPromptSubmit || input.user_prompt.is_some() {
+        clear_turn_edit(root);
+        clear_skipped_active_task(root);
+    }
     if let Some(prompt) = input.user_prompt.as_deref() {
         let _ = record_pending_prompt(root, prompt);
     }
@@ -25,7 +33,10 @@ pub fn handle_prompt_hook(root: &Path, input: &NormalizedHookInput) -> HookOutco
 
 /// Marks that the current agent turn performed at least one mutating file tool call.
 pub fn mark_turn_edit(root: &Path) {
-    let flag = root.join(".harness/.state/turn-edits.flag");
+    if !root.join(".harness").is_dir() {
+        return;
+    }
+    let flag = root.join(TURN_EDITS_FLAG);
     if let Some(parent) = flag.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -33,12 +44,16 @@ pub fn mark_turn_edit(root: &Path) {
 }
 
 fn clear_turn_edit(root: &Path) {
-    let _ = fs::remove_file(root.join(".harness/.state/turn-edits.flag"));
+    let _ = fs::remove_file(root.join(TURN_EDITS_FLAG));
 }
 
 /// Finalizes a passing `Stop` check so subsequent read-only turns avoid redundant `inbox.json` noise.
 pub fn mark_stop_completed(root: &Path) {
+    if !root.join(".harness").is_dir() {
+        return;
+    }
     clear_turn_edit(root);
+    clear_skipped_active_task(root);
     let stamp = root.join(".harness/.state/last-stop.stamp");
     if let Some(parent) = stamp.parent() {
         let _ = fs::create_dir_all(parent);
@@ -49,7 +64,7 @@ pub fn mark_stop_completed(root: &Path) {
 /// Returns `true` when the turn is read-only (no `PostToolUse` edit flag, no untracked edits,
 /// and no dirty file newer than the previous completed `Stop` stamp).
 pub fn should_skip_readonly_stop(root: &Path, changed: &[String]) -> bool {
-    if root.join(".harness/.state/turn-edits.flag").is_file() {
+    if root.join(TURN_EDITS_FLAG).is_file() {
         return false;
     }
     if !anvil_tasks::load_untracked_edits(root).is_empty() {
@@ -136,15 +151,16 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
     }
 
     let active = load_active_task(root).ok().flatten();
-    if let Some(ref st) = active
-        && !st.skipped
-        && st.status == TaskStatus::InProgress
-        && st.summary_recorded_at.is_none()
-    {
-        return Some(HookOutcome::block_stop(format!(
-            "Task {} is still in_progress. Verify & finish via MCP `task_done` / `anvil tasks done {} \"<summary>\"`, or checkpoint/block via `task_update` / `anvil tasks update {} \"<progress>\" --next \"...\"`.",
-            st.task_id, st.task_id, st.task_id
-        )));
+    if let Some(ref st) = active {
+        if st.skipped {
+            return None;
+        }
+        if st.status == TaskStatus::InProgress && st.summary_recorded_at.is_none() {
+            return Some(HookOutcome::block_stop(format!(
+                "Task {} is still in_progress. Verify & finish via MCP `task_done` / `anvil tasks done {} \"<summary>\"`, or checkpoint/block via `task_update` (`status=\"blocked\"`) / `anvil tasks update {} \"<progress>\" --status blocked --next \"...\"`.",
+                st.task_id, st.task_id, st.task_id
+            )));
+        }
     }
 
     let untracked = anvil_tasks::load_untracked_edits(root);
@@ -162,7 +178,10 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
     let fresh_changes: Vec<&String> = match baseline {
         Some(base) => project_changes
             .into_iter()
-            .filter(|rel| is_newer(&root.join(rel.as_str()), base))
+            .filter(|rel| {
+                let abs = root.join(rel.as_str());
+                !abs.exists() || is_newer(&abs, base)
+            })
             .collect(),
         None => project_changes,
     };

@@ -113,7 +113,15 @@ fn rewind_checkpoint(root: &Path, target: Option<&str>) -> Result<()> {
 fn remove_files_added_since(root: &Path, base_ref: &str, newer_ref: &str) -> Result<()> {
     let added = run_git(
         root,
-        &["diff", "--name-only", "--diff-filter=A", base_ref, newer_ref],
+        &[
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--name-only",
+            "--diff-filter=A",
+            base_ref,
+            newer_ref,
+        ],
     )?;
     for rel in added.lines().map(str::trim).filter(|s| !s.is_empty()) {
         if rel.starts_with(".harness/.state/") || rel.starts_with(".harness/.worktrees/") {

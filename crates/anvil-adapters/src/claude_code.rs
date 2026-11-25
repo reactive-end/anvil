@@ -18,6 +18,10 @@ struct RawClaudeInput {
     cwd: Option<String>,
     #[serde(alias = "sessionId")]
     session_id: Option<String>,
+    #[serde(alias = "agentId")]
+    agent_id: Option<String>,
+    #[serde(alias = "agentType")]
+    agent_type: Option<String>,
     #[serde(alias = "toolName")]
     tool_name: Option<String>,
     #[serde(alias = "toolInput")]
@@ -53,6 +57,8 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         event,
         cwd: raw.cwd,
         session_id: raw.session_id,
+        agent_id: raw.agent_id,
+        agent_type: raw.agent_type,
         tool_name: raw.tool_name,
         tool_input: raw.tool_input,
         tool_output: raw.tool_response,
@@ -85,35 +91,40 @@ pub fn render_output(
     }
 }
 
+/// Renders `PreToolUse` without ever granting permission on the user's behalf.
+///
+/// In Claude Code `permissionDecision: "allow"` skips the permission prompt, so a tool call that
+/// merely passed the guards stays silent and follows the user's normal permission flow. Rewritten
+/// input is returned without a decision for the same reason.
 fn render_pre_tool_use(outcome: &HookOutcome) -> Value {
     let mut specific = Map::new();
+    let decision = match outcome.action {
+        PermissionAction::Allow => return json!({}),
+        PermissionAction::Overwrite => None,
+        PermissionAction::Deny => Some("deny"),
+        PermissionAction::Ask => Some("ask"),
+    };
     specific.insert(
         "hookEventName".to_owned(),
         Value::String("PreToolUse".to_owned()),
     );
-
-    let decision = match outcome.action {
-        PermissionAction::Allow | PermissionAction::Overwrite => "allow",
-        PermissionAction::Deny => "deny",
-        PermissionAction::Ask => "ask",
-    };
-    specific.insert(
-        "permissionDecision".to_owned(),
-        Value::String(decision.to_owned()),
-    );
-
-    if let Some(reason) = &outcome.reason {
+    if let Some(decision) = decision {
         specific.insert(
-            "permissionDecisionReason".to_owned(),
-            Value::String(reason.clone()),
+            "permissionDecision".to_owned(),
+            Value::String(decision.to_owned()),
         );
-    }
-    if outcome.action == PermissionAction::Overwrite
-        && let Some(updated) = &outcome.updated_input
-    {
+        if let Some(reason) = &outcome.reason {
+            specific.insert(
+                "permissionDecisionReason".to_owned(),
+                Value::String(reason.clone()),
+            );
+        }
+    } else {
+        let Some(updated) = &outcome.updated_input else {
+            return json!({});
+        };
         specific.insert("updatedInput".to_owned(), updated.clone());
     }
-
     json!({ "hookSpecificOutput": Value::Object(specific) })
 }
 

@@ -1,7 +1,7 @@
 //! Resident TCP daemon server holding a hot `CodeGraphEngine` in RAM.
 
 use std::fs;
-use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -22,6 +22,7 @@ use super::{read_state, state_path};
 
 const MAX_CONCURRENT_CONNS: usize = 16;
 const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 900;
+const MAX_DAEMON_REQ_BYTES: usize = 1024 * 1024;
 
 struct DaemonState {
     engine: CodeGraphEngine,
@@ -127,7 +128,7 @@ fn resolve_idle_timeout_secs() -> u64 {
 }
 
 fn spawn_or_handle(
-    stream: TcpStream,
+    mut stream: TcpStream,
     token: &str,
     shared_state: &Arc<Mutex<DaemonState>>,
     shutdown: &Arc<AtomicBool>,
@@ -144,7 +145,14 @@ fn spawn_or_handle(
             handle_connection(stream, &expected_token, &state, &sd);
         });
     } else {
-        handle_connection(stream, token, shared_state, shutdown);
+        let busy = DaemonResponse::Error {
+            message: "daemon busy: too many concurrent connections".to_owned(),
+        };
+        if let Ok(mut payload) = serde_json::to_vec(&busy) {
+            payload.push(b'\n');
+            let _ = stream.set_write_timeout(Some(Duration::from_millis(200)));
+            let _ = stream.write_all(&payload);
+        }
     }
 }
 
@@ -159,11 +167,22 @@ fn handle_connection(
     let _ = stream.set_write_timeout(Some(Duration::from_millis(1500)));
 
     let mut line = String::new();
-    let mut reader = match stream.try_clone() {
-        Ok(cloned) => BufReader::new(cloned),
+    let cloned = match stream.try_clone() {
+        Ok(cloned) => cloned,
         Err(_) => return,
     };
+    let mut reader = BufReader::new(cloned.take((MAX_DAEMON_REQ_BYTES + 1) as u64));
     if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+        return;
+    }
+    if line.len() > MAX_DAEMON_REQ_BYTES {
+        let err = DaemonResponse::Error {
+            message: "daemon request exceeds 1 MiB limit".to_owned(),
+        };
+        if let Ok(mut payload) = serde_json::to_vec(&err) {
+            payload.push(b'\n');
+            let _ = stream.write_all(&payload);
+        }
         return;
     }
 

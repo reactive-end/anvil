@@ -1,6 +1,5 @@
 //! Tier 0 AST, promoted ratchet rule, and Circuit Breaker helpers for `anvil hook`.
 
-use std::fs;
 use std::path::Path;
 
 use anvil_adapters::contract::{InboxMessage, MessageLevel, NormalizedHookInput};
@@ -15,6 +14,7 @@ use anvil_core::traits::{Diagnostic, Severity};
 use serde_json::Value;
 
 use super::payload::{extract_command_field, is_anvil_run_command};
+use crate::commands::check::read_bounded_source;
 
 /// Collects Tier 0 AST and promoted ratchet diagnostics for a single modified file.
 pub fn collect_post_tool_messages(
@@ -23,7 +23,10 @@ pub fn collect_post_tool_messages(
     config: &AnvilConfig,
     messages: &mut Vec<InboxMessage>,
 ) {
-    let Ok(source) = fs::read_to_string(root.join(rel)) else {
+    if !root.join(".harness").is_dir() {
+        return;
+    }
+    let Some(source) = read_bounded_source(&root.join(rel)) else {
         return;
     };
     let mut errs = Vec::new();
@@ -83,7 +86,7 @@ pub fn collect_changed_gate_errors(
         if cache.is_clean_hit(&abs, rel, &rules_hash) {
             continue;
         }
-        let Ok(src) = fs::read_to_string(&abs) else {
+        let Some(src) = read_bounded_source(&abs) else {
             continue;
         };
         let before = errs.len();
@@ -114,6 +117,9 @@ pub fn update_circuit_from_output(
     input: &NormalizedHookInput,
     messages: &mut Vec<InboxMessage>,
 ) {
+    if !root.join(".harness").is_dir() {
+        return;
+    }
     let Some(out) = &input.tool_output else {
         return;
     };
@@ -146,10 +152,11 @@ pub fn update_circuit_from_output(
             let _ = cb.record_command_success(cmd);
         }
         Some(c) => {
-            let snippet = out
-                .get("stderr")
-                .or_else(|| out.get("output"))
-                .and_then(Value::as_str)
+            let snippet = ["stderr", "output", "stdout"]
+                .iter()
+                .filter_map(|k| out.get(*k).and_then(Value::as_str))
+                .map(str::trim)
+                .find(|s| !s.is_empty())
                 .unwrap_or("non-zero exit");
             if let Ok(st) = cb.record_failure(tool, &format!("exit {c}: {snippet}"), cmd)
                 && st.is_open()

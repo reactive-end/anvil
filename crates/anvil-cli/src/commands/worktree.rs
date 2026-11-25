@@ -95,8 +95,34 @@ fn remove_worktree(root: &Path, raw_name: &str, force: bool) -> Result<()> {
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
+    cleanup_worktree_branch(root, &name, force);
     println!("removed worktree {}", ui::cyan(&name));
     Ok(())
+}
+
+fn cleanup_worktree_branch(root: &Path, name: &str, force: bool) {
+    let branch_name = format!("anvil-wt/{name}");
+    let branch_ref = format!("refs/heads/{branch_name}");
+    let exists = Command::new("git")
+        .args(["rev-parse", "--verify", "--quiet", &branch_ref])
+        .current_dir(root)
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !exists {
+        return;
+    }
+    let flag = if force { "-D" } else { "-d" };
+    if let Ok(del) = Command::new("git")
+        .args(["branch", flag, &branch_name])
+        .current_dir(root)
+        .output()
+        && !del.status.success()
+    {
+        eprintln!(
+            "warning: worktree removed but branch `{branch_name}` was kept: {}",
+            String::from_utf8_lossy(&del.stderr).trim()
+        );
+    }
 }
 
 fn validate_name(raw: &str) -> Result<String> {
@@ -124,4 +150,39 @@ fn copy_if_present(src: &Path, dst: &Path) -> Result<()> {
     }
     fs::copy(src, dst)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn remove_worktree_deletes_default_branch_allowing_re_add() {
+        let dir = TempDir::new().expect("tempdir");
+        let root = dir.path();
+        for args in [
+            &["init", "-b", "main"][..],
+            &["config", "user.name", "Test"][..],
+            &["config", "user.email", "t@e.co"][..],
+        ] {
+            let out = Command::new("git").args(args).current_dir(root).output().unwrap();
+            assert!(out.status.success());
+        }
+        fs::write(root.join("README.md"), "hello\n").unwrap();
+        let add_out = Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+        assert!(add_out.status.success());
+        let ci_out = Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(ci_out.status.success());
+
+        add_worktree(root, "agent-readd", None).expect("first add");
+        remove_worktree(root, "agent-readd", false).expect("remove deletes default branch");
+        add_worktree(root, "agent-readd", None).expect("second add with same name succeeds");
+        remove_worktree(root, "agent-readd", true).expect("cleanup");
+    }
 }

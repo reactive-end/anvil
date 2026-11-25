@@ -199,10 +199,12 @@ fn extract_extends_list(val: &Value) -> Vec<&str> {
 
 fn resolve_extends_file(root: &Path, dir: &Path, ext: &str) -> Option<PathBuf> {
     let ext = ext.trim();
-    if ext.is_empty() {
+    if ext.is_empty() || Path::new(ext).is_absolute() {
         return None;
     }
-    if let Some(found) = probe_tsconfig_path(&dir.join(ext)) {
+    let root_canon = root.canonicalize().ok()?;
+    let is_contained = |cand: &Path| cand.canonicalize().is_ok_and(|c| c.starts_with(&root_canon));
+    if let Some(found) = probe_tsconfig_path(&dir.join(ext)).filter(|p| is_contained(p)) {
         return Some(found);
     }
     if ext.starts_with('.') || ext.starts_with('/') {
@@ -210,7 +212,9 @@ fn resolve_extends_file(root: &Path, dir: &Path, ext: &str) -> Option<PathBuf> {
     }
     let mut cur = Some(dir);
     while let Some(c) = cur {
-        if let Some(found) = probe_tsconfig_path(&c.join("node_modules").join(ext)) {
+        if let Some(found) =
+            probe_tsconfig_path(&c.join("node_modules").join(ext)).filter(|p| is_contained(p))
+        {
             return Some(found);
         }
         if c == root {
@@ -282,14 +286,18 @@ fn check_identity(root: &Path) -> String {
 
 fn check_memory(root: &Path, author: &str) {
     match MemoryEngine::open_without_sync(root, author) {
-        Ok(mut mem) => {
-            let synced = mem.sync().map(|s| s.records_applied).unwrap_or(0);
-            ui::print_status_row(
+        Ok(mut mem) => match mem.sync() {
+            Ok(s) => ui::print_status_row(
                 &ui::ok_badge(),
                 "memory",
-                &format!("SQLite FTS5 ready (synced {synced} new records)"),
-            );
-        }
+                &format!("SQLite FTS5 ready (synced {} new records)", s.records_applied),
+            ),
+            Err(err) => ui::print_status_row(
+                &ui::warn_badge(),
+                "memory",
+                &format!("SQLite sync error: {err}"),
+            ),
+        },
         Err(err) => ui::print_status_row(&ui::warn_badge(), "memory", &err.to_string()),
     }
 }
@@ -319,7 +327,11 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
     if workspace_has_php(config) {
         bins.push("php");
     }
-    for tool in &config.tools {
+    for tool in config
+        .tools
+        .iter()
+        .chain(config.subrepos.iter().flat_map(|s| s.tools.iter()))
+    {
         if let Some(bin) = tool_kind_bin(*tool)
             && !bins.contains(&bin)
         {

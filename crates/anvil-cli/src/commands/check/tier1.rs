@@ -49,7 +49,8 @@ pub(super) fn run_tier1(
     }
 
     let (tc_scope, cache_scope) = build_tier1_scopes(&blast);
-    let boundary_diags = engine.check_boundaries(changed);
+    let boundary_scope: &[String] = if opts.full { &[] } else { changed };
+    let boundary_diags = engine.check_boundaries(boundary_scope);
     let boundaries_failed = print_boundary_diagnostics(&boundary_diags);
     let salt = format!(
         "full={};no_tests={};stacks={:?};boundaries={};cycles={}",
@@ -216,7 +217,10 @@ fn has_typechecker_in_dir(dir: &Path, stacks: &[StackKind]) -> bool {
     {
         return true;
     }
-    if stacks.contains(&StackKind::Python) && resolve_local_or_path_bin(dir, "pyright").is_some() {
+    if stacks.contains(&StackKind::Python)
+        && (resolve_local_or_path_bin(dir, "pyright").is_some()
+            || resolve_local_or_path_bin(dir, "mypy").is_some())
+    {
         return true;
     }
     if stacks.contains(&StackKind::FlutterDart)

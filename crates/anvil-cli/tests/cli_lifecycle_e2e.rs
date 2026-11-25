@@ -391,3 +391,61 @@ fn multi_subproject_init_and_umbrella_hook_routing_work_like_centinela() {
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].request, "Fix Android Gradle build in movil");
 }
+
+fn fire_claude_hook(root: &Path, event: &str, session: &str, extra: Value) -> Value {
+    let mut payload = json!({
+        "hook_event_name": event,
+        "session_id": session,
+        "cwd": root.to_string_lossy(),
+    });
+    for (key, value) in extra.as_object().unwrap() {
+        payload[key] = value.clone();
+    }
+    let out = assert_ok(
+        &run_anvil_stdin(root, &["hook", event, "--adapter", "claude"], &payload.to_string()),
+        event,
+    );
+    serde_json::from_str(&out).unwrap()
+}
+
+#[test]
+fn stop_gate_ignores_errors_that_predate_the_session() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+    Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+    Command::new("git").args(["commit", "-m", "initial"]).current_dir(root).output().unwrap();
+
+    let marker = concat!("// @ts-", "ignore\n");
+    fs::write(root.join("src/core.ts"), format!("{marker}export const old: number = 1;\n")).unwrap();
+    fire_claude_hook(root, "UserPromptSubmit", "s1", json!({ "prompt": "opina" }));
+    let passive = fire_claude_hook(root, "Stop", "s1", json!({}));
+    assert_ne!(passive["decision"], json!("block"), "pre-existing errors are not this session's work");
+
+    fire_claude_hook(root, "UserPromptSubmit", "s1", json!({ "prompt": "edita" }));
+    fs::write(root.join("src/page.tsx"), format!("{marker}export const fresh: number = 2;\n")).unwrap();
+    let own = fire_claude_hook(root, "Stop", "s1", json!({}));
+    assert_eq!(own["decision"], json!("block"), "errors written through the shell are still gated");
+    let reason = own["reason"].as_str().unwrap();
+    assert!(reason.contains("src/page.tsx") && !reason.contains("src/core.ts"), "{reason}");
+}
+
+#[test]
+fn task_entries_exclude_dirty_files_that_predate_the_task() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+    Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+    Command::new("git").args(["commit", "-m", "initial"]).current_dir(root).output().unwrap();
+
+    fs::write(root.join("src/core.ts"), "export const before = 1;\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_ok(&run_anvil(root, &["tasks", "start", "Scoped files"]), "tasks start");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    fs::write(root.join("src/page.tsx"), "export const after = 2;\n").unwrap();
+    assert_ok(&run_anvil(root, &["tasks", "done", "T-001", "Scoped"]), "tasks done");
+
+    let task = anvil_tasks::read_single_task(root, "T-001").unwrap();
+    assert!(task.files_touched.contains(&"src/page.tsx".to_owned()));
+    assert!(!task.files_touched.contains(&"src/core.ts".to_owned()), "{:?}", task.files_touched);
+}

@@ -90,9 +90,9 @@ pub fn execute(root: &Path, opts: InitOptions<'_>) -> Result<()> {
         let root_sonar = if sonar_mode == SonarInitMode::Auto && use_tui {
             let cfg = resolve_single_sonar_tui(root)?;
             println!();
-            cfg
+            Some(cfg)
         } else {
-            prompt_sonar_for_repo("root project", root, sonar_mode, &mut reader, interactive)?
+            prompt_sonar_for_repo_opt("root project", root, sonar_mode, &mut reader, interactive)?
         };
         let _ = init_single_repo(root, explicit_adapter, opts.git_hooks, root_sonar, "anvil initialized at")?;
         return Ok(());
@@ -199,7 +199,7 @@ fn resolve_layout_text(
 }
 
 fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Result<()> {
-    let mut sonar_configs = if ctx.sonar_mode == SonarInitMode::Auto && ctx.use_tui {
+    let mut sonar_configs: Vec<Option<SonarConfig>> = if ctx.sonar_mode == SonarInitMode::Auto && ctx.use_tui {
         let mut targets = Vec::with_capacity(1 + ctx.child_repos.len());
         targets.push(("monorepo root".to_owned(), ctx.root.to_path_buf(), "root workspace".to_owned()));
         for r in ctx.child_repos {
@@ -207,10 +207,10 @@ fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
         }
         let cfgs = resolve_multi_sonar_tui(&targets)?;
         println!();
-        cfgs
+        cfgs.into_iter().map(Some).collect()
     } else {
         let mut cfgs = Vec::with_capacity(1 + ctx.child_repos.len());
-        cfgs.push(prompt_sonar_for_repo(
+        cfgs.push(prompt_sonar_for_repo_opt(
             "monorepo root",
             ctx.root,
             ctx.sonar_mode,
@@ -220,11 +220,17 @@ fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
         for r in ctx.child_repos {
             let sub_dir = ctx.root.join(&r.rel_path);
             let label = format!("subproject `{}`", r.rel_path);
-            cfgs.push(prompt_sonar_for_repo(&label, &sub_dir, ctx.sonar_mode, reader, ctx.interactive)?);
+            cfgs.push(prompt_sonar_for_repo_opt(
+                &label,
+                &sub_dir,
+                ctx.sonar_mode,
+                reader,
+                ctx.interactive,
+            )?);
         }
         cfgs
     };
-    let root_sonar = sonar_configs.drain(..1).next().unwrap_or_default();
+    let root_sonar = sonar_configs.drain(..1).next().flatten();
     let mut root_config = init_single_repo(
         ctx.root,
         ctx.explicit_adapter,
@@ -233,15 +239,20 @@ fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
         "anvil monorepo initialized at",
     )?;
     for (repo, sub_sonar) in ctx.child_repos.iter().zip(sonar_configs) {
-        if let Some(sub_entry) = root_config.subrepos.iter_mut().find(|s| s.path == repo.rel_path) {
-            sub_entry.sonar_enabled = sub_sonar.enabled;
+        if let Some(sub_s) = sub_sonar
+            && let Some(sub_entry) = root_config.subrepos.iter_mut().find(|s| s.path == repo.rel_path)
+        {
+            sub_entry.sonar_enabled = sub_s.enabled;
         }
     }
     root_config.save(ctx.root)
 }
 
-fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Result<()> {
-    let sonar_configs = if ctx.sonar_mode == SonarInitMode::Auto && ctx.use_tui {
+fn resolve_umbrella_sonar_configs(
+    ctx: &MultiInitCtx<'_>,
+    reader: &mut dyn BufRead,
+) -> Result<Vec<Option<SonarConfig>>> {
+    if ctx.sonar_mode == SonarInitMode::Auto && ctx.use_tui {
         let targets: Vec<(String, std::path::PathBuf, String)> = ctx
             .child_repos
             .iter()
@@ -249,20 +260,23 @@ fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
             .collect();
         let cfgs = resolve_multi_sonar_tui(&targets)?;
         println!();
-        cfgs
-    } else {
-        let mut cfgs = Vec::with_capacity(ctx.child_repos.len());
-        for repo in ctx.child_repos {
-            let sub_dir = ctx.root.join(&repo.rel_path);
-            if !sub_dir.is_dir() {
-                cfgs.push(SonarConfig::default());
-                continue;
-            }
-            let label = format!("subproject `{}`", repo.rel_path);
-            cfgs.push(prompt_sonar_for_repo(&label, &sub_dir, ctx.sonar_mode, reader, ctx.interactive)?);
+        return Ok(cfgs.into_iter().map(Some).collect());
+    }
+    let mut cfgs = Vec::with_capacity(ctx.child_repos.len());
+    for repo in ctx.child_repos {
+        let sub_dir = ctx.root.join(&repo.rel_path);
+        if !sub_dir.is_dir() {
+            cfgs.push(None);
+            continue;
         }
-        cfgs
-    };
+        let label = format!("subproject `{}`", repo.rel_path);
+        cfgs.push(prompt_sonar_for_repo_opt(&label, &sub_dir, ctx.sonar_mode, reader, ctx.interactive)?);
+    }
+    Ok(cfgs)
+}
+
+fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Result<()> {
+    let sonar_configs = resolve_umbrella_sonar_configs(ctx, reader)?;
 
     let umbrella_list: Vec<UmbrellaSubrepo> = ctx
         .child_repos
@@ -379,25 +393,25 @@ fn prompt_host_tui_if_missing(needs_host: bool) -> Result<Option<String>> {
     }
 }
 
-fn prompt_sonar_for_repo(
+fn prompt_sonar_for_repo_opt(
     label: &str,
     dir: &Path,
     mode: SonarInitMode,
     reader: &mut dyn BufRead,
     interactive: bool,
-) -> Result<SonarConfig> {
+) -> Result<Option<SonarConfig>> {
     let props = parse_sonar_properties(dir);
     match mode {
-        SonarInitMode::No => Ok(SonarConfig::default()),
-        SonarInitMode::Yes => Ok(hydrate_sonar_config(dir, props.as_ref(), None)),
-        SonarInitMode::Auto if !interactive => Ok(SonarConfig::default()),
+        SonarInitMode::No => Ok(Some(SonarConfig::default())),
+        SonarInitMode::Yes => Ok(Some(hydrate_sonar_config(dir, props.as_ref(), None))),
+        SonarInitMode::Auto if !interactive => Ok(None),
         SonarInitMode::Auto => {
             print!("Does {label} use SonarQube? [y/N]: ");
             io::stdout().flush()?;
             let mut answer = String::new();
             let _ = reader.read_line(&mut answer)?;
             if !is_affirmative(&answer) {
-                return Ok(SonarConfig::default());
+                return Ok(Some(SonarConfig::default()));
             }
             let host_override = if props.as_ref().and_then(|p| p.host_url.as_ref()).is_none() {
                 print!("  SonarQube host URL [http://localhost:9000]: ");
@@ -409,7 +423,7 @@ fn prompt_sonar_for_repo(
             } else {
                 None
             };
-            Ok(hydrate_sonar_config(dir, props.as_ref(), host_override))
+            Ok(Some(hydrate_sonar_config(dir, props.as_ref(), host_override)))
         }
     }
 }
@@ -444,13 +458,15 @@ fn init_single_repo(
     dir: &Path,
     explicit_adapter: Option<AdapterTarget>,
     git_hooks: bool,
-    sonar: SonarConfig,
+    sonar_override: Option<SonarConfig>,
     banner: &str,
 ) -> Result<AnvilConfig> {
     let report = sync::init_repo_with_adapter(dir, explicit_adapter)?;
     let mut config = AnvilConfig::load_or_default(dir)?;
-    config.sonar = sonar;
-    config.save(dir)?;
+    if let Some(sonar) = sonar_override {
+        config.sonar = sonar;
+        config.save(dir)?;
+    }
 
     let merge_driver_status = if dir.join(".git").exists() {
         install_git_merge_driver(dir)?;

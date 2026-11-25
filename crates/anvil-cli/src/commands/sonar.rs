@@ -2,7 +2,6 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use anvil_core::compressor::compress_output;
@@ -175,7 +174,7 @@ fn cmd_analyze(root: &Path, config: &AnvilConfig, extra_args: &[String]) -> Resu
         cmd.env("SONAR_TOKEN", tok);
     }
 
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(180));
+    let timeout = config.tier_budgets.tier1_timeout();
     let timed = run_command_with_timeout(&mut cmd, timeout)
         .with_context(|| format!("failed to execute {}", bin.display()))?;
     let combined = format!(

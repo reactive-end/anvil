@@ -6,6 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
+use anvil_core::fs_util::with_file_lock;
 
 use crate::cli::subcmds::DaemonSubcmd;
 use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
@@ -43,9 +44,27 @@ pub fn ensure_daemon_running_async(root: &Path) {
     if matches!(try_request(root, DaemonRequest::Ping), Some(DaemonResponse::Pong { .. })) {
         return;
     }
+    let lock_path = root.join(".harness/.state/daemon-start.lock");
+    if lock_path.parent().is_some_and(Path::is_dir)
+        && let Ok(lock_file) = std::fs::OpenOptions::new().create(true).read(true).write(true).truncate(false).open(&lock_path)
+        && lock_file.try_lock().is_err()
+    {
+        return;
+    }
     remove_state(root);
     if let Ok(exe) = std::env::current_exe() {
         let _ = spawn_detached_async(&exe, root);
+    }
+}
+
+#[cfg(windows)]
+fn normalize_ps_root(root: &Path) -> String {
+    let raw = root.to_string_lossy();
+    let trimmed = raw.trim_end_matches('\\');
+    if trimmed.ends_with(':') {
+        format!("{trimmed}\\\\")
+    } else {
+        trimmed.to_owned()
     }
 }
 
@@ -55,7 +74,7 @@ fn spawn_detached_async(exe: &Path, root: &Path) -> Result<()> {
     let _child = Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", ps_cmd])
         .env("ANVIL_DAEMON_EXE", exe)
-        .env("ANVIL_DAEMON_ROOT", root)
+        .env("ANVIL_DAEMON_ROOT", normalize_ps_root(root))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -77,6 +96,11 @@ fn spawn_detached_async(exe: &Path, root: &Path) -> Result<()> {
 }
 
 fn start_background(root: &Path) -> Result<()> {
+    let lock_path = root.join(".harness/.state/daemon-start.lock");
+    with_file_lock(&lock_path, STARTUP_TIMEOUT_MS, || start_background_locked(root))
+}
+
+fn start_background_locked(root: &Path) -> Result<()> {
     if let Some(DaemonResponse::Pong { pid, .. }) = try_request(root, DaemonRequest::Ping) {
         let port = read_state(root).map_or(0, |s| s.port);
         println!("daemon already running: pid={pid} port={port}");
@@ -115,7 +139,7 @@ fn spawn_detached_foreground(exe: &Path, root: &Path) -> Result<Option<std::proc
     let status = Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", ps_cmd])
         .env("ANVIL_DAEMON_EXE", exe)
-        .env("ANVIL_DAEMON_ROOT", root)
+        .env("ANVIL_DAEMON_ROOT", normalize_ps_root(root))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

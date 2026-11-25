@@ -234,11 +234,27 @@ fn claude_code_pre_tool_use_decisions_and_updated_input() {
         json!({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "use compressed runner",
                 "updatedInput": { "command": "anvil run -- pytest" }
             }
+        }),
+        "rewritten input must still go through the user's permission flow"
+    );
+    assert_eq!(
+        claude_code::render_output(root, HookEvent::PreToolUse, &HookOutcome::ask("confirm rm"))
+            .expect("ask"),
+        json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "confirm rm"
+            }
         })
+    );
+    assert_eq!(
+        claude_code::render_output(root, HookEvent::PreToolUse, &HookOutcome::allow())
+            .expect("allow"),
+        json!({}),
+        "an unguarded call must stay silent instead of auto-approving the tool"
     );
 }
 

@@ -75,7 +75,7 @@ fn collect_touched_files(raw_diff: &str) -> Vec<String> {
             continue;
         };
         let path = if let Some(idx) = rest.rfind("\" \"b/") {
-            Some(rest[idx + 3..].trim_end_matches('"').to_owned())
+            Some(rest[idx + 5..].trim_end_matches('"').to_owned())
         } else {
             rest.rsplit_once(" b/")
                 .map(|(_, b)| b.trim_matches('"').to_owned())

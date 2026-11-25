@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::Result;
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
-use anvil_core::stats::{load_stats, percentile_ms, reset_stats};
+use anvil_core::stats::{AnvilStats, load_stats, percentile_ms, reset_stats};
 
 use crate::ui;
 
@@ -61,11 +61,13 @@ pub fn execute(root: &Path, reset: bool, trajectories: bool) -> Result<()> {
     ui::print_kv(
         "token_guard:",
         &format!(
-            "blocks={} warnings={}",
+            "blocks={} warnings={} tokens_avoided={}",
             ui::yellow(&st.token_guard_blocks.to_string()),
-            st.token_guard_warnings
+            st.token_guard_warnings,
+            st.tokens_avoided_token_guard
         ),
     );
+    print_effectiveness(&st);
     if trajectories {
         print_trajectory_section(root, &st);
     }
@@ -73,7 +75,33 @@ pub fn execute(root: &Path, reset: bool, trajectories: bool) -> Result<()> {
     Ok(())
 }
 
-fn print_top_rule_hits(st: &anvil_core::stats::AnvilStats) {
+/// Reports reach and reduction so savings can be judged against how often a layer is used.
+fn print_effectiveness(st: &AnvilStats) {
+    let reduction = if st.tokens_raw_compressor > 0 {
+        st.tokens_saved_compressor.min(st.tokens_raw_compressor) as f64 * 100.0
+            / st.tokens_raw_compressor as f64
+    } else {
+        0.0
+    };
+    ui::print_kv(
+        "compressor:",
+        &format!(
+            "runs={} raw_tokens={} reduction={reduction:.1}%",
+            st.compressor_runs, st.tokens_raw_compressor
+        ),
+    );
+    ui::print_kv(
+        "interventions:",
+        &format!(
+            "stop_blocks={} security_prompts={} rule_hits={}",
+            st.stop_blocks,
+            st.security_prompts,
+            st.rule_hits.values().sum::<u64>()
+        ),
+    );
+}
+
+fn print_top_rule_hits(st: &AnvilStats) {
     let mut rules: Vec<(&String, &u64)> = st.rule_hits.iter().collect();
     rules.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
     if rules.is_empty() {
@@ -90,7 +118,7 @@ fn print_top_rule_hits(st: &anvil_core::stats::AnvilStats) {
     }
 }
 
-fn print_trajectory_section(root: &Path, st: &anvil_core::stats::AnvilStats) {
+fn print_trajectory_section(root: &Path, st: &AnvilStats) {
     let p50 = percentile_ms(&st.hook_latencies_ms, 50.0);
     let p95 = percentile_ms(&st.hook_latencies_ms, 95.0);
     ui::print_section("Trajectory & Latency");

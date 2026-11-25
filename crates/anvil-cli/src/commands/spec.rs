@@ -6,6 +6,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::proc_util::run_command_with_timeout;
 
 use crate::cli::subcmds::SpecSubcmd;
@@ -132,53 +133,132 @@ fn evaluate_item(
 ) {
     match section {
         Section::None => {}
-        Section::Files => {
-            if !root.join(item).exists() {
-                failures.push(format!("[{spec_name}] missing required file `{item}`"));
+        Section::Files => match resolve_contained_spec_path(root, item) {
+            Ok(abs) if abs.exists() => {}
+            Ok(_) => failures.push(format!("[{spec_name}] missing required file `{item}`")),
+            Err(err) => failures.push(format!("[{spec_name}] invalid file path `{item}`: {err}")),
+        },
+        Section::MustContain => evaluate_must_contain(root, spec_name, item, failures),
+        Section::Forbid => evaluate_forbid(root, spec_name, item, failures),
+        Section::Commands => evaluate_command(root, spec_name, item, failures),
+    }
+}
+
+fn evaluate_must_contain(root: &Path, spec_name: &str, item: &str, failures: &mut Vec<String>) {
+    let Some((path, pat)) = item.split_once("::") else {
+        return;
+    };
+    let (rel, needle) = (path.trim(), pat.trim());
+    let Ok(abs) = resolve_contained_spec_path(root, rel) else {
+        failures.push(format!("[{spec_name}] path `{rel}` escapes repository root"));
+        return;
+    };
+    let ok = fs::read_to_string(&abs)
+        .map(|c| c.contains(needle))
+        .unwrap_or(false);
+    if !ok {
+        failures.push(format!("[{spec_name}] `{rel}` must contain `{needle}`"));
+    }
+}
+
+fn evaluate_forbid(root: &Path, spec_name: &str, item: &str, failures: &mut Vec<String>) {
+    let Some((path, pat)) = item.split_once("::") else {
+        return;
+    };
+    let (rel, needle) = (path.trim(), pat.trim());
+    let Ok(abs) = resolve_contained_spec_path(root, rel) else {
+        failures.push(format!("[{spec_name}] path `{rel}` escapes repository root"));
+        return;
+    };
+    let Ok(bytes) = fs::read(&abs) else {
+        return;
+    };
+    match String::from_utf8(bytes) {
+        Ok(content) => {
+            if content.contains(needle) {
+                failures.push(format!("[{spec_name}] `{rel}` contains forbidden `{needle}`"));
             }
         }
-        Section::MustContain => {
-            if let Some((path, pat)) = item.split_once("::") {
-                let rel = path.trim();
-                let needle = pat.trim();
-                let ok = fs::read_to_string(root.join(rel))
-                    .map(|c| c.contains(needle))
-                    .unwrap_or(false);
-                if !ok {
-                    failures.push(format!("[{spec_name}] `{rel}` must contain `{needle}`"));
-                }
+        Err(_) => failures.push(format!(
+            "[{spec_name}] `{rel}` is non-UTF-8; cannot verify absence of `{needle}`"
+        )),
+    }
+}
+
+fn evaluate_command(root: &Path, spec_name: &str, item: &str, failures: &mut Vec<String>) {
+    let tokens = split_spec_command(item);
+    let Some(bin) = tokens.first() else {
+        return;
+    };
+    let resolved = resolve_local_or_path_bin(root, bin).unwrap_or_else(|| PathBuf::from(bin));
+    let mut cmd = Command::new(&resolved);
+    cmd.args(&tokens[1..]).current_dir(root);
+    match run_command_with_timeout(&mut cmd, Duration::from_secs(CMD_TIMEOUT_SECS)) {
+        Ok(out) if !out.timed_out && out.status_code == 0 => {}
+        Ok(out) => failures.push(format!(
+            "[{spec_name}] command `{item}` failed (status={:?}, timed_out={})",
+            out.status_code, out.timed_out
+        )),
+        Err(err) => failures.push(format!("[{spec_name}] command `{item}` error: {err}")),
+    }
+}
+
+fn resolve_contained_spec_path(root: &Path, raw: &str) -> Result<PathBuf> {
+    let cand = Path::new(raw);
+    if cand.is_absolute() {
+        bail!("absolute paths are forbidden in specs");
+    }
+    let root_canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let joined = root.join(cand);
+    let target_canon = if let Ok(c) = joined.canonicalize() {
+        c
+    } else {
+        let mut cur = joined.as_path();
+        let mut tail = Vec::new();
+        while !cur.exists() {
+            if let Some(name) = cur.file_name() {
+                tail.push(name.to_os_string());
             }
-        }
-        Section::Forbid => {
-            if let Some((path, pat)) = item.split_once("::") {
-                let rel = path.trim();
-                let needle = pat.trim();
-                let present = fs::read_to_string(root.join(rel))
-                    .map(|c| c.contains(needle))
-                    .unwrap_or(false);
-                if present {
-                    failures.push(format!("[{spec_name}] `{rel}` contains forbidden `{needle}`"));
-                }
-            }
-        }
-        Section::Commands => {
-            let mut parts = item.split_whitespace();
-            let Some(bin) = parts.next() else {
-                return;
+            let Some(parent) = cur.parent() else {
+                break;
             };
-            let args: Vec<&str> = parts.collect();
-            let mut cmd = Command::new(bin);
-            cmd.args(args).current_dir(root);
-            match run_command_with_timeout(&mut cmd, Duration::from_secs(CMD_TIMEOUT_SECS)) {
-                Ok(out) if !out.timed_out && out.status_code == 0 => {}
-                Ok(out) => failures.push(format!(
-                    "[{spec_name}] command `{item}` failed (status={:?}, timed_out={})",
-                    out.status_code, out.timed_out
-                )),
-                Err(err) => failures.push(format!("[{spec_name}] command `{item}` error: {err}")),
+            cur = parent;
+        }
+        let mut base = cur.canonicalize().unwrap_or_else(|_| cur.to_path_buf());
+        for seg in tail.into_iter().rev() {
+            base.push(seg);
+        }
+        base
+    };
+    if !target_canon.starts_with(&root_canon) {
+        bail!("path `{raw}` resolves outside repository root");
+    }
+    Ok(target_canon)
+}
+
+fn split_spec_command(raw: &str) -> Vec<String> {
+    let (mut out, mut cur, mut quote) = (Vec::new(), String::new(), None::<char>);
+    for ch in raw.chars() {
+        if let Some(q) = quote {
+            if ch == q {
+                quote = None;
+            } else {
+                cur.push(ch);
             }
+        } else if matches!(ch, '"' | '\'') {
+            quote = Some(ch);
+        } else if ch.is_whitespace() {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+        } else {
+            cur.push(ch);
         }
     }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 fn discover_spec_files(root: &Path, filter: Option<&str>) -> Result<Vec<PathBuf>> {

@@ -30,6 +30,7 @@ pub fn execute(root: &Path, sub: CircuitSubcmd) -> Result<()> {
         }
         CircuitSubcmd::Reset => {
             let st = cb.reset()?;
+            let _ = anvil_adapters::inbox::remove_source(root, "circuit-breaker");
             println!("circuit reset: {:?} (limit={})", st.state, st.limit);
         }
     }

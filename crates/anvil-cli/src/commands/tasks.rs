@@ -1,6 +1,5 @@
 //! `anvil tasks`: conflict-free team task ledger, JSON feature-list import/export, and verification.
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -9,13 +8,12 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
-use anvil_core::git::{self, DiffScope};
 use anvil_core::proc_util::{TimedOutput, run_command_with_timeout};
 use anvil_tasks::{
     ImportedFeatureList, ProgressUpdate, TaskStatus, TaskTarget, activate_task_from_meta,
-    begin_existing_task, build_resume_brief, build_root_tasks_json, consolidate_repo_tasks,
-    export_feature_list, import_feature_list_in_group, list_task_groups, load_active_task,
-    load_untracked_edits, migrate_legacy_task_ids, parse_feature_list_json, read_single_task,
+    begin_existing_task, build_resume_brief, build_root_tasks_json, collect_task_files,
+    consolidate_repo_tasks, export_feature_list, import_feature_list_in_group, list_task_groups,
+    migrate_legacy_task_ids, parse_feature_list_json, read_single_task,
     record_active_command_outcome, record_curated_task_in_group, record_task_progress,
     record_task_skip, resolve_author, resolve_merge, sanitize_group_name, start_task_in_group,
     task_progress_rel_path, validate_curated_task_title, write_task_plan,
@@ -333,7 +331,7 @@ fn resolve_import_target_repo(root: &Path, project: Option<&str>) -> Result<Path
         return Ok(subrepos[idx].1.clone());
     }
     bail!(
-        "workspace root `{}` has multiple subrepos; pass `--repo <subrepo>`",
+        "workspace root `{}` has multiple subrepos; pass `--root <subrepo>`",
         root.display()
     );
 }
@@ -399,7 +397,7 @@ fn cmd_verify(root: &Path, task_id: &str, record: bool) -> Result<()> {
         return Ok(());
     };
     let config = AnvilConfig::load_or_default(root)?;
-    let timeout = Duration::from_secs(config.tier_budgets.tier1_secs.max(60));
+    let timeout = config.tier_budgets.tier1_timeout();
     let timed = run_verify_shell(root, verify_cmd, timeout)?;
     let combined = format!(
         "{}{}",
@@ -484,7 +482,7 @@ fn cmd_append(
         Some(a) => a.to_owned(),
         None => resolve_author(root)?,
     };
-    let resolved_files = resolve_touched_files(root, task_id, update.files);
+    let resolved_files = collect_task_files(root, Some(task_id), update.files);
     let scoped = ProgressUpdate {
         files: &resolved_files,
         ..update
@@ -551,36 +549,6 @@ fn looks_like_learning(summary: &str) -> bool {
     ["fix", "bug", "error", "gotcha", "workaround", "auth", "oauth", "2fa", "corr", "fallback"]
         .iter()
         .any(|kw| lower.contains(kw))
-}
-
-fn resolve_touched_files(root: &Path, task_id: &str, explicit: &[String]) -> Vec<String> {
-    if !explicit.is_empty() {
-        return explicit.to_vec();
-    }
-    let mut set: BTreeSet<String> = load_untracked_edits(root).into_iter().collect();
-    if let Ok(Some(active)) = load_active_task(root)
-        && active.task_id == task_id
-    {
-        for f in active.touched_files {
-            if is_project_file(&f) {
-                set.insert(f);
-            }
-        }
-    }
-    if let Ok(changed) = git::changed_files(root, DiffScope::WorkingTree) {
-        for f in changed {
-            let norm = f.replace('\\', "/");
-            if is_project_file(&norm) {
-                set.insert(norm);
-            }
-        }
-    }
-    set.into_iter().collect()
-}
-
-fn is_project_file(path: &str) -> bool {
-    let trimmed = path.trim();
-    !trimmed.is_empty() && !trimmed.starts_with(".harness/") && trimmed != "tasks.json"
 }
 
 fn cmd_plan(root: &Path, task_id: &str, markdown_or_file: &str, author: Option<String>) -> Result<()> {

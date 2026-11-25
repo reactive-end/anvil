@@ -47,14 +47,15 @@ pub fn run_tier2(
 }
 
 fn run_deps_audit(root: &Path, changed: &[String], full: bool) -> bool {
-    let mut manifests: Vec<PathBuf> = changed
-        .iter()
-        .map(PathBuf::from)
-        .filter(|p| is_supported_manifest(p))
-        .collect();
-    if manifests.is_empty() && full {
-        manifests = discover_manifests(root);
-    }
+    let manifests: Vec<PathBuf> = if full {
+        discover_manifests(root)
+    } else {
+        changed
+            .iter()
+            .map(PathBuf::from)
+            .filter(|p| is_supported_manifest(p))
+            .collect()
+    };
     if manifests.is_empty() {
         return false;
     }

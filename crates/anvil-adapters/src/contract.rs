@@ -75,6 +75,10 @@ pub struct NormalizedHookInput {
     pub event: HookEvent,
     pub cwd: Option<String>,
     pub session_id: Option<String>,
+    /// Subagent id; absent on the main thread.
+    pub agent_id: Option<String>,
+    /// Agent type of the subagent, or of a main thread started with `--agent`.
+    pub agent_type: Option<String>,
     pub tool_name: Option<String>,
     pub tool_input: Option<Value>,
     pub tool_output: Option<Value>,

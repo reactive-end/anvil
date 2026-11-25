@@ -80,8 +80,7 @@ fn cmd_eval_web(root: &Path, engine: &QaEngine, sub: QaSubcmd) -> Result<()> {
         return Ok(());
     };
     let config = AnvilConfig::load_or_default(root)?;
-    let raw = fs::read_to_string(&dom_json)
-        .with_context(|| format!("failed to read {}", dom_json.display()))?;
+    let raw = read_text_tolerant(&dom_json)?;
     let cap = engine.evaluate_web_capture(WebEvalInput {
         viewport_name: &viewport,
         width,
@@ -141,23 +140,42 @@ fn cmd_scan_mobile(
 
 fn cmd_run(root: &Path, engine: &QaEngine, url: &str, phase: &str, out_dir: &Path) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
-    if config.qa_driver.web == WebQaDriver::Skip {
-        println!("QA web driver is configured as `skip`; skipping `anvil qa run`");
-        return Ok(());
+    match config.qa_driver.web {
+        WebQaDriver::Skip => {
+            println!("QA web driver is configured as `skip`; skipping `anvil qa run`");
+            return Ok(());
+        }
+        WebQaDriver::ChromeDevTools | WebQaDriver::Browser => {
+            bail!(
+                "configured web QA driver `{:?}` runs via IDE/MCP + `anvil qa eval-web`; switch with `anvil qa select-web playwright` to run headless Playwright captures",
+                config.qa_driver.web
+            );
+        }
+        WebQaDriver::Playwright | WebQaDriver::Unconfigured => {}
     }
     let resolved_out = if out_dir.is_absolute() {
         out_dir.to_path_buf()
     } else {
         root.join(out_dir)
     };
-    let captures = run_playwright_capture(url, phase, &resolved_out)?;
-    let report = engine.finalize_report(
-        engine.detect_platform(&config),
-        Vec::new(),
-        captures,
-        Vec::new(),
-        Vec::new(),
-    );
+    let captures = run_playwright_capture(url, phase, &resolved_out, Some(root))?;
+    let report = if phase == "before" {
+        engine.finalize_report(
+            engine.detect_platform(&config),
+            captures,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    } else {
+        engine.finalize_report(
+            engine.detect_platform(&config),
+            Vec::new(),
+            captures,
+            Vec::new(),
+            Vec::new(),
+        )
+    };
     println!("{}", engine.format_report(&report, ReportBudget::default()));
     if !report.passed {
         return Err(ExitCodeError::silent(1).into());

@@ -5,8 +5,12 @@ mod gates;
 pub mod git_install;
 mod payload;
 mod security_guard;
+mod session_scope;
+mod shell;
 mod task_auto;
 mod token_guard;
+mod token_guard_media;
+mod token_guard_shell;
 
 use std::io::{self, Read};
 use std::path::Path;
@@ -15,10 +19,12 @@ use std::time::Instant;
 use anyhow::Result;
 use anvil_adapters::contract::{
     AdapterKind, HookEvent, HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput,
+    PermissionAction,
 };
+use anvil_adapters::sync::discover_umbrella_subrepos;
 use anvil_adapters::{antigravity, claude_code};
 use anvil_core::circuit_breaker::CircuitBreaker;
-use anvil_core::config::AnvilConfig;
+use anvil_core::config::{AnvilConfig, MobileQaDriver, WebQaDriver};
 use anvil_core::diff_classifier::{ChangedFile, classify_files};
 use anvil_core::fs_util::with_file_lock;
 use anvil_core::git::{self, DiffScope};
@@ -34,9 +40,9 @@ use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
 use crate::daemon::try_request;
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
 use payload::{
-    extract_command_field, extract_rel_file, is_circuit_reset_command, is_circuit_status_command,
-    is_mutating_file_tool, is_read_only_tool, resolve_hook_targets, should_bypass_stop,
-    should_wrap_with_anvil_run,
+    extract_command_field, extract_rel_file, extract_target_file_path,
+    is_circuit_reset_command, is_circuit_status_command, is_mutating_file_tool, is_read_only_tool,
+    is_within_root, resolve_hook_targets, should_bypass_stop, should_wrap_with_anvil_run,
 };
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
@@ -67,18 +73,21 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         resolve_hook_targets(root, input.cwd.as_deref(), input.tool_input.as_ref());
     let config = AnvilConfig::load_or_default(&effective_root)?;
 
+    capture_session_baselines(&effective_root, &config, &input);
     let outcome = match event {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
         HookEvent::UserPromptSubmit | HookEvent::PreInvocation => {
             if effective_root.join(".harness").is_dir() {
                 task_auto::handle_prompt_hook(&effective_root, &input)
+            } else if event == HookEvent::PreInvocation {
+                collect_umbrella_inbox_outcome(&effective_root)
             } else {
                 HookOutcome::allow()
             }
         }
         HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input),
         HookEvent::PostToolUse => handle_post_tool_use(&effective_root, &config, &input),
-        HookEvent::Stop => handle_stop(&effective_root, &config, should_bypass_stop(&raw_stdin)),
+        HookEvent::Stop => handle_stop(&effective_root, &config, &input, should_bypass_stop(&raw_stdin)),
     };
 
     let rendered = match adapter {
@@ -90,8 +99,47 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     if effective_root.join(".harness").is_dir() {
         let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let _ = record_event(&effective_root, StatsEvent::HookCall { elapsed_ms });
+        if outcome.block_stop {
+            let _ = record_event(&effective_root, StatsEvent::StopBlocked);
+        }
+        if outcome.action == PermissionAction::Ask {
+            let _ = record_event(&effective_root, StatsEvent::SecurityPrompt);
+        }
     }
     Ok(())
+}
+
+/// Records which files were already dirty so `Stop` only judges work done in this session.
+fn capture_session_baselines(root: &Path, config: &AnvilConfig, input: &NormalizedHookInput) {
+    let fresh_prompt = input.event == HookEvent::UserPromptSubmit || input.user_prompt.is_some();
+    let begins_turn = matches!(
+        input.event,
+        HookEvent::SessionStart | HookEvent::UserPromptSubmit | HookEvent::PreInvocation
+    );
+    if !begins_turn {
+        return;
+    }
+    let session = input.session_id.as_deref();
+    session_scope::ensure_baseline(root, session, fresh_prompt);
+    for rel_sub in collect_subrepo_stop_paths(root, config) {
+        let sub_dir = root.join(rel_sub);
+        if sub_dir.join(".git").exists() {
+            session_scope::ensure_baseline(&sub_dir, session, fresh_prompt);
+        }
+    }
+}
+
+/// Returns the dirty files `Stop` must judge, or an empty list when the turn has nothing to gate.
+fn files_to_gate(root: &Path, input: &NormalizedHookInput) -> Vec<String> {
+    let changed = git::changed_files(root, DiffScope::WorkingTree).unwrap_or_default();
+    let scoped = match session_scope::load_baseline(root, input.session_id.as_deref()) {
+        Some(baseline) => baseline.changed_since(root, changed),
+        None => changed,
+    };
+    if task_auto::should_skip_readonly_stop(root, &scoped) {
+        return Vec::new();
+    }
+    scoped
 }
 
 fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
@@ -223,9 +271,14 @@ fn format_resume_inbox_msg(brief: &anvil_tasks::TaskResumeBrief) -> String {
     parts.join(" | ")
 }
 
-fn run_pre_tool_guards(root: &Path, input: &NormalizedHookInput) -> Option<HookOutcome> {
+fn run_pre_tool_guards(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+) -> Option<HookOutcome> {
     security_guard::check_security_guard(root, input)
-        .or_else(|| token_guard::check_read_token_guard(root, input))
+        .or_else(|| token_guard::check_read_token_guard(root, config, input))
+        .or_else(|| token_guard_shell::check_shell_token_guard(root, config, input))
 }
 
 fn handle_pre_tool_use(
@@ -240,7 +293,8 @@ fn handle_pre_tool_use(
                 let is_status = cmd_field.is_some_and(|(_, cmd)| is_circuit_status_command(cmd));
                 let is_reset = cmd_field.is_some_and(|(_, cmd)| is_circuit_reset_command(cmd));
                 if is_read_only_tool(input.tool_name.as_deref()) || is_status {
-                    return run_pre_tool_guards(root, input).unwrap_or_else(HookOutcome::allow);
+                    return run_pre_tool_guards(root, config, input)
+                        .unwrap_or_else(HookOutcome::allow);
                 }
                 if is_reset {
                     return HookOutcome::ask(format!(
@@ -258,12 +312,12 @@ fn handle_pre_tool_use(
             Err(err) => error_log::log_hook_error(root, "pre-tool-use:circuit", &err),
         }
     }
-    if let Some(guard_outcome) = run_pre_tool_guards(root, input) {
+    if let Some(guard_outcome) = run_pre_tool_guards(root, config, input) {
         return guard_outcome;
     }
     if let Some((key, cmd)) = cmd_field {
-        if cmd.contains("--no-verify") {
-            return HookOutcome::deny("Forbidden `--no-verify` bypass flag detected.");
+        if security_guard::bypasses_git_hooks(cmd) {
+            return HookOutcome::deny("Forbidden `--no-verify` bypass flag detected (git hooks must run).");
         }
         if should_wrap_with_anvil_run(cmd)
             && let Some(mut obj) = input.tool_input.as_ref().and_then(Value::as_object).cloned()
@@ -283,8 +337,14 @@ fn handle_post_tool_use(
     config: &AnvilConfig,
     input: &NormalizedHookInput,
 ) -> HookOutcome {
+    if !root.join(".harness").is_dir() {
+        return HookOutcome::allow();
+    }
     let mut messages = Vec::new();
+    let in_repo = extract_target_file_path(input.tool_input.as_ref(), root)
+        .is_some_and(|abs| is_within_root(root, &abs));
     if is_mutating_file_tool(input.tool_name.as_deref())
+        && in_repo
         && let Some(rel) = extract_rel_file(root, input.tool_input.as_ref())
     {
         task_auto::mark_turn_edit(root);
@@ -339,7 +399,12 @@ fn update_graph_after_edit(root: &Path, rel: &str, config: &AnvilConfig) {
     }
 }
 
-fn handle_stop(root: &Path, config: &AnvilConfig, bypass_stop: bool) -> HookOutcome {
+fn handle_stop(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+    bypass_stop: bool,
+) -> HookOutcome {
     if bypass_stop {
         return HookOutcome::allow();
     }
@@ -360,14 +425,14 @@ fn handle_stop(root: &Path, config: &AnvilConfig, bypass_stop: bool) -> HookOutc
             Err(err) => error_log::log_hook_error(root, "stop:circuit", &err),
         }
     }
-    if let Some(sub_block) = check_subrepo_stop_gates(root, config) {
+    if let Some(sub_block) = check_subrepo_stop_gates(root, config, input) {
         return sub_block;
     }
     if !has_root_harness {
         return HookOutcome::allow();
     }
-    let changed = git::changed_files(root, DiffScope::WorkingTree).unwrap_or_default();
-    if changed.is_empty() || task_auto::should_skip_readonly_stop(root, &changed) {
+    let changed = files_to_gate(root, input);
+    if changed.is_empty() {
         return HookOutcome::allow();
     }
     let errs = collect_changed_gate_errors(root, &changed, config);
@@ -404,13 +469,25 @@ fn append_stop_advisories(
         messages.push(InboxMessage::new("tier1:impact", MessageLevel::Info, msg, None));
     }
     let classified = classify_files(&changed.iter().map(ChangedFile::from_path).collect::<Vec<_>>());
-    if classified.needs_visual_qa {
+    if classified.needs_visual_qa && !is_visual_qa_skipped(root, config) {
         messages.push(InboxMessage::new(
             "tier2:qa",
             MessageLevel::Warning,
             "UI files changed; verify with `anvil qa`.".to_owned(),
             None,
         ));
+    }
+}
+
+fn is_visual_qa_skipped(root: &Path, config: &AnvilConfig) -> bool {
+    match anvil_qa::QaEngine::new(root).detect_platform(config) {
+        anvil_qa::model::UiPlatform::Web => config.qa_driver.web == WebQaDriver::Skip,
+        anvil_qa::model::UiPlatform::Mobile => config.qa_driver.mobile == MobileQaDriver::Skip,
+        anvil_qa::model::UiPlatform::Both => {
+            config.qa_driver.web == WebQaDriver::Skip
+                && config.qa_driver.mobile == MobileQaDriver::Skip
+        }
+        anvil_qa::model::UiPlatform::None => false,
     }
 }
 
@@ -437,7 +514,21 @@ fn resolve_stop_blast(
     }
 }
 
-fn check_subrepo_stop_gates(root: &Path, config: &AnvilConfig) -> Option<HookOutcome> {
+fn collect_umbrella_inbox_outcome(root: &Path) -> HookOutcome {
+    let mut messages = Vec::new();
+    for sub in discover_umbrella_subrepos(root) {
+        if let Ok(drained) = anvil_adapters::inbox::drain_inbox(&sub.abs_path) {
+            messages.extend(drained);
+        }
+    }
+    HookOutcome::with_messages(messages)
+}
+
+fn check_subrepo_stop_gates(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+) -> Option<HookOutcome> {
     let sub_paths = collect_subrepo_stop_paths(root, config);
     if sub_paths.is_empty() {
         return None;
@@ -450,7 +541,18 @@ fn check_subrepo_stop_gates(root: &Path, config: &AnvilConfig) -> Option<HookOut
         }
         task_auto::refresh_tasks_json_if_changed(&sub_dir);
         let sub_cfg = AnvilConfig::load_or_default(&sub_dir).unwrap_or_else(|_| config.clone());
-        let sub_changed = git::changed_files(&sub_dir, DiffScope::WorkingTree).unwrap_or_default();
+        if let Ok(st) = CircuitBreaker::new(&sub_dir, sub_cfg.circuit_breaker_limit).status()
+            && st.is_open()
+        {
+            let msg = format!("Circuit Breaker OPEN in `{rel_sub}` — stopping for human escalation.");
+            return Some(HookOutcome::with_messages(vec![InboxMessage::new(
+                "circuit-breaker",
+                MessageLevel::Error,
+                msg,
+                None,
+            )]));
+        }
+        let sub_changed = files_to_gate(&sub_dir, input);
         if sub_changed.is_empty() {
             continue;
         }
@@ -465,6 +567,7 @@ fn check_subrepo_stop_gates(root: &Path, config: &AnvilConfig) -> Option<HookOut
         if let Some(block) = task_auto::check_pending_task_summary(&sub_dir, &sub_changed) {
             return Some(block);
         }
+        task_auto::mark_stop_completed(&sub_dir);
     }
     None
 }
@@ -481,25 +584,8 @@ fn collect_subrepo_stop_paths(root: &Path, config: &AnvilConfig) -> Vec<String> 
     if root.join(".harness").is_dir() {
         return Vec::new();
     }
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return Vec::new();
-    };
-    let mut dirs = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !name.starts_with('.')
-            && !matches!(name, "node_modules" | "target")
-            && path.join(".harness/config.json").is_file()
-        {
-            dirs.push(name.to_owned());
-        }
-    }
-    dirs.sort();
-    dirs
+    discover_umbrella_subrepos(root)
+        .into_iter()
+        .map(|s| s.rel_path)
+        .collect()
 }

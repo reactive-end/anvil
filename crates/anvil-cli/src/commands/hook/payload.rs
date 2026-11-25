@@ -12,6 +12,7 @@ const FILE_PATH_KEYS: &[&str] = &[
     "Path",
     "TargetFile",
     "file_path",
+    "notebook_path",
     "path",
     "AbsolutePath",
     "target_file",
@@ -30,13 +31,17 @@ pub fn resolve_hook_targets(
 ) -> (PathBuf, Option<PathBuf>) {
     let cwd_root = resolve_hook_root(default_root, cwd);
     if let Some(target_file) = extract_target_file_path(tool_input, &cwd_root)
-        && let Some(start_dir) = target_file.parent().filter(|p| p.exists())
+        && let Some(start_dir) = find_existing_ancestor(&target_file)
         && let Some(file_root) = find_initialized_root_upward(start_dir)
         && !paths_equal(&file_root, &cwd_root)
     {
         return (file_root, Some(cwd_root));
     }
     (cwd_root, None)
+}
+
+fn find_existing_ancestor(path: &Path) -> Option<&Path> {
+    path.ancestors().find(|p| p.is_dir())
 }
 
 /// Resolves the effective repository root from a hook's `cwd` field, supporting non-git umbrella
@@ -94,7 +99,10 @@ fn extract_raw_file_path(tool_input: Option<&Value>) -> Option<&str> {
     None
 }
 
-fn extract_target_file_path(tool_input: Option<&Value>, cwd_root: &Path) -> Option<PathBuf> {
+pub(super) fn extract_target_file_path(
+    tool_input: Option<&Value>,
+    cwd_root: &Path,
+) -> Option<PathBuf> {
     let raw = extract_raw_file_path(tool_input)?;
     let p = PathBuf::from(raw);
     if p.is_absolute() {
@@ -142,58 +150,70 @@ pub fn contains_shell_metacharacters(cmd: &str) -> bool {
 
 /// Returns `true` if a simple shell command should be transparently wrapped with `anvil run --`.
 pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
-    if cmd.starts_with("anvil ") || cmd.contains("anvil run") || contains_shell_metacharacters(cmd)
-    {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() || contains_shell_metacharacters(trimmed) || trimmed.contains("anvil run") {
         return false;
     }
-    [
-        "tsc",
-        "npx tsc",
-        "eslint",
-        "npx eslint",
-        "biome",
-        "vitest",
-        "npx vitest",
-        "jest",
-        "npx jest",
-        "pytest",
-        "ruff",
-        "dart analyze",
-        "flutter test",
-        "./gradlew",
-        "gradlew",
-        "phpstan",
-        "vendor/bin/phpstan",
-        "psalm",
-        "vendor/bin/psalm",
-        "phpunit",
-        "vendor/bin/phpunit",
-        "pest",
-        "vendor/bin/pest",
-        "pint",
-        "vendor/bin/pint",
-        "php artisan test",
-        "cargo test",
-        "cargo check",
-        "cargo clippy",
-        "cargo build",
-        "npm test",
-        "npm run build",
-        "npm run lint",
-        "npm run typecheck",
-        "pnpm test",
-        "pnpm build",
-        "bun test",
-        "composer test",
-        "vue-tsc",
-        "npx vue-tsc",
-        "godot",
-        "godot4",
-        "sonar",
-        "sonar-scanner",
-    ]
-    .iter()
-    .any(|p| cmd == *p || cmd.starts_with(&format!("{p} ")))
+    let tokens = split_shell_tokens(trimmed);
+    let Some(first) = tokens.first() else {
+        return false;
+    };
+    let prog = normalize_bin_name(first);
+    if prog == "anvil" {
+        return false;
+    }
+    let rest: Vec<String> = tokens[1..].iter().map(|t| normalize_bin_name(t)).collect();
+    matches_wrappable_command(&prog, &rest, &tokens[1..])
+}
+
+fn matches_wrappable_command(prog: &str, norm_rest: &[String], raw_rest: &[String]) -> bool {
+    if matches!(
+        prog,
+        "tsc" | "tsgo" | "eslint" | "biome" | "vitest" | "jest" | "pytest" | "ruff"
+            | "pyright" | "mypy" | "ktlint" | "detekt" | "gdlint" | "gradlew" | "phpstan"
+            | "psalm" | "phpunit" | "pest" | "pint" | "vue-tsc" | "godot" | "godot4"
+            | "sonar" | "sonar-scanner"
+    ) {
+        return true;
+    }
+    if matches!(prog, "npx" | "bunx")
+        && let Some(wrapped) = raw_rest.iter().find(|t| !t.starts_with('-'))
+    {
+        return matches!(
+            normalize_bin_name(wrapped).as_str(),
+            "tsc" | "tsgo" | "eslint" | "biome" | "vitest" | "jest" | "vue-tsc" | "pyright"
+        );
+    }
+    let two = (prog, norm_rest.first().map(String::as_str).unwrap_or(""));
+    if matches!(
+        two,
+        ("cargo", "test" | "check" | "clippy" | "build")
+            | ("npm" | "pnpm" | "yarn", "test" | "build" | "lint")
+            | ("bun" | "composer", "test")
+            | ("dart", "analyze" | "test")
+            | ("flutter", "test" | "analyze")
+            | ("node", "--test")
+    ) {
+        return true;
+    }
+    let raw_two = raw_rest.get(1).map(String::as_str).unwrap_or("");
+    matches!(
+        (prog, raw_rest.first().map(String::as_str).unwrap_or(""), raw_two),
+        ("npm", "run", "build" | "lint" | "typecheck")
+            | ("php", "artisan", "test")
+            | ("python" | "python3" | "py", "-m", "pytest")
+    )
+}
+
+fn normalize_bin_name(token: &str) -> String {
+    let base = token.rsplit(['/', '\\']).next().unwrap_or(token);
+    let lower = base.to_ascii_lowercase();
+    lower
+        .strip_suffix(".exe")
+        .or_else(|| lower.strip_suffix(".cmd"))
+        .or_else(|| lower.strip_suffix(".bat"))
+        .unwrap_or(&lower)
+        .to_owned()
 }
 
 pub(super) fn strip_tool_namespace(tool_name: Option<&str>) -> Option<&str> {
@@ -228,6 +248,7 @@ pub fn is_read_only_tool(tool_name: Option<&str>) -> bool {
             | "mem_context"
             | "task_list"
             | "task_get"
+            | "task_resume"
             | "code_exec"
             | "context_pack"
     ) || bare.starts_with("graph_")
@@ -255,51 +276,49 @@ pub fn is_mutating_file_tool(tool_name: Option<&str>) -> bool {
 
 /// Returns `true` when `cmd` safely invokes `anvil circuit status`.
 pub fn is_circuit_status_command(cmd: &str) -> bool {
-    circuit_subcommand(cmd) == Some("status")
+    circuit_subcommand(cmd).as_deref() == Some("status")
 }
 
 /// Returns `true` when `cmd` safely invokes `anvil circuit reset`.
 pub fn is_circuit_reset_command(cmd: &str) -> bool {
-    circuit_subcommand(cmd) == Some("reset")
+    circuit_subcommand(cmd).as_deref() == Some("reset")
 }
 
 /// Returns `true` when `cmd` is already wrapped with `anvil run`.
 pub fn is_anvil_run_command(cmd: &str) -> bool {
-    let tokens: Vec<&str> = cmd.split_whitespace().collect();
+    let tokens = split_shell_tokens(cmd);
     let Some(idx) = skip_anvil_global_flags(&tokens) else {
         return false;
     };
-    tokens.get(idx).copied() == Some("run")
+    tokens.get(idx).map(String::as_str) == Some("run")
 }
 
-fn circuit_subcommand(cmd: &str) -> Option<&str> {
+fn circuit_subcommand(cmd: &str) -> Option<String> {
     let trimmed = cmd.trim();
     if trimmed.is_empty() || contains_shell_metacharacters(trimmed) {
         return None;
     }
-    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+    let tokens = split_shell_tokens(trimmed);
     let idx = skip_anvil_global_flags(&tokens)?;
-    if tokens.get(idx).copied() == Some("circuit") && tokens.len() == idx + 2 {
-        return tokens.get(idx + 1).copied();
+    if tokens.get(idx).map(String::as_str) == Some("circuit") && tokens.len() == idx + 2 {
+        return tokens.get(idx + 1).cloned();
     }
     None
 }
 
-fn skip_anvil_global_flags(tokens: &[&str]) -> Option<usize> {
+fn skip_anvil_global_flags(tokens: &[String]) -> Option<usize> {
     let first = tokens.first()?;
-    let bin = first.trim_matches(|c| c == '"' || c == '\'');
-    let file_name = Path::new(bin)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(bin);
-    if !file_name.eq_ignore_ascii_case("anvil") && !file_name.eq_ignore_ascii_case("anvil.exe") {
+    if normalize_bin_name(first) != "anvil" {
         return None;
     }
     let mut idx = 1usize;
-    while let Some(tok) = tokens.get(idx).copied() {
+    while let Some(tok) = tokens.get(idx).map(String::as_str) {
         if matches!(tok, "--root" | "--repo") {
             idx += 2;
-        } else if tok.starts_with("--root=") || tok.starts_with("--repo=") {
+        } else if tok == "--no-color"
+            || tok.starts_with("--root=")
+            || tok.starts_with("--repo=")
+        {
             idx += 1;
         } else {
             break;
@@ -308,10 +327,81 @@ fn skip_anvil_global_flags(tokens: &[&str]) -> Option<usize> {
     Some(idx)
 }
 
+fn split_shell_tokens(cmd: &str) -> Vec<String> {
+    let (mut out, mut cur, mut quote) = (Vec::new(), String::new(), None::<char>);
+    let mut chars = cmd.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if let Some(q) = quote {
+            if ch == '\\' && q == '"' && chars.peek().is_some_and(|n| matches!(*n, '"' | '\\')) {
+                if let Some(next_ch) = chars.next() {
+                    cur.push(next_ch);
+                }
+            } else if ch == q {
+                quote = None;
+            } else {
+                cur.push(ch);
+            }
+        } else if matches!(ch, '"' | '\'') {
+            quote = Some(ch);
+        } else if ch.is_whitespace() {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+        } else {
+            cur.push(ch);
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
 /// Extracts and normalizes a repository-relative target file path from `tool_input`.
 pub fn extract_rel_file(root: &Path, tool_input: Option<&Value>) -> Option<String> {
     let raw = extract_raw_file_path(tool_input)?;
-    let rel = relativize_path(root, Path::new(raw));
+    let path = Path::new(raw);
+    let rel = if path.is_absolute() {
+        let root_canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let target_canon = canonicalize_with_existing_ancestor(path);
+        relativize_path(&root_canon, &target_canon)
+    } else {
+        relativize_path(root, path)
+    };
     let norm = CodeGraph::normalize_rel_path(&rel);
     (!norm.is_empty()).then_some(norm)
+}
+
+/// Returns `true` when `target` is inside `root` (handles non-existent new paths too).
+pub fn is_within_root(root: &Path, target: &Path) -> bool {
+    let root_canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let target_canon = canonicalize_with_existing_ancestor(target);
+    let rel = relativize_path(&root_canon, &target_canon);
+    let is_abs_or_parent = rel.starts_with('/')
+        || rel.starts_with("../")
+        || rel == ".."
+        || (rel.len() >= 2 && rel.as_bytes()[1] == b':');
+    !is_abs_or_parent
+}
+
+fn canonicalize_with_existing_ancestor(path: &Path) -> PathBuf {
+    if let Ok(c) = path.canonicalize() {
+        return c;
+    }
+    let mut missing = Vec::new();
+    let mut cur = Some(path);
+    while let Some(p) = cur {
+        if p.exists() {
+            let mut base = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+            for seg in missing.into_iter().rev() {
+                base.push(seg);
+            }
+            return base;
+        }
+        if let Some(name) = p.file_name() {
+            missing.push(name.to_os_string());
+        }
+        cur = p.parent();
+    }
+    path.to_path_buf()
 }

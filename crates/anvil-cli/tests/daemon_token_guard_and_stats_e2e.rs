@@ -325,3 +325,254 @@ fn anvil_stats_reports_recorded_metrics_and_reset_clears_them() {
     let after_reset = assert_ok(&run_anvil(root, &["stats"]), "anvil stats after reset");
     assert!(after_reset.contains("total=0 (compressor=0, symbol_read=0, outline=0)"));
 }
+
+fn claude_read_decision(root: &Path, tool_input: Value) -> (String, String) {
+    let payload = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "repro-guard",
+        "cwd": root.to_string_lossy(),
+        "tool_name": "Read",
+        "tool_input": tool_input
+    });
+    let out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "PreToolUse", "--adapter", "claude"], &payload.to_string()),
+        "claude PreToolUse Read",
+    );
+    let parsed: Value = serde_json::from_str(&out).unwrap();
+    if parsed == json!({}) {
+        return ("none".to_owned(), String::new());
+    }
+    let specific = &parsed["hookSpecificOutput"];
+    (
+        specific["permissionDecision"].as_str().unwrap().to_owned(),
+        specific["permissionDecisionReason"].as_str().unwrap_or("").to_owned(),
+    )
+}
+
+fn sample_png_bytes(newlines: usize) -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.extend(std::iter::repeat_n(b"\x00\n", newlines).flatten());
+    bytes
+}
+
+fn read_abs(root: &Path, rel: &str) -> Value {
+    json!({ "file_path": root.join(rel).to_string_lossy() })
+}
+
+#[test]
+fn pre_tool_use_token_guard_allows_media_with_newlines_and_uses_claude_text_params() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    let png_900 = sample_png_bytes(900);
+    fs::write(root.join("falso-900.png"), &png_900).unwrap();
+    fs::write(root.join("falso-900.jpg"), [b"\xFF\xD8\xFF\xE0".as_slice(), &png_900[8..]].concat()).unwrap();
+    let mut pdf_900 = b"%PDF-1.4\n".to_vec();
+    pdf_900.extend(std::iter::repeat_n(b"\x00\n", 900).flatten());
+    fs::write(root.join("falso-900.pdf"), &pdf_900).unwrap();
+
+    assert_eq!(claude_read_decision(root, read_abs(root, "falso-900.png")).0, "none");
+    assert_eq!(claude_read_decision(root, read_abs(root, "falso-900.jpg")).0, "none");
+    assert_eq!(claude_read_decision(root, read_abs(root, "falso-900.pdf")).0, "none");
+    assert_eq!(
+        claude_read_decision(root, json!({ "file_path": root.join("falso-900.pdf").to_string_lossy(), "pages": "1-2" })).0,
+        "none"
+    );
+
+    fs::write(root.join("texto-790.txt"), "x\n".repeat(790)).unwrap();
+    fs::write(root.join("texto-900.txt"), "x\n".repeat(900)).unwrap();
+    assert_eq!(claude_read_decision(root, read_abs(root, "texto-790.txt")).0, "none");
+    let (txt_deny, txt_reason) = claude_read_decision(root, read_abs(root, "texto-900.txt"));
+    assert_eq!(txt_deny, "deny");
+    assert!(txt_reason.contains("offset"));
+    assert!(txt_reason.contains("limit"));
+    assert!(!txt_reason.contains("StartLine"));
+    assert_eq!(
+        claude_read_decision(root, json!({ "file_path": root.join("texto-900.txt").to_string_lossy(), "offset": 1, "limit": 100 })).0,
+        "none"
+    );
+}
+
+fn init_tight_binary_caps_repo(max_binary_bytes: u64, max_pdf_bytes: u64, max_pdf_pages: usize) -> TempDir {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    let cfg_path = root.join(".harness/config.json");
+    let mut cfg: Value = serde_json::from_str(&fs::read_to_string(&cfg_path).unwrap()).unwrap();
+    cfg["token_guard"] = json!({
+        "max_binary_bytes": max_binary_bytes,
+        "max_pdf_bytes": max_pdf_bytes,
+        "max_pdf_pages": max_pdf_pages
+    });
+    fs::write(&cfg_path, serde_json::to_string_pretty(&cfg).unwrap()).unwrap();
+    repo
+}
+
+#[test]
+fn pre_tool_use_token_guard_enforces_image_and_binary_byte_caps() {
+    let repo = init_tight_binary_caps_repo(4096, 4096, 20);
+    let root = repo.path();
+
+    fs::write(root.join("grande-sin-saltos.png"), [b"\x89PNG".as_slice(), &vec![b'A'; 6000]].concat()).unwrap();
+    let (img_deny, img_reason) = claude_read_decision(root, read_abs(root, "grande-sin-saltos.png"));
+    assert_eq!(img_deny, "deny");
+    assert!(img_reason.contains("image"));
+    assert!(img_reason.contains("KB"));
+    assert!(!img_reason.contains("StartLine"));
+    assert!(!img_reason.contains("anvil grep"));
+
+    fs::write(root.join("payload.bin"), [b"BIN\x00".as_slice(), &vec![0u8; 6000]].concat()).unwrap();
+    let (bin_deny, bin_reason) = claude_read_decision(root, read_abs(root, "payload.bin"));
+    assert_eq!(bin_deny, "deny");
+    assert!(bin_reason.contains("binary file"));
+}
+
+#[test]
+fn pre_tool_use_token_guard_enforces_pdf_byte_cap_and_pages_ranges() {
+    let repo = init_tight_binary_caps_repo(4096, 4096, 20);
+    let root = repo.path();
+
+    fs::write(root.join("heavy.pdf"), [b"%PDF-1.7\n".as_slice(), &vec![b'B'; 6000]].concat()).unwrap();
+    let (pdf_deny, pdf_reason) = claude_read_decision(root, read_abs(root, "heavy.pdf"));
+    assert_eq!(pdf_deny, "deny");
+    assert!(pdf_reason.contains("pages"));
+    assert!(!pdf_reason.contains("StartLine"));
+    assert!(!pdf_reason.contains("anvil grep"));
+    assert_eq!(claude_read_decision(root, json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "offset": 1, "limit": 100 })).0, "deny");
+    assert_eq!(claude_read_decision(root, json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "pages": "1-3" })).0, "none");
+    let (pages_deny, pages_reason) = claude_read_decision(root, json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "pages": "1-25" }));
+    assert_eq!(pages_deny, "deny");
+    assert!(pages_reason.contains("25 pages > 20"));
+}
+
+#[test]
+fn pre_tool_use_token_guard_allows_storage_media_while_blocking_noise() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    fs::create_dir_all(root.join("storage")).unwrap();
+    fs::write(root.join("storage/chart.png"), sample_png_bytes(900)).unwrap();
+    assert_eq!(claude_read_decision(root, read_abs(root, "storage/chart.png")).0, "none");
+
+    fs::write(root.join("package-lock.json"), "{}\n").unwrap();
+    fs::write(root.join("app.min.js"), "console.log(1);\n").unwrap();
+    let (lock_deny, lock_reason) = claude_read_decision(root, read_abs(root, "package-lock.json"));
+    assert_eq!(lock_deny, "deny");
+    assert!(lock_reason.contains("offset"));
+    assert!(!lock_reason.contains("StartLine"));
+    assert_eq!(claude_read_decision(root, read_abs(root, "app.min.js")).0, "deny");
+}
+
+#[test]
+fn pre_tool_use_token_guard_denial_does_not_leak_warning_into_post_tool_use() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    fs::write(root.join("texto-900.txt"), "x\n".repeat(900)).unwrap();
+    let (decision, _) = claude_read_decision(
+        root,
+        json!({ "file_path": root.join("texto-900.txt").to_string_lossy() }),
+    );
+    assert_eq!(decision, "deny");
+
+    // Subsequent unrelated PostToolUse (Bash) must NOT receive stale `exceeds 800 lines` warnings.
+    let post_payload = json!({
+        "hook_event_name": "PostToolUse",
+        "session_id": "repro-guard",
+        "cwd": root.to_string_lossy(),
+        "tool_name": "Bash",
+        "tool_input": { "command": "echo hi" },
+        "tool_response": { "exitCode": 0, "stdout": "hi\n" }
+    });
+    let post_out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "PostToolUse", "--adapter", "claude"], &post_payload.to_string()),
+        "claude PostToolUse Bash after denied Read",
+    );
+    assert!(!post_out.contains("exceeds 800 lines"), "unexpected stale warning leak: {post_out}");
+    assert_eq!(serde_json::from_str::<Value>(&post_out).unwrap(), json!({}));
+}
+
+#[test]
+fn pre_tool_use_token_guard_allows_qa_screenshots_endline_only_and_external_dist() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+
+    fs::create_dir_all(root.join(".harness/.state/qa")).unwrap();
+    fs::write(root.join(".harness/.state/qa/before.png"), sample_png_bytes(900)).unwrap();
+    let qa_payload = json!({
+        "hookEventName": "PreToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": {
+            "toolName": "read_file",
+            "toolInput": { "AbsolutePath": root.join(".harness/.state/qa/before.png").to_string_lossy() }
+        }
+    });
+    let qa_out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &qa_payload.to_string()),
+        "allow qa screenshot",
+    );
+    assert_eq!(serde_json::from_str::<Value>(&qa_out).unwrap()["decision"], json!("allow"));
+
+    fs::write(root.join("src/heavy.ts"), "export const x = 1;\n".repeat(850)).unwrap();
+    let endline_payload = json!({
+        "hookEventName": "PreToolUse",
+        "cwd": root.to_string_lossy(),
+        "toolCall": {
+            "toolName": "read_file",
+            "toolInput": { "path": "src/heavy.ts", "EndLine": 40 }
+        }
+    });
+    let end_out = assert_ok(
+        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &endline_payload.to_string()),
+        "allow EndLine-only read",
+    );
+    assert_eq!(serde_json::from_str::<Value>(&end_out).unwrap()["decision"], json!("allow"));
+
+    let external_dir = TempDir::new().unwrap();
+    let external_dist = external_dir.path().join("dist");
+    fs::create_dir_all(&external_dist).unwrap();
+    let external_file = external_dist.join("notes.ts");
+    fs::write(&external_file, "export const ok = true;\n").unwrap();
+    let ext_out = claude_read_decision(root, json!({ "file_path": external_file.to_string_lossy() }));
+    assert_eq!(ext_out.0, "none");
+}
+
+#[test]
+fn pre_tool_use_token_guard_covers_unbounded_shell_dumps() {
+    let repo = setup_git_ts_repo();
+    let root = repo.path();
+    assert_ok(&run_anvil(root, &["init"]), "init");
+    fs::write(root.join("heavy.txt"), "line\n".repeat(900)).unwrap();
+    fs::write(root.join("light.txt"), "line\n".repeat(20)).unwrap();
+
+    let decide = |cmd: &str| {
+        let payload = json!({
+            "hook_event_name": "PreToolUse",
+            "cwd": root.to_string_lossy(),
+            "tool_name": "Bash",
+            "tool_input": { "command": cmd }
+        });
+        let out = assert_ok(
+            &run_anvil_stdin(root, &["hook", "PreToolUse", "--adapter", "claude"], &payload.to_string()),
+            cmd,
+        );
+        let parsed: Value = serde_json::from_str(&out).unwrap();
+        parsed["hookSpecificOutput"]["permissionDecision"].as_str().unwrap_or("none").to_owned()
+    };
+
+    for cmd in ["cat heavy.txt", "cd . && cat light.txt heavy.txt", "Get-Content heavy.txt", "cat < heavy.txt", "cat heavy.txt 2>/dev/null"] {
+        assert_eq!(decide(cmd), "deny", "{cmd}");
+    }
+    for cmd in ["cat light.txt", "cat heavy.txt | wc -l", "cat heavy.txt > copy.txt", "sed -n '1,50p' heavy.txt", "Get-Content heavy.txt -TotalCount 20", "echo $(cat heavy.txt | head -1)"] {
+        assert_eq!(decide(cmd), "none", "{cmd}");
+    }
+
+    let stats = assert_ok(&run_anvil(root, &["stats"]), "stats");
+    assert!(stats.contains("blocks=5") && !stats.contains("tokens_avoided=0"), "{stats}");
+    assert!(stats.contains("interventions:"), "{stats}");
+}
