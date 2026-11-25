@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
     CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd,
-    MemSubcmd, OrchestratorSubcmd, QaSubcmd, RatchetSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
+    MemSubcmd, OrchestratorSubcmd, PluginSubcmd, QaSubcmd, RatchetSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -208,6 +208,11 @@ pub enum Command {
     Orchestrator {
         #[command(subcommand)]
         sub: OrchestratorSubcmd,
+    },
+    /// Install the Claude Code mod (executor model and effort picker) for the user account.
+    Plugin {
+        #[command(subcommand)]
+        sub: PluginSubcmd,
     },
     /// Opt-in local SonarQube Quality Gate, New Code issues, and scanner runner.
     Sonar {

@@ -1,0 +1,12 @@
+{
+  "name": "anvil",
+  "owner": { "name": "reactive-end" },
+  "plugins": [
+    {
+      "name": "anvil-mode",
+      "displayName": "Anvil",
+      "source": "./anvil-mode",
+      "description": "Switch for Anvil orchestrator mode and picker for the executor's model and effort; the orchestrator uses the session's own model picker"
+    }
+  ]
+}

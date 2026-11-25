@@ -1,0 +1,8 @@
+{
+  "name": "anvil-mode",
+  "displayName": "Anvil",
+  "version": "0.4.1",
+  "description": "Switch for Anvil orchestrator mode and picker for the executor's model and effort; the orchestrator uses the session's own model picker",
+  "author": { "name": "reactive-end" },
+  "types": "./types/index.d.ts"
+}

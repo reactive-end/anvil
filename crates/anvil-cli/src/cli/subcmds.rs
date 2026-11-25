@@ -417,6 +417,20 @@ pub enum OrchestratorSubcmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum PluginSubcmd {
+    /// Install or upgrade the Claude Code mod (`anvil-mode`) for the whole user account.
+    Install,
+    /// Uninstall the Claude Code mod and remove the files Anvil wrote for it.
+    Uninstall,
+    /// Show the embedded and installed versions and where the marketplace points.
+    Status {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum SonarSubcmd {
     /// Fetch opt-in SonarQube Quality Gate status via Web API.
     Status {
