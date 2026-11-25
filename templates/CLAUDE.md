@@ -18,7 +18,7 @@
    - `anvil ratchet log|list|review|test|promote` — Governed rule graduation (triple filter + human approval).
    - `anvil deps` — Tier 2 npm/PyPI/pub.dev/Maven/Cargo/Composer audit (deprecated / >24mo stale packages).
    - `anvil qa run|onboard|eval-web|scan-mobile` — Hybrid DOM/View-Tree programmatic checks + before/after screenshots.
-   - `anvil doctor` — Audit repository health and adapter wiring.
+   - `anvil doctor` — Audit repository health and adapter wiring. `anvil orchestrator setup|status|on|off` — planner/executor model pair (`/orchestrate`).
 2. **Unified MCP Server (`anvil mcp`, registered in `.mcp.json`)**:
    - Graph: `graph_outline`, `graph_read_symbol` (read outlines/symbols before large files), `graph_query`, `graph_impact`, `graph_origin`, `graph_path`, `graph_explain`.
    - Memory & Tasks: `mem_search` -> `mem_timeline` -> `mem_get`, `mem_save`, `mem_context`; `task_start`, `task_update`, `task_done`, `task_resume`, `task_record`, `task_skip`, `task_list`, `task_get`.

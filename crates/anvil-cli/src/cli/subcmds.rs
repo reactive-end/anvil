@@ -384,6 +384,39 @@ pub enum DaemonSubcmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum OrchestratorSubcmd {
+    /// Choose both models and efforts (interactive without flags) and generate the agents.
+    Setup {
+        /// Orchestrator model: `fable`, `opus`, `sonnet`, `haiku`, `inherit`, or a full `claude-*` ID.
+        #[arg(long)]
+        model: Option<String>,
+        /// Orchestrator effort: `low`, `medium`, `high`, `xhigh`, or `max`.
+        #[arg(long)]
+        effort: Option<String>,
+        /// Executor model (same values as `--model`).
+        #[arg(long)]
+        executor_model: Option<String>,
+        /// Executor effort (same values as `--effort`).
+        #[arg(long)]
+        executor_effort: Option<String>,
+    },
+    /// Show the configured pair and whether the mode is on.
+    Status {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Enforce the roles: the orchestrator only judges and executors write within scope.
+    On {
+        /// Also start new Claude Code sessions in this repository as the orchestrator agent.
+        #[arg(long)]
+        default_agent: bool,
+    },
+    /// Stop enforcing the roles and stop starting sessions as the orchestrator.
+    Off,
+}
+
+#[derive(Debug, Subcommand)]
 pub enum SonarSubcmd {
     /// Fetch opt-in SonarQube Quality Gate status via Web API.
     Status {

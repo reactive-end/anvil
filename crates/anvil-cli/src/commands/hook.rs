@@ -4,6 +4,8 @@ mod error_log;
 mod gates;
 pub mod git_install;
 mod payload;
+mod roles;
+mod roles_shell;
 mod security_guard;
 mod session_scope;
 mod shell;
@@ -78,14 +80,18 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
         HookEvent::UserPromptSubmit | HookEvent::PreInvocation => {
             if effective_root.join(".harness").is_dir() {
-                task_auto::handle_prompt_hook(&effective_root, &input)
+                let mut outcome = task_auto::handle_prompt_hook(&effective_root, &input);
+                if event == HookEvent::UserPromptSubmit && adapter == AdapterKind::ClaudeCode {
+                    outcome.messages.extend(roles::mode_reminder(&effective_root));
+                }
+                outcome
             } else if event == HookEvent::PreInvocation {
                 collect_umbrella_inbox_outcome(&effective_root)
             } else {
                 HookOutcome::allow()
             }
         }
-        HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input),
+        HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input, adapter),
         HookEvent::PostToolUse => handle_post_tool_use(&effective_root, &config, &input),
         HookEvent::Stop => handle_stop(&effective_root, &config, &input, should_bypass_stop(&raw_stdin)),
     };
@@ -285,6 +291,7 @@ fn handle_pre_tool_use(
     root: &Path,
     config: &AnvilConfig,
     input: &NormalizedHookInput,
+    adapter: AdapterKind,
 ) -> HookOutcome {
     let cmd_field = extract_command_field(input.tool_input.as_ref());
     if root.join(".harness").is_dir() {
@@ -311,6 +318,12 @@ fn handle_pre_tool_use(
             Ok(_) => {}
             Err(err) => error_log::log_hook_error(root, "pre-tool-use:circuit", &err),
         }
+    }
+    // Roles rely on Claude Code's agent_id; other adapters never send one and would all read as orchestrator.
+    if adapter == AdapterKind::ClaudeCode
+        && let Some(role_outcome) = roles::check_roles(root, input)
+    {
+        return role_outcome;
     }
     if let Some(guard_outcome) = run_pre_tool_guards(root, config, input) {
         return guard_outcome;

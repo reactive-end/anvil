@@ -340,6 +340,11 @@ fn sync_into(
         record_write(claude_code::config::settings_config_path(repo_root), claude_code::config::merge_settings_config(repo_root)?, report);
         record_write(claude_code::config::mcp_config_path(repo_root), claude_code::config::merge_mcp_config(repo_root)?, report);
         sync_managed_doc(&repo_root.join("CLAUDE.md"), templates::CLAUDE_MD, report)?;
+        if let Some(pair) = AnvilConfig::load_or_default(repo_root)?.orchestrator {
+            report
+                .written_files
+                .extend(claude_code::agents::sync_agents(repo_root, &pair)?);
+        }
     }
     if sync_cursor {
         record_write(cursor::mcp_config_path(repo_root), cursor::merge_mcp_config(repo_root)?, report);

@@ -8,6 +8,7 @@ pub mod diff_classifier;
 pub mod diff_grep;
 pub mod fs_util;
 pub mod git;
+pub mod orchestrator_mode;
 pub mod proc_util;
 pub mod ratchet;
 pub mod sonar;

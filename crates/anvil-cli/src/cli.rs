@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
     CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd,
-    MemSubcmd, QaSubcmd, RatchetSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
+    MemSubcmd, OrchestratorSubcmd, QaSubcmd, RatchetSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -203,6 +203,11 @@ pub enum Command {
         /// Show hook latency percentiles (p50/p95), Code Mode savings, and trajectory summary.
         #[arg(long)]
         trajectories: bool,
+    },
+    /// Pair a planning model with an execution model for Claude Code (model + effort per role).
+    Orchestrator {
+        #[command(subcommand)]
+        sub: OrchestratorSubcmd,
     },
     /// Opt-in local SonarQube Quality Gate, New Code issues, and scanner runner.
     Sonar {

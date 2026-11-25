@@ -16,6 +16,7 @@ pub mod impact;
 pub mod init;
 pub mod mcp;
 pub mod mem;
+pub mod orchestrator;
 pub mod qa;
 pub mod ratchet;
 pub mod run;
@@ -118,6 +119,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         }
         Command::Daemon { sub } => daemon::execute(&root, sub),
         Command::Stats { reset, trajectories } => stats::execute(&root, reset, trajectories),
+        Command::Orchestrator { sub } => orchestrator::execute(&root, sub),
         Command::Sonar { sub } => sonar::execute(&root, sub),
         Command::Checkpoint { sub } => checkpoint::execute(&root, sub),
         Command::Worktree { sub } => worktree::execute(&root, sub),

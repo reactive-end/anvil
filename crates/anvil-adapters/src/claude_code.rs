@@ -1,5 +1,6 @@
 //! Claude Code hook JSON translator and config mergers.
 
+pub mod agents;
 pub mod config;
 
 use std::path::Path;
