@@ -1,13 +1,12 @@
 //! The review packet: a compact, deterministic digest of one task's change for the orchestrator.
 
 use std::fmt::Write as _;
-use std::fs;
 use std::path::Path;
 
 use anyhow::Result;
 
 use crate::diff_grep::compress_diff;
-use crate::git::{self, batched_working_tree_diffs};
+use crate::git;
 use crate::stats::load_stats;
 use crate::test_tampering::{assertion_delta, is_test_file};
 
@@ -31,17 +30,12 @@ pub fn build_packet(
     title: &str,
     files: &[String],
 ) -> Result<String> {
-    let diffs = batched_working_tree_diffs(repo_root)?;
-    let untracked = git::working_tree_status(repo_root).map(|s| s.untracked).unwrap_or_default();
+    let diffs = git::pending_diffs(repo_root)?;
     let mut rows = Vec::new();
     let mut combined = String::new();
     let (mut plus, mut minus) = (0usize, 0usize);
     for rel in files {
-        let diff = match diffs.get(rel) {
-            Some(diff) => diff.clone(),
-            None if untracked.contains(rel) => new_file_diff(repo_root, rel),
-            None => String::new(),
-        };
+        let diff = diffs.get(rel).cloned().unwrap_or_default();
         let (added, removed) = line_counts(&diff);
         plus += added;
         minus += removed;
@@ -92,22 +86,6 @@ fn file_row(repo_root: &Path, rel: &str, diff: &str, added: usize, removed: usiz
         let _ = write!(row, "  assertions +{asserts_added} -{asserts_removed}");
     }
     row
-}
-
-/// A unified diff that adds every line of an untracked file.
-fn new_file_diff(repo_root: &Path, rel: &str) -> String {
-    let Ok(text) = fs::read_to_string(repo_root.join(rel)) else {
-        return String::new();
-    };
-    let lines: Vec<&str> = text.lines().collect();
-    let mut diff = format!(
-        "diff --git a/{rel} b/{rel}\nnew file mode 100644\n--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1,{} @@\n",
-        lines.len()
-    );
-    for line in lines {
-        let _ = writeln!(diff, "+{line}");
-    }
-    diff
 }
 
 fn line_counts(diff: &str) -> (usize, usize) {

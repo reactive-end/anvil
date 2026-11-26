@@ -11,7 +11,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Scope of changed files to query from Git.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,6 +185,42 @@ pub fn all_diff(repo_root: &Path, staged: bool) -> Result<String> {
     } else {
         run_git_unquoted(repo_root, &["diff"])
     }
+}
+
+/// Untracked files larger than this are left out of [`pending_diffs`].
+const MAX_UNTRACKED_DIFF_BYTES: u64 = 1024 * 1024;
+
+/// Per-file diffs of the pending change against `HEAD`, with each untracked file as a new file
+/// that adds all its lines, so rules over diffs also see files git does not track yet.
+pub fn pending_diffs(repo_root: &Path) -> Result<FxHashMap<String, String>> {
+    let mut diffs = batched_working_tree_diffs(repo_root)?;
+    for rel in working_tree_status(repo_root)?.untracked {
+        if let Some(diff) = new_file_diff(repo_root, &rel) {
+            diffs.entry(rel).or_insert(diff);
+        }
+    }
+    Ok(diffs)
+}
+
+/// The unified diff git would show for adding `rel` as a new file; `None` when it cannot be read
+/// as text or is too large.
+pub fn new_file_diff(repo_root: &Path, rel: &str) -> Option<String> {
+    let path = repo_root.join(rel);
+    if fs::metadata(&path).ok()?.len() > MAX_UNTRACKED_DIFF_BYTES {
+        return None;
+    }
+    let text = fs::read_to_string(path).ok()?;
+    let lines: Vec<&str> = text.lines().collect();
+    let mut diff = format!(
+        "diff --git a/{rel} b/{rel}\nnew file mode 100644\n--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1,{} @@\n",
+        lines.len()
+    );
+    for line in lines {
+        diff.push('+');
+        diff.push_str(line);
+        diff.push('\n');
+    }
+    Some(diff)
 }
 
 /// Added line ranges of the pending change, untracked files included.

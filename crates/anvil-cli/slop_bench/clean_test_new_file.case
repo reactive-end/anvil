@@ -1,0 +1,25 @@
+# A brand-new, untracked test file with real assertions.
+@@ before src/math.ts
+export function total(items: number[]): number {
+  let sum = 0;
+  for (const item of items) {
+    sum += item;
+  }
+  return sum;
+}
+@@ before src/main.ts
+import { total } from "./math";
+
+export function run(): number {
+  return total([1, 2, 3]);
+}
+@@ after tests/math.test.ts
+import { total } from "../src/math";
+
+describe("total", () => {
+  it("adds numbers", () => {
+    expect(total([1, 2])).toBe(3);
+    expect(total([])).toBe(0);
+  });
+});
+@@ expect

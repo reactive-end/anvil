@@ -287,7 +287,7 @@ fn collect_test_diffs(root: &Path, changed: &[String], staged: bool) -> FxHashMa
     let diffs = if staged {
         git::batched_staged_diffs(root).unwrap_or_default()
     } else {
-        git::batched_working_tree_diffs(root).unwrap_or_default()
+        git::pending_diffs(root).unwrap_or_default()
     };
     for rel in test_paths {
         if let Some(diff_text) = diffs.get(rel) {

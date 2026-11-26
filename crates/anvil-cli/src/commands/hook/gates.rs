@@ -73,7 +73,7 @@ pub fn collect_changed_gate_errors(
     let mut errs = Vec::new();
     let has_test_changes = changed.iter().any(|p| is_test_file(p));
     let test_diffs = if has_test_changes {
-        anvil_core::git::batched_working_tree_diffs(root).unwrap_or_default()
+        anvil_core::git::pending_diffs(root).unwrap_or_default()
     } else {
         Default::default()
     };
