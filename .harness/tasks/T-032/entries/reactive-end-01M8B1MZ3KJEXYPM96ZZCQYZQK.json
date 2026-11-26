@@ -1,0 +1,28 @@
+{
+  "entry_id": "01M8B1MZ3KJEXYPM96ZZCQYZQK",
+  "task_id": "T-032",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Tier 0 duplication:new-code (added lines vs whole repo, no Sonar) and Tier 1 unused new symbols in modified files; both blocking with anvil-allow escapes.",
+  "evidence": "cargo test --workspace 419 passed; clippy clean; target/debug/anvil check --no-cache PASS. Calibration on 12 commits: Part A 2 true positives, Part B 7 true positives, 0 false positives.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/check/tier1.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/duplication.rs",
+    "crates/anvil-core/src/duplication/lines.rs",
+    "crates/anvil-core/src/git.rs",
+    "crates/anvil-core/src/git/diff.rs",
+    "crates/anvil-core/src/lib.rs",
+    "crates/anvil-core/src/sonar.rs",
+    "crates/anvil-core/tests/duplication_tests.rs",
+    "crates/anvil-core/tests/sonar_tests.rs",
+    "crates/anvil-graph/src/impact/guard.rs",
+    "crates/anvil-graph/src/lib.rs",
+    "crates/anvil-graph/tests/blast_radius.rs",
+    "crates/anvil-graph/tests/overengineering.rs"
+  ],
+  "timestamp": "2026-11-26T04:26:04.314231500Z"
+}

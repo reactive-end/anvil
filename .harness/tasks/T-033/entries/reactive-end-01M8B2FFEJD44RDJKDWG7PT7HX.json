@@ -1,0 +1,30 @@
+{
+  "entry_id": "01M8B2FFEJD44RDJKDWG7PT7HX",
+  "task_id": "T-033",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Review escape metric: CheckOutcome events per anvil check, anvil review log/list and MCP review_log, Quality section in anvil stats with escape rate and ratchet hint at 3, orchestrator templates instruct recording findings. Generated .claude copies pending anvil sync with the new binary.",
+  "evidence": "cargo test --workspace: 82 test binaries ok, 0 failed; clippy -D warnings clean; target/debug/anvil check --no-cache PASS.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands.rs",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/review.rs",
+    "crates/anvil-cli/src/commands/stats.rs",
+    "crates/anvil-cli/tests/review_e2e.rs",
+    "crates/anvil-core/src/stats.rs",
+    "crates/anvil-core/src/stats/quality.rs",
+    "crates/anvil-core/tests/quality_tests.rs",
+    "crates/anvil-mcp/src/lib.rs",
+    "crates/anvil-mcp/src/router.rs",
+    "crates/anvil-mcp/src/schemas.rs",
+    "crates/anvil-mcp/src/tools_review.rs",
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "templates/agents/anvil-orchestrator.md",
+    "templates/agents/orchestrate-skill.md"
+  ],
+  "timestamp": "2026-11-26T04:40:33.015594700Z"
+}

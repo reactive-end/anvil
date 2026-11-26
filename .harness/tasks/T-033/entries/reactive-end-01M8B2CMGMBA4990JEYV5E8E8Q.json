@@ -1,0 +1,26 @@
+{
+  "entry_id": "01M8B2CMGMBA4990JEYV5E8E8Q",
+  "task_id": "T-033",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "MCP review_log tool and template sentence done and verified (dev-binary anvil check --no-cache PASS). Executor running anvil sync to regenerate .claude copies.",
+  "files_touched": [
+    "crates/anvil-mcp/src/lib.rs",
+    "crates/anvil-mcp/src/router.rs",
+    "crates/anvil-mcp/src/schemas.rs",
+    "crates/anvil-mcp/src/tools_review.rs",
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "templates/agents/anvil-orchestrator.md",
+    "templates/agents/orchestrate-skill.md"
+  ],
+  "done_steps": [
+    "MCP review_log tool + stdio test",
+    "Template review-step instruction"
+  ],
+  "next_steps": [
+    "Review anvil sync output",
+    "task_done"
+  ],
+  "timestamp": "2026-11-26T04:38:59.898321Z"
+}

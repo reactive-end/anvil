@@ -1,0 +1,28 @@
+{
+  "entry_id": "01M8B04JY7SK1PN85DXT7MFD9B",
+  "task_id": "T-031",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Guard rewritten: blocking ERROR for new code with no non-test consumer; WARN noise removed; tests/clippy/check pass; calibration found 1 true positive (PLUGIN). Executor now splitting guard.rs and removing PLUGIN.",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/check/tier1.rs",
+    "crates/anvil-graph/src/impact.rs",
+    "crates/anvil-graph/src/impact/guard.rs",
+    "crates/anvil-graph/src/lib.rs",
+    "crates/anvil-graph/tests/blast_radius.rs"
+  ],
+  "done_steps": [
+    "Rewrite check_overengineering",
+    "Tier 1 prints ERROR and fails",
+    "10 integration tests + 6 unit tests",
+    "Calibration on last 12 commits"
+  ],
+  "next_steps": [
+    "Split guard.rs into guard/text.rs and guard/conventions.rs",
+    "Move tests to tests/overengineering.rs",
+    "Remove unused PLUGIN const",
+    "Re-verify and task_done"
+  ],
+  "timestamp": "2026-11-26T03:59:38.991516500Z"
+}

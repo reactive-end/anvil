@@ -1,0 +1,33 @@
+{
+  "entry_id": "01M8B27QJ6F0PQ96QAS96T4RKV",
+  "task_id": "T-033",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Core done: CheckOutcome events, anvil review log/list, Quality section in anvil stats (429 tests, clippy, check pass). Executor now adding MCP review_log tool and template instruction with corrected scope.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands.rs",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/review.rs",
+    "crates/anvil-cli/src/commands/stats.rs",
+    "crates/anvil-cli/tests/review_e2e.rs",
+    "crates/anvil-core/src/stats.rs",
+    "crates/anvil-core/src/stats/quality.rs",
+    "crates/anvil-core/tests/quality_tests.rs"
+  ],
+  "done_steps": [
+    "CheckOutcome recording in anvil check",
+    "anvil review log/list + quality.rs",
+    "Quality section in anvil stats",
+    "quality_tests.rs and review_e2e.rs"
+  ],
+  "next_steps": [
+    "MCP review_log tool + stdio test",
+    "Template review-step instruction",
+    "Verify and task_done"
+  ],
+  "timestamp": "2026-11-26T04:36:19.182148500Z"
+}

@@ -1,0 +1,21 @@
+{
+  "entry_id": "01M8B0D04RGB395W4QGTFBSDNW",
+  "task_id": "T-031",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Overengineering guard now blocks only on new code with zero non-test consumers (ERROR overengineering:unused-new-code, anvil-allow escape), silent otherwise; split into guard/{text,conventions}.rs; tests in tests/overengineering.rs; removed dead PLUGIN const.",
+  "evidence": "cargo test --workspace 404 passed; clippy -D warnings clean; anvil check --no-cache PASS (Tier 0 clean). Calibration on 5d419c5^..5001bc4: 1 true positive (PLUGIN), 0 false positives after test-support exemption.",
+  "files_touched": [
+    "crates/anvil-adapters/src/claude_code/plugin.rs",
+    "crates/anvil-cli/src/commands/check/tier1.rs",
+    "crates/anvil-graph/src/impact.rs",
+    "crates/anvil-graph/src/impact/guard.rs",
+    "crates/anvil-graph/src/impact/guard/conventions.rs",
+    "crates/anvil-graph/src/impact/guard/text.rs",
+    "crates/anvil-graph/src/lib.rs",
+    "crates/anvil-graph/tests/blast_radius.rs",
+    "crates/anvil-graph/tests/overengineering.rs"
+  ],
+  "timestamp": "2026-11-26T04:04:14.667704100Z"
+}

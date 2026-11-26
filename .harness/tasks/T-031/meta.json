@@ -1,0 +1,6 @@
+{
+  "task_id": "T-031",
+  "created_by": "reactive-end",
+  "request": "Actionable overengineering findings: block on unused new code, silent otherwise",
+  "created_at": "2026-11-26T03:44:47.995186700Z"
+}

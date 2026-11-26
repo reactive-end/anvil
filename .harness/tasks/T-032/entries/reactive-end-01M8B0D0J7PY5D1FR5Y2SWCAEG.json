@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8B0D0J7PY5D1FR5Y2SWCAEG",
+  "task_id": "T-032",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Diff-scoped duplication and dead-code checks without Sonar",
+  "files_touched": [],
+  "timestamp": "2026-11-26T04:04:15.083076500Z"
+}

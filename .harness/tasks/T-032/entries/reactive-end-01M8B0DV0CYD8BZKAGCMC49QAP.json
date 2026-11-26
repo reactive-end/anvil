@@ -1,0 +1,18 @@
+{
+  "entry_id": "01M8B0DV0CYD8BZKAGCMC49QAP",
+  "task_id": "T-032",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Delegated to anvil-executor: Part A diff-scoped duplication vs whole repo (Tier 0, no Sonar), Part B unused new symbols in modified files (Tier 1 guard). Waiting for its report to review.",
+  "files_touched": [],
+  "done_steps": [
+    "Design and brief with SCOPE sent to executor"
+  ],
+  "next_steps": [
+    "Review executor diff and calibration",
+    "Verify cargo test, clippy, anvil check --no-cache",
+    "task_done"
+  ],
+  "timestamp": "2026-11-26T04:04:42.162656Z"
+}

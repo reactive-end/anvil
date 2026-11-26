@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8AZ9CY1VY9A7EPST881S55X",
+  "task_id": "T-031",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Replace the noisy '<= 1 consumer' WARN with a precise blocking finding for new code nothing in production uses; stay silent when unsure.",
+  "files_touched": [],
+  "timestamp": "2026-11-26T03:44:48.101422900Z"
+}

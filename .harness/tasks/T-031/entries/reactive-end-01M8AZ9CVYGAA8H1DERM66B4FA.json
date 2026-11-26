@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8AZ9CVYGAA8H1DERM66B4FA",
+  "task_id": "T-031",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Actionable overengineering findings: block on unused new code, silent otherwise",
+  "files_touched": [],
+  "timestamp": "2026-11-26T03:44:48.036652900Z"
+}

@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 30,
-  "updated_at": "2026-11-25T22:22:22.064924800Z",
+  "task_count": 33,
+  "updated_at": "2026-11-26T04:40:33.015594700Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -558,6 +558,63 @@
       "progress_file": ".harness/tasks/T-030/progress.md",
       "created_at": "2026-11-25T22:06:10.975266900Z",
       "updated_at": "2026-11-25T22:22:22.064924800Z"
+    },
+    {
+      "task_id": "T-031",
+      "request": "Actionable overengineering findings: block on unused new code, silent otherwise",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Overengineering guard now blocks only on new code with zero non-test consumers (ERROR overengineering:unused-new-code, anvil-allow escape), silent otherwise; split into guard/{text,conventions}.rs; tests in tests/overengineering.rs; removed dead PLUGIN const.",
+      "evidence": "cargo test --workspace 404 passed; clippy -D warnings clean; anvil check --no-cache PASS (Tier 0 clean). Calibration on 5d419c5^..5001bc4: 1 true positive (PLUGIN), 0 false positives after test-support exemption.",
+      "entry_count": 4,
+      "files_count": 9,
+      "progress_file": ".harness/tasks/T-031/progress.md",
+      "created_at": "2026-11-26T03:44:47.995186700Z",
+      "updated_at": "2026-11-26T04:04:14.667704100Z"
+    },
+    {
+      "task_id": "T-032",
+      "request": "Diff-scoped duplication and dead-code checks without Sonar",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Tier 0 duplication:new-code (added lines vs whole repo, no Sonar) and Tier 1 unused new symbols in modified files; both blocking with anvil-allow escapes.",
+      "evidence": "cargo test --workspace 419 passed; clippy clean; target/debug/anvil check --no-cache PASS. Calibration on 12 commits: Part A 2 true positives, Part B 7 true positives, 0 false positives.",
+      "entry_count": 4,
+      "files_count": 16,
+      "progress_file": ".harness/tasks/T-032/progress.md",
+      "created_at": "2026-11-26T04:04:15.045969900Z",
+      "updated_at": "2026-11-26T04:26:04.314231500Z"
+    },
+    {
+      "task_id": "T-033",
+      "request": "Review escape metric: findings reported after green checks",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Review escape metric: CheckOutcome events per anvil check, anvil review log/list and MCP review_log, Quality section in anvil stats with escape rate and ratchet hint at 3, orchestrator templates instruct recording findings. Generated .claude copies pending anvil sync with the new binary.",
+      "evidence": "cargo test --workspace: 82 test binaries ok, 0 failed; clippy -D warnings clean; target/debug/anvil check --no-cache PASS.",
+      "entry_count": 6,
+      "files_count": 18,
+      "progress_file": ".harness/tasks/T-033/progress.md",
+      "created_at": "2026-11-26T04:26:05.247951700Z",
+      "updated_at": "2026-11-26T04:40:33.015594700Z"
     }
   ]
 }
