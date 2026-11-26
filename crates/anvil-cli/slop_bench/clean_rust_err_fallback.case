@@ -1,0 +1,19 @@
+# A Rust match arm that maps the error to a fallback value.
+@@ before src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+@@ before src/main.rs
+pub fn run() -> i64 {
+    crate::total(&[1, 2, 3])
+}
+@@ after src/main.rs
+pub fn run() -> i64 {
+    match "6".parse::<i64>() {
+        Ok(value) => crate::total(&[value]),
+        Err(_) => 0,
+    }
+}
+@@ expect

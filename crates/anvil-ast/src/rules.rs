@@ -7,11 +7,13 @@ pub mod escape_hatches;
 pub mod php_hygiene;
 pub mod root_hygiene;
 pub mod strict_types;
+pub mod swallowed_errors;
 
 use std::path::Path;
 use std::sync::OnceLock;
 
 use anvil_core::config::AnvilConfig;
+use anvil_core::git::AddedLines;
 use anvil_core::traits::{Diagnostic, Language};
 use regex::Regex;
 use tree_sitter::{Node, Point};
@@ -36,6 +38,32 @@ const ESCAPE_RULES: &[&str] = &[
     "no-phpcs-ignore",
     "no-php-error-suppression",
 ];
+
+/// Rules reported only on lines the pending change adds, so existing code does not block an edit
+/// next to it.
+pub const NEW_CODE_ONLY_RULES: &[&str] = &[swallowed_errors::RULE];
+
+/// `true` when any finding belongs to a rule that only applies to added lines.
+pub fn has_new_code_only_findings(diagnostics: &[Diagnostic]) -> bool {
+    diagnostics.iter().any(|d| NEW_CODE_ONLY_RULES.contains(&d.rule.as_str()))
+}
+
+/// Drops findings of [`NEW_CODE_ONLY_RULES`] whose line the pending change did not add to `rel`.
+/// With `added` unknown (`None`) every finding is kept.
+pub fn retain_new_code_findings(
+    rel: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+    added: Option<&AddedLines>,
+) {
+    let Some(added) = added else {
+        return;
+    };
+    let ranges = added.get(&rel.replace('\\', "/")).map_or(&[][..], Vec::as_slice);
+    diagnostics.retain(|d| {
+        !NEW_CODE_ONLY_RULES.contains(&d.rule.as_str())
+            || ranges.iter().any(|(start, end)| (*start..=*end).contains(&d.line))
+    });
+}
 
 /// Per-file state shared across Tier 0 AST rules during a single walk.
 pub struct RuleState<'a> {
@@ -187,6 +215,7 @@ pub fn check_node(node: Node<'_>, state: &mut RuleState<'_>) {
     strict_types::check_node(node, state);
     assumptions::check_node(node, state);
     php_hygiene::check_node(node, state);
+    swallowed_errors::check_node(node, state);
 }
 
 /// Evaluates file-level structural rules (barrels, strict_types, root hygiene) after or around the AST walk.

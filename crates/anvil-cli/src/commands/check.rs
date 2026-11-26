@@ -7,6 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use anvil_ast::analyze_files_parallel;
+use anvil_ast::rules::retain_new_code_findings;
 use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, DiffClassification, classify_files};
 use anvil_core::duplication::check_added_duplication;
@@ -238,8 +239,9 @@ fn run_tier0(
     let mut errors = 0usize;
 
     for ((rel, source), ast_res) in loaded.iter().zip(ast_results) {
-        let facts = ast_res?;
-        print_diagnostics(&facts.diagnostics, &mut errors);
+        let mut diagnostics = ast_res?.diagnostics;
+        retain_new_code_findings(rel, &mut diagnostics, Some(added_lines));
+        print_diagnostics(&diagnostics, &mut errors);
         if !compiled_rules.is_empty() {
             let rule_diags = evaluate_compiled(&compiled_rules, rel, source);
             print_diagnostics(&rule_diags, &mut errors);

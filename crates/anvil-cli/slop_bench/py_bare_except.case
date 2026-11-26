@@ -20,5 +20,4 @@ def run() -> int:
         pass
     return 0
 @@ expect
-@@ known-gap
 error no-swallowed-errors app/main.py

@@ -1,0 +1,24 @@
+# An except clause that logs and returns a fallback.
+@@ before app/__init__.py
+@@ before app/calc.py
+def total(items: list[int]) -> int:
+    return sum(items)
+@@ before app/main.py
+from app.calc import total
+
+
+def run() -> int:
+    return total([1, 2, 3])
+@@ after app/main.py
+import logging
+
+from app.calc import total
+
+
+def run() -> int:
+    try:
+        return total([1, 2, 3])
+    except ValueError as err:
+        logging.warning("total failed: %s", err)
+        return 0
+@@ expect

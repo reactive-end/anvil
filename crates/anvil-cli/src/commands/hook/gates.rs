@@ -4,6 +4,7 @@ use std::path::Path;
 
 use anvil_adapters::contract::{InboxMessage, MessageLevel, NormalizedHookInput};
 use anvil_ast::analyze_file;
+use anvil_ast::rules::{has_new_code_only_findings, retain_new_code_findings};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
@@ -31,7 +32,12 @@ pub fn collect_post_tool_messages(
     };
     let mut errs = Vec::new();
     if let Ok(facts) = analyze_file(Path::new(rel), &source, config) {
-        push_diagnostics(root, "tier0", rel, facts.diagnostics, messages, &mut errs);
+        let mut diagnostics = facts.diagnostics;
+        if has_new_code_only_findings(&diagnostics) {
+            let added = anvil_core::git::added_line_ranges(root, false).ok();
+            retain_new_code_findings(rel, &mut diagnostics, added.as_ref());
+        }
+        push_diagnostics(root, "tier0", rel, diagnostics, messages, &mut errs);
     }
     if let Ok(rules) = load_promoted_rules(root)
         && !rules.is_empty()
@@ -71,6 +77,7 @@ pub fn collect_changed_gate_errors(
     let mut cache = Tier0Cache::load(root);
     let mut cache_dirty = false;
     let mut errs = Vec::new();
+    let mut added_lines = None;
     let has_test_changes = changed.iter().any(|p| is_test_file(p));
     let test_diffs = if has_test_changes {
         anvil_core::git::pending_diffs(root).unwrap_or_default()
@@ -91,7 +98,13 @@ pub fn collect_changed_gate_errors(
         };
         let before = errs.len();
         if let Ok(facts) = analyze_file(Path::new(rel), &src, config) {
-            extend_error_lines(&mut errs, facts.diagnostics);
+            let mut diagnostics = facts.diagnostics;
+            if has_new_code_only_findings(&diagnostics) {
+                let added = added_lines
+                    .get_or_insert_with(|| anvil_core::git::added_line_ranges(root, false).ok());
+                retain_new_code_findings(rel, &mut diagnostics, added.as_ref());
+            }
+            extend_error_lines(&mut errs, diagnostics);
         }
         if !compiled.is_empty() {
             extend_error_lines(&mut errs, evaluate_compiled(&compiled, rel, &src));

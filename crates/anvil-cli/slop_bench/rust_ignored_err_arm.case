@@ -1,0 +1,31 @@
+# A Rust match arm that ignores the write error.
+@@ before src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+@@ before src/main.rs
+pub fn run() -> i64 {
+    crate::total(&[1, 2, 3])
+}
+@@ after src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+
+pub fn save_total(items: &[i64]) {
+    match std::fs::write("total.txt", total(items).to_string()) {
+        Ok(()) => {}
+        Err(_) => {}
+    }
+}
+@@ after src/main.rs
+pub fn run() -> i64 {
+    crate::save_total(&[1]);
+    crate::total(&[1, 2, 3])
+}
+@@ expect
+error no-swallowed-errors src/lib.rs

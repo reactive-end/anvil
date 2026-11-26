@@ -1,4 +1,4 @@
-# An error swallowed by an empty catch.
+# A new empty catch is reported even beside an old one; the old one is not.
 @@ before src/math.ts
 export function total(items: number[]): number {
   let sum = 0;
@@ -11,7 +11,12 @@ export function total(items: number[]): number {
 import { total } from "./math";
 
 export function run(): number {
-  return total([1, 2, 3]);
+  try {
+    return total([1, 2, 3]);
+  } catch {
+    // legacy: ignore
+  }
+  return 0;
 }
 @@ after src/main.ts
 import { total } from "./math";
@@ -19,9 +24,13 @@ import { total } from "./math";
 export function run(): number {
   try {
     return total([1, 2, 3]);
+  } catch {
+    // legacy: ignore
+  }
+  try {
+    return total([4]);
   } catch {}
   return 0;
 }
 @@ expect
-@@ known-gap
 error no-swallowed-errors src/main.ts
