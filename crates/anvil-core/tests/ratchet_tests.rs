@@ -102,7 +102,11 @@ fn promoted_rules_evaluate_with_globs_and_anvil_allow_and_test_candidate() -> Re
 
     let loaded = load_promoted_rules(root)?;
     assert_eq!(loaded.len(), 1);
-    let diags = evaluate_promoted_rules(&loaded, "src/app.ts", &fs::read_to_string(root.join("src/app.ts"))?);
+    let diags = evaluate_promoted_rules(
+        &loaded,
+        "src/app.ts",
+        &fs::read_to_string(root.join("src/app.ts"))?,
+    );
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].line, 1);
     assert_eq!(diags[0].severity, Severity::Error);
@@ -146,7 +150,8 @@ fn compiled_rules_and_comment_context_allow_and_options_work() -> Result<()> {
     let diags_spoof = evaluate_compiled(&compiled, "src/a.ts", spoofed);
     assert_eq!(diags_spoof.len(), 1);
 
-    let spoofed_comment_in_str = "const s = \"// anvil-allow(no-console-log): fake\";\nconsole.log('hit2');\n";
+    let spoofed_comment_in_str =
+        "const s = \"// anvil-allow(no-console-log): fake\";\nconsole.log('hit2');\n";
     let diags_spoof2 = evaluate_compiled(&compiled, "src/a.ts", spoofed_comment_in_str);
     assert_eq!(diags_spoof2.len(), 1);
 
@@ -188,10 +193,7 @@ fn ratchet_skips_comments_and_strings_and_supports_multiline_and_web_php_langs()
     ml_input.pattern = r"try\s*\{[\s\S]*?\}\s*catch\s*\([^)]*\)\s*\{\s*\}".to_owned();
     ml_input.languages = vec!["php".to_owned(), "blade".to_owned()];
     ml_input.high_impact = true;
-    let ml_opts = CandidateOptions {
-        multiline: true,
-        ..Default::default()
-    };
+    let ml_opts = CandidateOptions { multiline: true, ..Default::default() };
     let ml_cand = log_candidate_with_options(root, ml_input, ml_opts)?;
     assert!(ml_cand.multiline);
     evaluate_candidate(root, &ml_cand.id, Some(&["try { run(); } catch (e) { log(e); }"]))?;
@@ -254,10 +256,7 @@ fn test_candidate_evaluates_multiline_patterns_and_lang_aware_comments() -> Resu
     let ml_cand = log_candidate_with_options(
         root,
         ml_input,
-        CandidateOptions {
-            multiline: true,
-            ..Default::default()
-        },
+        CandidateOptions { multiline: true, ..Default::default() },
     )?;
 
     let report = test_candidate(root, &ml_cand.id)?;

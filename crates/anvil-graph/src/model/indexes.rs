@@ -36,10 +36,8 @@ impl CodeGraph {
                 }
                 edge.source = new_src;
                 if edge.is_resolved() {
-                    let new_tgt = remap
-                        .get(edge.target as usize)
-                        .copied()
-                        .unwrap_or(INVALID_NODE_ID);
+                    let new_tgt =
+                        remap.get(edge.target as usize).copied().unwrap_or(INVALID_NODE_ID);
                     edge.target = new_tgt;
                 }
             }
@@ -87,8 +85,7 @@ impl CodeGraph {
                         if let Some(list) = self.kotlin_packages.get_mut(pkg) {
                             list.push(node.file.clone());
                         } else {
-                            self.kotlin_packages
-                                .insert(pkg.to_owned(), vec![node.file.clone()]);
+                            self.kotlin_packages.insert(pkg.to_owned(), vec![node.file.clone()]);
                         }
                     }
                 }
@@ -143,10 +140,16 @@ impl CodeGraph {
         self.forward_adj.reserve(node_count);
         self.reverse_adj.reserve(node_count);
         for i in 0..node_count {
-            self.forward_adj
-                .push(if out_deg[i] == 0 { Vec::new() } else { Vec::with_capacity(out_deg[i] as usize) });
-            self.reverse_adj
-                .push(if in_deg[i] == 0 { Vec::new() } else { Vec::with_capacity(in_deg[i] as usize) });
+            self.forward_adj.push(if out_deg[i] == 0 {
+                Vec::new()
+            } else {
+                Vec::with_capacity(out_deg[i] as usize)
+            });
+            self.reverse_adj.push(if in_deg[i] == 0 {
+                Vec::new()
+            } else {
+                Vec::with_capacity(in_deg[i] as usize)
+            });
         }
 
         for (idx, edge) in self.edges.iter().enumerate() {
@@ -183,11 +186,7 @@ impl CodeGraph {
     }
 
     /// Inserts or reuses `reuse_slot` for `node`, updating `semantic_index` for semantic nodes.
-    pub fn insert_node_with_slot(
-        &mut self,
-        node: GraphNode,
-        reuse_slot: Option<NodeId>,
-    ) -> NodeId {
+    pub fn insert_node_with_slot(&mut self, node: GraphNode, reuse_slot: Option<NodeId>) -> NodeId {
         let is_semantic = node.kind == NodeKind::Semantic;
         let nid = if let Some(slot) = reuse_slot
             && (slot as usize) < self.nodes.len()

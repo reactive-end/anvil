@@ -13,12 +13,7 @@ fn anvil_bin() -> &'static str {
 }
 
 fn run_anvil(repo: &Path, args: &[&str]) -> Output {
-    Command::new(anvil_bin())
-        .arg("--root")
-        .arg(repo)
-        .args(args)
-        .output()
-        .expect("execute anvil")
+    Command::new(anvil_bin()).arg("--root").arg(repo).args(args).output().expect("execute anvil")
 }
 
 fn run_anvil_stdin(repo: &Path, args: &[&str], stdin_data: &str) -> Output {
@@ -49,8 +44,16 @@ fn setup_laravel_git_repo() -> TempDir {
     let root = dir.path();
 
     Command::new("git").args(["init"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.name", "Laravel Dev"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.email", "dev@example.com"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Laravel Dev"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "dev@example.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
 
     write_file(
         &root.join("backend/composer.json"),
@@ -96,7 +99,11 @@ fn laravel_init_doctor_tier0_strict_types_graph_and_token_guard() {
     let root = repo.path();
 
     let init_out = run_anvil(root, &["init"]);
-    assert!(init_out.status.success(), "init failed: {}", String::from_utf8_lossy(&init_out.stderr));
+    assert!(
+        init_out.status.success(),
+        "init failed: {}",
+        String::from_utf8_lossy(&init_out.stderr)
+    );
 
     let cfg_raw = fs::read_to_string(root.join(".harness/config.json")).unwrap();
     assert!(cfg_raw.contains("\"laravel\""));
@@ -139,10 +146,14 @@ fn laravel_init_doctor_tier0_strict_types_graph_and_token_guard() {
         }
     })
     .to_string();
-    let guard_out = run_anvil_stdin(root, &["hook", "PreToolUse", "--adapter", "antigravity"], &payload);
+    let guard_out =
+        run_anvil_stdin(root, &["hook", "PreToolUse", "--adapter", "antigravity"], &payload);
     let guard_stdout = String::from_utf8_lossy(&guard_out.stdout);
     assert!(guard_out.status.success(), "hook failed: {guard_stdout}");
-    assert!(guard_stdout.contains("\"decision\":\"deny\""), "expected token guard deny for composer.lock: {guard_stdout}");
+    assert!(
+        guard_stdout.contains("\"decision\":\"deny\""),
+        "expected token guard deny for composer.lock: {guard_stdout}"
+    );
 }
 
 #[test]
@@ -157,7 +168,11 @@ fn antigravity_v2_edit_file_with_capital_path_tracks_edit_and_gates_stop() {
         "lastUserInput": "Ajusta QuoteService para aplicar redondeo fiscal"
     })
     .to_string();
-    assert!(run_anvil_stdin(root, &["hook", "PreInvocation", "--adapter", "antigravity"], &pre_inv).status.success());
+    assert!(
+        run_anvil_stdin(root, &["hook", "PreInvocation", "--adapter", "antigravity"], &pre_inv)
+            .status
+            .success()
+    );
     assert!(root.join(".harness/.state/pending-prompt.json").is_file());
 
     let edited = root.join("backend/app/Services/QuoteService.php");
@@ -179,15 +194,29 @@ fn antigravity_v2_edit_file_with_capital_path_tracks_edit_and_gates_stop() {
         }
     })
     .to_string();
-    assert!(run_anvil_stdin(root, &["hook", "PostToolUse", "--adapter", "antigravity"], &post_tool).status.success());
-    assert!(!root.join(".harness/.state/active-task.json").exists(), "PostToolUse must never auto-materialize raw tasks");
-    let tracked = fs::read_to_string(root.join(".harness/.state/untracked-edits.json")).unwrap_or_default();
-    assert!(tracked.contains("QuoteService.php"), "expected tracked edit for capital Path: {tracked}");
+    assert!(
+        run_anvil_stdin(root, &["hook", "PostToolUse", "--adapter", "antigravity"], &post_tool)
+            .status
+            .success()
+    );
+    assert!(
+        !root.join(".harness/.state/active-task.json").exists(),
+        "PostToolUse must never auto-materialize raw tasks"
+    );
+    let tracked =
+        fs::read_to_string(root.join(".harness/.state/untracked-edits.json")).unwrap_or_default();
+    assert!(
+        tracked.contains("QuoteService.php"),
+        "expected tracked edit for capital Path: {tracked}"
+    );
 
     let stop_in = json!({ "hookEventName": "Stop", "cwd": root.to_string_lossy() }).to_string();
     let stop_out = run_anvil_stdin(root, &["hook", "Stop", "--adapter", "antigravity"], &stop_in);
     let stop_stdout = String::from_utf8_lossy(&stop_out.stdout);
-    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop gate requiring task decision: {stop_stdout}");
+    assert!(
+        stop_stdout.contains("\"decision\":\"continue\""),
+        "expected Stop gate requiring task decision: {stop_stdout}"
+    );
     assert!(stop_stdout.contains("anvil tasks record"), "stop output: {stop_stdout}");
 }
 
@@ -203,7 +232,11 @@ fn stop_hook_gates_substantive_external_edits_without_auto_creating_task() {
         "lastUserInput": "Actualiza QuoteService via comando externo"
     })
     .to_string();
-    assert!(run_anvil_stdin(root, &["hook", "PreInvocation", "--adapter", "antigravity"], &pre_inv).status.success());
+    assert!(
+        run_anvil_stdin(root, &["hook", "PreInvocation", "--adapter", "antigravity"], &pre_inv)
+            .status
+            .success()
+    );
 
     write_file(
         &root.join("backend/app/Services/QuoteService.php"),
@@ -218,8 +251,14 @@ fn stop_hook_gates_substantive_external_edits_without_auto_creating_task() {
     let stop_in = json!({ "hookEventName": "Stop", "cwd": root.to_string_lossy() }).to_string();
     let stop_out = run_anvil_stdin(root, &["hook", "Stop", "--adapter", "antigravity"], &stop_in);
     let stop_stdout = String::from_utf8_lossy(&stop_out.stdout);
-    assert!(!root.join(".harness/.state/active-task.json").exists(), "Stop must never auto-materialize raw tasks");
-    assert!(stop_stdout.contains("\"decision\":\"continue\""), "expected Stop to gate substantive edits until curated: {stop_stdout}");
+    assert!(
+        !root.join(".harness/.state/active-task.json").exists(),
+        "Stop must never auto-materialize raw tasks"
+    );
+    assert!(
+        stop_stdout.contains("\"decision\":\"continue\""),
+        "expected Stop to gate substantive edits until curated: {stop_stdout}"
+    );
     assert!(stop_stdout.contains("anvil tasks record"), "stop output: {stop_stdout}");
 }
 

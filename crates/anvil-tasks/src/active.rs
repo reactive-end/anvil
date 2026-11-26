@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use anvil_core::fs_util::with_file_lock;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -74,11 +74,9 @@ pub fn load_active_task(repo: &Path) -> Result<Option<ActiveTaskState>> {
 
 /// Atomically persists `ActiveTaskState` to `.harness/.state/active-task.json` under lock.
 pub fn save_active_task(repo: &Path, state: &ActiveTaskState) -> Result<()> {
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || save_active_task_unlocked(repo, state),
-    )
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        save_active_task_unlocked(repo, state)
+    })
 }
 
 /// Ensures an active `InProgress` task exists for `prompt`, creating one only when needed.
@@ -96,44 +94,36 @@ pub fn ensure_task_for_prompt(
         return Ok(None);
     }
 
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || {
-            let prompt_hash = hash_prompt(trimmed);
-            if let Some(existing) = load_active_task_unlocked(repo)?
-                && task_dir(repo, &existing.task_id).join("meta.json").exists()
-                && (existing.prompt_hash == prompt_hash || existing.status == TaskStatus::InProgress)
-            {
-                return Ok(Some((existing, false)));
-            }
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        let prompt_hash = hash_prompt(trimmed);
+        if let Some(existing) = load_active_task_unlocked(repo)?
+            && task_dir(repo, &existing.task_id).join("meta.json").exists()
+            && (existing.prompt_hash == prompt_hash || existing.status == TaskStatus::InProgress)
+        {
+            return Ok(Some((existing, false)));
+        }
 
-            let author = resolve_author_fast(repo)?;
-            let meta = start_task_as(repo, &author, trimmed)?;
-            build_root_tasks_json(repo)?;
-            let state = new_active_state(meta.task_id, prompt_hash, meta.created_at, Vec::new());
-            save_active_task_unlocked(repo, &state)?;
-            Ok(Some((state, true)))
-        },
-    )
+        let author = resolve_author_fast(repo)?;
+        let meta = start_task_as(repo, &author, trimmed)?;
+        build_root_tasks_json(repo)?;
+        let state = new_active_state(meta.task_id, prompt_hash, meta.created_at, Vec::new());
+        save_active_task_unlocked(repo, &state)?;
+        Ok(Some((state, true)))
+    })
 }
 
 /// Records a newly started manual task in `active-task.json` with `summary_recorded_at = None`.
 pub fn activate_task_from_meta(repo: &Path, meta: &TaskMeta) -> Result<()> {
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || {
-            let prompt_hash = load_pending_prompt_unlocked(repo)?
-                .map_or_else(|| hash_prompt(meta.request.trim()), |p| p.prompt_hash);
-            let state =
-                new_active_state(meta.task_id.clone(), prompt_hash, meta.created_at, Vec::new());
-            save_active_task_unlocked(repo, &state)?;
-            let _ = fs::remove_file(pending_prompt_path(repo));
-            clear_untracked_edits(repo);
-            Ok(())
-        },
-    )
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        let prompt_hash = load_pending_prompt_unlocked(repo)?
+            .map_or_else(|| hash_prompt(meta.request.trim()), |p| p.prompt_hash);
+        let state =
+            new_active_state(meta.task_id.clone(), prompt_hash, meta.created_at, Vec::new());
+        save_active_task_unlocked(repo, &state)?;
+        let _ = fs::remove_file(pending_prompt_path(repo));
+        clear_untracked_edits(repo);
+        Ok(())
+    })
 }
 
 pub(crate) fn new_active_state(
@@ -166,26 +156,19 @@ pub fn record_pending_prompt(repo: &Path, prompt: &str) -> Result<bool> {
     if is_ignored_prompt(trimmed) {
         return Ok(false);
     }
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || {
-            let prompt_hash = hash_prompt(trimmed);
-            if let Some(existing) = load_active_task_unlocked(repo)?
-                && (existing.skipped || task_dir(repo, &existing.task_id).join("meta.json").exists())
-                && (existing.prompt_hash == prompt_hash || existing.status == TaskStatus::InProgress)
-            {
-                return Ok(false);
-            }
-            let pending = PendingPrompt {
-                prompt: trimmed.to_owned(),
-                prompt_hash,
-                recorded_at: Utc::now(),
-            };
-            atomic_write_json(&pending_prompt_path(repo), &pending)?;
-            Ok(true)
-        },
-    )
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        let prompt_hash = hash_prompt(trimmed);
+        if let Some(existing) = load_active_task_unlocked(repo)?
+            && (existing.skipped || task_dir(repo, &existing.task_id).join("meta.json").exists())
+            && (existing.prompt_hash == prompt_hash || existing.status == TaskStatus::InProgress)
+        {
+            return Ok(false);
+        }
+        let pending =
+            PendingPrompt { prompt: trimmed.to_owned(), prompt_hash, recorded_at: Utc::now() };
+        atomic_write_json(&pending_prompt_path(repo), &pending)?;
+        Ok(true)
+    })
 }
 
 /// Lazily materializes a tracked task on the first mutated project file (consuming
@@ -207,42 +190,38 @@ pub fn materialize_task_on_edit_with_fallback(
     if norm.is_empty() || norm.starts_with(".harness/") || norm == "tasks.json" {
         return Ok(None);
     }
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || {
-            if let Some(mut existing) = load_active_task_unlocked(repo)?
-                && task_dir(repo, &existing.task_id).join("meta.json").exists()
-                && existing.status == TaskStatus::InProgress
-            {
-                if !existing.touched_files.iter().any(|f| f == norm) {
-                    existing.touched_files.push(norm.to_owned());
-                    existing.touched_files.sort();
-                    save_active_task_unlocked(repo, &existing)?;
-                }
-                return Ok(None);
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        if let Some(mut existing) = load_active_task_unlocked(repo)?
+            && task_dir(repo, &existing.task_id).join("meta.json").exists()
+            && existing.status == TaskStatus::InProgress
+        {
+            if !existing.touched_files.iter().any(|f| f == norm) {
+                existing.touched_files.push(norm.to_owned());
+                existing.touched_files.sort();
+                save_active_task_unlocked(repo, &existing)?;
             }
+            return Ok(None);
+        }
 
-            let pending = load_pending_prompt_unlocked(repo)?
-                .or_else(|| load_fresh_fallback_prompt(fallback_prompt_root));
-            let (request, prompt_hash) = match pending {
-                Some(p) => (p.prompt, p.prompt_hash),
-                None => {
-                    let fallback = format!("Edit {norm}");
-                    let hash = hash_prompt(&fallback);
-                    (fallback, hash)
-                }
-            };
-            let author = resolve_author_fast(repo)?;
-            let meta = start_task_as(repo, &author, &request)?;
-            build_root_tasks_json(repo)?;
-            let state =
-                new_active_state(meta.task_id, prompt_hash, meta.created_at, vec![norm.to_owned()]);
-            save_active_task_unlocked(repo, &state)?;
-            let _ = fs::remove_file(pending_prompt_path(repo));
-            Ok(Some(state))
-        },
-    )
+        let pending = load_pending_prompt_unlocked(repo)?
+            .or_else(|| load_fresh_fallback_prompt(fallback_prompt_root));
+        let (request, prompt_hash) = match pending {
+            Some(p) => (p.prompt, p.prompt_hash),
+            None => {
+                let fallback = format!("Edit {norm}");
+                let hash = hash_prompt(&fallback);
+                (fallback, hash)
+            }
+        };
+        let author = resolve_author_fast(repo)?;
+        let meta = start_task_as(repo, &author, &request)?;
+        build_root_tasks_json(repo)?;
+        let state =
+            new_active_state(meta.task_id, prompt_hash, meta.created_at, vec![norm.to_owned()]);
+        save_active_task_unlocked(repo, &state)?;
+        let _ = fs::remove_file(pending_prompt_path(repo));
+        Ok(Some(state))
+    })
 }
 
 fn load_fresh_fallback_prompt(fallback_root: Option<&Path>) -> Option<PendingPrompt> {
@@ -259,24 +238,20 @@ pub fn record_touched_file(repo: &Path, rel_path: &str) -> Result<()> {
     if norm.is_empty() || norm.starts_with(".harness/") || norm == "tasks.json" {
         return Ok(());
     }
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || {
-            let Some(mut state) = load_active_task_unlocked(repo)? else {
-                return Ok(());
-            };
-            if state.status != TaskStatus::InProgress {
-                return Ok(());
-            }
-            if !state.touched_files.iter().any(|f| f == norm) {
-                state.touched_files.push(norm.to_owned());
-                state.touched_files.sort();
-                save_active_task_unlocked(repo, &state)?;
-            }
-            Ok(())
-        },
-    )
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        let Some(mut state) = load_active_task_unlocked(repo)? else {
+            return Ok(());
+        };
+        if state.status != TaskStatus::InProgress {
+            return Ok(());
+        }
+        if !state.touched_files.iter().any(|f| f == norm) {
+            state.touched_files.push(norm.to_owned());
+            state.touched_files.sort();
+            save_active_task_unlocked(repo, &state)?;
+        }
+        Ok(())
+    })
 }
 
 /// Updates `.harness/.state/active-task.json` under lock when a summary is recorded.
@@ -291,11 +266,9 @@ pub fn mark_summary_recorded_with_files(
     status: TaskStatus,
     files: &[String],
 ) -> Result<()> {
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || upsert_active_state_unlocked(repo, task_id, status, None, None, files, true),
-    )
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        upsert_active_state_unlocked(repo, task_id, status, None, None, files, true)
+    })
 }
 
 /// Updates `.harness/.state/active-task.json` with incremental progress or final completion.
@@ -308,21 +281,17 @@ pub fn update_active_task_progress(
     next_steps: &[String],
     files: &[String],
 ) -> Result<()> {
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || {
-            upsert_active_state_unlocked(
-                repo,
-                task_id,
-                status,
-                Some(summary),
-                Some(next_steps),
-                files,
-                status == TaskStatus::Done,
-            )
-        },
-    )
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        upsert_active_state_unlocked(
+            repo,
+            task_id,
+            status,
+            Some(summary),
+            Some(next_steps),
+            files,
+            status == TaskStatus::Done,
+        )
+    })
 }
 
 /// Records the latest build/test command outcome onto the currently active `InProgress` task.
@@ -331,22 +300,18 @@ pub fn record_active_command_outcome(repo: &Path, command: &str, passed: bool) -
     if clean.is_empty() {
         return Ok(());
     }
-    with_file_lock(
-        &active_task_lock_path(repo),
-        ACTIVE_TASK_LOCK_TIMEOUT_MS,
-        || {
-            let Some(mut state) = load_active_task_unlocked(repo)? else {
-                return Ok(());
-            };
-            if state.skipped || state.status != TaskStatus::InProgress {
-                return Ok(());
-            }
-            state.last_command = Some(clean.to_owned());
-            state.last_command_passed = Some(passed);
-            state.last_progress_at = Some(Utc::now());
-            save_active_task_unlocked(repo, &state)
-        },
-    )
+    with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
+        let Some(mut state) = load_active_task_unlocked(repo)? else {
+            return Ok(());
+        };
+        if state.skipped || state.status != TaskStatus::InProgress {
+            return Ok(());
+        }
+        state.last_command = Some(clean.to_owned());
+        state.last_command_passed = Some(passed);
+        state.last_progress_at = Some(Utc::now());
+        save_active_task_unlocked(repo, &state)
+    })
 }
 
 fn upsert_active_state_unlocked(
@@ -419,8 +384,8 @@ pub(crate) fn load_pending_prompt_unlocked(repo: &Path) -> Result<Option<Pending
     if !path.exists() {
         return Ok(None);
     }
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     if raw.trim().is_empty() {
         return Ok(None);
     }
@@ -434,8 +399,8 @@ pub(crate) fn load_active_task_unlocked(repo: &Path) -> Result<Option<ActiveTask
     if !path.exists() {
         return Ok(None);
     }
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     if raw.trim().is_empty() {
         return Ok(None);
     }

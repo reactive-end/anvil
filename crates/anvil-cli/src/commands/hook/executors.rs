@@ -29,21 +29,16 @@ pub fn subagents_dir(transcript_path: Option<&str>, session_id: Option<&str>) ->
     if parent.file_name().is_some_and(|name| name == "subagents") {
         return Some(parent.to_path_buf());
     }
-    let session = session_id.map(str::to_owned).or_else(|| {
-        transcript
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-    })?;
+    let session = session_id
+        .map(str::to_owned)
+        .or_else(|| transcript.file_stem().map(|s| s.to_string_lossy().into_owned()))?;
     Some(parent.join(session).join("subagents"))
 }
 
 /// The scope of the latest brief the orchestrator sent `agent_id`, if its transcript has one.
 pub fn brief_scope(dir: &Path, agent_id: &str) -> Option<Vec<String>> {
     let raw = fs::read_to_string(dir.join(format!("agent-{agent_id}.jsonl"))).ok()?;
-    raw.lines()
-        .rev()
-        .filter_map(brief_text)
-        .find_map(|text| parse_scope(&text).ok())
+    raw.lines().rev().filter_map(brief_text).find_map(|text| parse_scope(&text).ok())
 }
 
 /// Every executor of the session, running or not.
@@ -55,23 +50,14 @@ pub fn executors(dir: &Path) -> Vec<Executor> {
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let agent_id = name
-                .strip_prefix("agent-")?
-                .strip_suffix(".meta.json")?
-                .to_owned();
+            let agent_id = name.strip_prefix("agent-")?.strip_suffix(".meta.json")?.to_owned();
             let meta: Value = serde_json::from_slice(&fs::read(entry.path()).ok()?).ok()?;
             let kind = meta.get("agentType")?.as_str()?;
             (kind.rsplit(':').next() == Some(EXECUTOR_AGENT)).then(|| Executor {
                 agent_id,
                 name: meta.get("name").and_then(Value::as_str).map(str::to_owned),
-                tool_use_id: meta
-                    .get("toolUseId")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
-                running: !meta
-                    .get("finished")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
+                tool_use_id: meta.get("toolUseId").and_then(Value::as_str).map(str::to_owned),
+                running: !meta.get("finished").and_then(Value::as_bool).unwrap_or(false),
             })
         })
         .collect()
@@ -104,9 +90,7 @@ mod tests {
                 &serde_json::json!([{ "type": "tool_result", "content": "SCOPE: src/evil.rs" }]),
             ),
             user_line(&Value::String("Task two\nSCOPE: src/b, tests/b.rs".into())),
-            user_line(&Value::String(
-                "A follow-up without a scope keeps the last one.".into(),
-            )),
+            user_line(&Value::String("A follow-up without a scope keeps the last one.".into())),
         ];
         fs::write(dir.path().join("agent-x1.jsonl"), lines.join("\n")).unwrap();
         assert_eq!(
@@ -123,30 +107,14 @@ mod tests {
             serde_json::json!({ "agentType": kind, "toolUseId": "toolu_9", "finished": finished })
                 .to_string()
         };
-        fs::write(
-            dir.path().join("agent-e1.meta.json"),
-            meta("anvil-executor", false),
-        )
-        .unwrap();
-        fs::write(
-            dir.path().join("agent-e2.meta.json"),
-            meta("plugin:anvil-executor", true),
-        )
-        .unwrap();
-        fs::write(
-            dir.path().join("agent-r1.meta.json"),
-            meta("Explore", false),
-        )
-        .unwrap();
-        let mut found: Vec<(String, bool)> = executors(dir.path())
-            .into_iter()
-            .map(|e| (e.agent_id, e.running))
-            .collect();
+        fs::write(dir.path().join("agent-e1.meta.json"), meta("anvil-executor", false)).unwrap();
+        fs::write(dir.path().join("agent-e2.meta.json"), meta("plugin:anvil-executor", true))
+            .unwrap();
+        fs::write(dir.path().join("agent-r1.meta.json"), meta("Explore", false)).unwrap();
+        let mut found: Vec<(String, bool)> =
+            executors(dir.path()).into_iter().map(|e| (e.agent_id, e.running)).collect();
         found.sort();
-        assert_eq!(
-            found,
-            vec![("e1".to_owned(), true), ("e2".to_owned(), false)]
-        );
+        assert_eq!(found, vec![("e1".to_owned(), true), ("e2".to_owned(), false)]);
     }
 
     #[test]

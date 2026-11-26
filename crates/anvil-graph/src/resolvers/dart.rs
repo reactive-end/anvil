@@ -37,11 +37,8 @@ fn inspect_pubspec(dir: &Path, rel_dir: &str, out: &mut FxHashMap<String, String
         if let Some(rest) = trimmed.strip_prefix("name:") {
             let pkg = rest.trim().trim_matches(|c| c == '\'' || c == '"');
             if !pkg.is_empty() {
-                let lib_path = if rel_dir.is_empty() {
-                    "lib".to_owned()
-                } else {
-                    format!("{rel_dir}/lib")
-                };
+                let lib_path =
+                    if rel_dir.is_empty() { "lib".to_owned() } else { format!("{rel_dir}/lib") };
                 out.insert(pkg.to_owned(), lib_path);
             }
             return;

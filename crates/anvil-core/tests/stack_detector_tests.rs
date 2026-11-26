@@ -114,15 +114,9 @@ fn detects_monorepo_subrepos_even_when_root_has_manifest() -> Result<()> {
         r#"{"name":"monorepo","private":true,"devDependencies":{"turbo":"2.0.0","eslint":"9.0.0"}}"#,
     )?;
     write_file(&root.join("tsconfig.base.json"), "{}")?;
-    write_file(
-        &root.join("apps/web/package.json"),
-        r#"{"dependencies":{"react":"19.0.0"}}"#,
-    )?;
+    write_file(&root.join("apps/web/package.json"), r#"{"dependencies":{"react":"19.0.0"}}"#)?;
     write_file(&root.join("apps/web/tsconfig.json"), "{}")?;
-    write_file(
-        &root.join("services/ml/pyproject.toml"),
-        "[tool.pytest.ini_options]\n",
-    )?;
+    write_file(&root.join("services/ml/pyproject.toml"), "[tool.pytest.ini_options]\n")?;
 
     let det = detect_workspace(root)?;
     assert!(det.is_multi_repo);
@@ -159,19 +153,11 @@ fn detects_vue_and_svelte_stacks_and_vue_tsc() -> Result<()> {
 
     let det = detect_workspace(root)?;
     assert!(det.is_multi_repo);
-    let vue_repo = det
-        .repos
-        .iter()
-        .find(|r| r.rel_path == "vue-app")
-        .expect("vue repo");
+    let vue_repo = det.repos.iter().find(|r| r.rel_path == "vue-app").expect("vue repo");
     assert!(vue_repo.stacks.contains(&StackKind::Vue));
     assert!(vue_repo.tools.contains(&ToolKind::VueTsc));
 
-    let svelte_repo = det
-        .repos
-        .iter()
-        .find(|r| r.rel_path == "svelte-app")
-        .expect("svelte repo");
+    let svelte_repo = det.repos.iter().find(|r| r.rel_path == "svelte-app").expect("svelte repo");
     assert!(svelte_repo.stacks.contains(&StackKind::Svelte));
     Ok(())
 }

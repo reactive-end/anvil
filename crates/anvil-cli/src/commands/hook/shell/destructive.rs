@@ -12,16 +12,27 @@ const SQL_PATTERNS: &[(&str, &str)] = &[
     ("drop table", "destructive SQL (`DROP TABLE`)"),
     ("truncate table", "destructive SQL (`TRUNCATE TABLE`)"),
 ];
-const SQL_CLIENTS: &[&str] = &[
-    "psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "sqlplus", "duckdb",
-];
+const SQL_CLIENTS: &[&str] =
+    &["psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "sqlplus", "duckdb"];
 const FIND_FILTERS: &[&str] = &[
-    "-name", "-iname", "-path", "-ipath", "-wholename", "-regex", "-iregex", "-empty", "-mtime",
-    "-mmin", "-atime", "-ctime", "-newer", "-size", "-user",
+    "-name",
+    "-iname",
+    "-path",
+    "-ipath",
+    "-wholename",
+    "-regex",
+    "-iregex",
+    "-empty",
+    "-mtime",
+    "-mmin",
+    "-atime",
+    "-ctime",
+    "-newer",
+    "-size",
+    "-user",
 ];
-const CODE_DELETE_MARKERS: &[&str] = &[
-    "rmtree", "rmSync", "rmdirSync", "rm_rf", "rm_r(", "rimraf", "fs.rm(", "removeSync",
-];
+const CODE_DELETE_MARKERS: &[&str] =
+    &["rmtree", "rmSync", "rmdirSync", "rm_rf", "rm_r(", "rimraf", "fs.rm(", "removeSync"];
 
 /// A deletion command split into its recursive flag and operands.
 struct Deletion<'a> {
@@ -45,9 +56,7 @@ pub fn describe(root: &Path, inv: &Invocation) -> Option<&'static str> {
 
 /// Describes destructive filesystem calls inside inline interpreter source.
 pub fn describe_code(root: &Path, code: &str) -> Option<&'static str> {
-    let deletes = CODE_DELETE_MARKERS
-        .iter()
-        .any(|marker| code.contains(marker));
+    let deletes = CODE_DELETE_MARKERS.iter().any(|marker| code.contains(marker));
     (deletes && string_literals(code).iter().any(|lit| is_dangerous(root, lit)))
         .then_some("recursive deletion from inline code")
 }
@@ -88,10 +97,7 @@ pub fn bypasses_git_hooks(inv: &Invocation) -> bool {
 pub fn split_git_subcommand(args: &[String]) -> Option<(&str, &[String])> {
     let mut idx = 0usize;
     while let Some(arg) = args.get(idx) {
-        if matches!(
-            arg.as_str(),
-            "-C" | "-c" | "--git-dir" | "--work-tree" | "--namespace"
-        ) {
+        if matches!(arg.as_str(), "-C" | "-c" | "--git-dir" | "--work-tree" | "--namespace") {
             idx += 2;
         } else if arg.starts_with('-') {
             idx += 1;
@@ -114,9 +120,7 @@ fn is_short_cluster(arg: &str) -> bool {
 fn describe_git(args: &[String]) -> Option<&'static str> {
     let (sub, rest) = split_git_subcommand(args)?;
     let has = |flag: &str| rest.iter().any(|a| a == flag);
-    let whole_tree = rest
-        .iter()
-        .any(|a| matches!(a.as_str(), "." | "./" | ":/" | "*" | ":"));
+    let whole_tree = rest.iter().any(|a| matches!(a.as_str(), "." | "./" | ":/" | "*" | ":"));
     match sub {
         "reset" if has("--hard") => Some("destructive git reset (`git reset --hard`)"),
         "checkout" if whole_tree || has_flag(rest, 'f', "--force") => {
@@ -147,8 +151,8 @@ fn describe_git_push(rest: &[String]) -> Option<&'static str> {
     if forced {
         return Some("force pushing (`git push --force`)");
     }
-    let deletes = has_flag(rest, 'd', "--delete")
-        || rest.iter().any(|a| a.len() > 1 && a.starts_with(':'));
+    let deletes =
+        has_flag(rest, 'd', "--delete") || rest.iter().any(|a| a.len() > 1 && a.starts_with(':'));
     deletes.then_some("deleting a remote ref (`git push --delete`)")
 }
 
@@ -158,8 +162,7 @@ fn restores_worktree(rest: &[String]) -> bool {
 
 /// Matches `--long` or a short flag inside a cluster such as `-fd`.
 fn has_flag(args: &[String], short: char, long: &str) -> bool {
-    args.iter()
-        .any(|a| a == long || (is_short_cluster(a) && a.contains(short)))
+    args.iter().any(|a| a == long || (is_short_cluster(a) && a.contains(short)))
 }
 
 fn describe_deletion(root: &Path, inv: &Invocation) -> Option<&'static str> {
@@ -186,10 +189,7 @@ fn parse_deletion(inv: &Invocation) -> Option<Deletion<'_>> {
     if !is_windows_delete && !matches!(inv.name.as_str(), "rm" | "remove-item" | "ri" | "rimraf") {
         return None;
     }
-    let mut del = Deletion {
-        recursive: inv.name == "rimraf",
-        targets: Vec::new(),
-    };
+    let mut del = Deletion { recursive: inv.name == "rimraf", targets: Vec::new() };
     let mut flags_done = false;
     for arg in &inv.args {
         let lower = arg.to_ascii_lowercase();
@@ -204,8 +204,7 @@ fn parse_deletion(inv: &Invocation) -> Option<Deletion<'_>> {
         } else if lower.contains('{') {
             del.targets.push(arg);
         } else {
-            del.targets
-                .extend(arg.split(',').map(str::trim).filter(|t| !t.is_empty()));
+            del.targets.extend(arg.split(',').map(str::trim).filter(|t| !t.is_empty()));
         }
     }
     Some(del)
@@ -217,9 +216,7 @@ fn is_recursive_flag(lower: &str) -> bool {
     }
     !lower.starts_with("--")
         && lower.contains('r')
-        && lower[1..]
-            .chars()
-            .all(|c| matches!(c, 'r' | 'f' | 'i' | 'v' | 'd'))
+        && lower[1..].chars().all(|c| matches!(c, 'r' | 'f' | 'i' | 'v' | 'd'))
 }
 
 fn describe_find(root: &Path, args: &[String]) -> Option<&'static str> {
@@ -262,8 +259,5 @@ fn describe_database(inv: &Invocation) -> Option<&'static str> {
     }
     let lower = sql.to_ascii_lowercase();
     let sql = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    SQL_PATTERNS
-        .iter()
-        .find(|(pattern, _)| sql.contains(pattern))
-        .map(|(_, desc)| *desc)
+    SQL_PATTERNS.iter().find(|(pattern, _)| sql.contains(pattern)).map(|(_, desc)| *desc)
 }

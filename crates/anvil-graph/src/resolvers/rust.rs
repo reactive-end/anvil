@@ -16,22 +16,13 @@ pub fn resolve_rust_edge(
     rust_crates: &FxHashMap<String, String>,
 ) -> Option<NodeId> {
     match edge.kind {
-        EdgeKind::Imports => resolve_rust_import(
-            &edge.source_file,
-            &edge.target_path_or_symbol,
-            graph,
-            rust_crates,
-        ),
+        EdgeKind::Imports => {
+            resolve_rust_import(&edge.source_file, &edge.target_path_or_symbol, graph, rust_crates)
+        }
         EdgeKind::Calls | EdgeKind::Implements | EdgeKind::Extends => {
             let raw = edge.target_path_or_symbol.split('<').next().unwrap_or("").trim();
-            let sym = raw
-                .rsplit("::")
-                .next()
-                .unwrap_or(raw)
-                .rsplit('.')
-                .next()
-                .unwrap_or(raw)
-                .trim();
+            let sym =
+                raw.rsplit("::").next().unwrap_or(raw).rsplit('.').next().unwrap_or(raw).trim();
             pick_preferred_symbol(sym, &edge.source_file, file_imports, graph)
         }
         _ => None,
@@ -101,11 +92,8 @@ fn resolve_super_use(source_file: &str, segs: &[&str], graph: &CodeGraph) -> Opt
     let rest = &segs[ups..];
     let fname = source_file.rsplit('/').next().unwrap_or(source_file);
     let mut dir = source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
-    let extra_pops = if matches!(fname, "mod.rs" | "lib.rs" | "main.rs") {
-        ups
-    } else {
-        ups.saturating_sub(1)
-    };
+    let extra_pops =
+        if matches!(fname, "mod.rs" | "lib.rs" | "main.rs") { ups } else { ups.saturating_sub(1) };
     for _ in 0..extra_pops {
         dir = dir.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
     }

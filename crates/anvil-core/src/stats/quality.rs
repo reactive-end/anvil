@@ -44,8 +44,12 @@ impl QualityStats {
     /// Folds a `CheckOutcome` or `ReviewFinding` event; other events are ignored.
     pub(super) fn apply(&mut self, event: &StatsEvent) {
         match event {
-            StatsEvent::CheckOutcome { passed, scope_key, .. } => self.record_check(*passed, scope_key),
-            StatsEvent::ReviewFinding { category, after_green, .. } => self.record_finding(category, *after_green),
+            StatsEvent::CheckOutcome { passed, scope_key, .. } => {
+                self.record_check(*passed, scope_key)
+            }
+            StatsEvent::ReviewFinding { category, after_green, .. } => {
+                self.record_finding(category, *after_green)
+            }
             _ => {}
         }
     }
@@ -77,7 +81,8 @@ impl QualityStats {
 
     /// Findings after green divided by green checks; `None` before the first green check.
     pub fn escape_rate(&self) -> Option<f64> {
-        (self.checks_passed > 0).then(|| self.findings_after_green as f64 / self.checks_passed as f64)
+        (self.checks_passed > 0)
+            .then(|| self.findings_after_green as f64 / self.checks_passed as f64)
     }
 
     /// Categories with findings after green, most frequent first.
@@ -151,7 +156,12 @@ fn validate_choice(name: &str, value: &str, allowed: &[&str]) -> Result<()> {
 }
 
 /// Records the outcome of one `anvil check` run against the content-addressed `scope_key` of its diff.
-pub fn record_check_outcome(repo_root: &Path, passed: bool, tier: &str, changed: &[String]) -> Result<()> {
+pub fn record_check_outcome(
+    repo_root: &Path,
+    passed: bool,
+    tier: &str,
+    changed: &[String],
+) -> Result<()> {
     let scope_key = scope_key(repo_root, changed);
     record_event(repo_root, StatsEvent::CheckOutcome { passed, tier: tier.to_owned(), scope_key })
 }
@@ -234,7 +244,8 @@ fn review_log_path(repo_root: &Path) -> PathBuf {
 
 fn append_entry(path: &Path, entry: &ReviewEntry) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     let mut line = serde_json::to_string(entry)?;
     line.push('\n');

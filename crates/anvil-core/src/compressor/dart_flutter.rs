@@ -21,11 +21,7 @@ impl OutputParser for DartFlutterParser {
 
     fn parse(&self, _command: &str, exit_code: i32, raw_output: &str) -> CompressedOutput {
         if exit_code == 0 {
-            return pass_output(
-                self.name(),
-                exit_code,
-                "PASS (dart/flutter): 0 issues".to_owned(),
-            );
+            return pass_output(self.name(), exit_code, "PASS (dart/flutter): 0 issues".to_owned());
         }
 
         static DART_RE: OnceLock<Regex> = OnceLock::new();

@@ -69,12 +69,7 @@ fn parses_composer_json_manifest() {
     let names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(
         names,
-        vec![
-            "firebase/php-jwt",
-            "larastan/larastan",
-            "laravel/framework",
-            "phpunit/phpunit"
-        ]
+        vec!["firebase/php-jwt", "larastan/larastan", "laravel/framework", "phpunit/phpunit"]
     );
     assert!(specs.iter().all(|s| s.ecosystem == Ecosystem::Composer));
 }
@@ -107,7 +102,8 @@ fn parses_packagist_active_and_abandoned_responses() {
         }
       }
     }"#;
-    let old = parse_packagist_json("swiftmailer/swiftmailer", packagist_abandoned).expect("abandoned");
+    let old =
+        parse_packagist_json("swiftmailer/swiftmailer", packagist_abandoned).expect("abandoned");
     assert!(old.deprecated);
     assert!(old.deprecation_message.as_deref().unwrap_or("").contains("symfony/mailer"));
 }
@@ -128,7 +124,12 @@ fn audits_composer_manifest_and_flags_abandoned_and_stale() -> Result<()> {
         now: Some(Utc.with_ymd_and_hms(2026, 11, 23, 0, 0, 0).unwrap()),
         check_osv: true,
     };
-    let report = audit_manifests(tmp.path(), &[PathBuf::from("backend/composer.json")], &MockPackagist, &opts)?;
+    let report = audit_manifests(
+        tmp.path(),
+        &[PathBuf::from("backend/composer.json")],
+        &MockPackagist,
+        &opts,
+    )?;
     assert_eq!(report.checked_packages, 2);
     assert_eq!(report.findings.len(), 1);
     assert_eq!(report.findings[0].package, "swiftmailer/swiftmailer");

@@ -4,13 +4,13 @@ mod tools;
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_adapters::claude_code::agents;
 use anvil_core::config::AnvilConfig;
 use anvil_core::config::orchestrator::{
     EffortLevel, OrchestratorConfig, RoleModel, validate_model,
 };
 use anvil_core::orchestrator_mode;
+use anyhow::Result;
 
 use crate::cli::subcmds::OrchestratorSubcmd;
 use crate::commands::ExitCodeError;
@@ -27,12 +27,7 @@ const MODEL_CHOICES: &[(&str, &str)] = &[
 /// Executes `anvil orchestrator <subcommand>`.
 pub fn execute(root: &Path, sub: OrchestratorSubcmd) -> Result<()> {
     match sub {
-        OrchestratorSubcmd::Setup {
-            model,
-            effort,
-            executor_model,
-            executor_effort,
-        } => cmd_setup(
+        OrchestratorSubcmd::Setup { model, effort, executor_model, executor_effort } => cmd_setup(
             root,
             [model.as_deref(), effort.as_deref()],
             [executor_model.as_deref(), executor_effort.as_deref()],
@@ -110,7 +105,9 @@ fn cmd_on(root: &Path, default_agent: bool) -> Result<()> {
     }
     orchestrator_mode::set_enabled(root, true)?;
     print_pair(&pair);
-    println!("orchestrator mode on: the main thread only judges; `anvil-executor` writes within its SCOPE");
+    println!(
+        "orchestrator mode on: the main thread only judges; `anvil-executor` writes within its SCOPE"
+    );
     Ok(())
 }
 
@@ -146,10 +143,8 @@ fn resolve_role(label: &str, flags: [Option<&str>; 2], current: &RoleModel) -> R
 
 fn pick_model(label: &str, current: &str) -> Result<String> {
     let mut names: Vec<&str> = MODEL_CHOICES.iter().map(|(name, _)| *name).collect();
-    let mut options: Vec<SelectOption> = MODEL_CHOICES
-        .iter()
-        .map(|(name, hint)| SelectOption::new(*name, *hint))
-        .collect();
+    let mut options: Vec<SelectOption> =
+        MODEL_CHOICES.iter().map(|(name, hint)| SelectOption::new(*name, *hint)).collect();
     if !names.contains(&current) {
         names.push(current);
         options.push(SelectOption::new(current, "current"));
@@ -160,10 +155,8 @@ fn pick_model(label: &str, current: &str) -> Result<String> {
 }
 
 fn pick_effort(label: &str, current: EffortLevel) -> Result<EffortLevel> {
-    let options: Vec<SelectOption> = EffortLevel::ALL
-        .iter()
-        .map(|level| SelectOption::new(level.as_str(), ""))
-        .collect();
+    let options: Vec<SelectOption> =
+        EffortLevel::ALL.iter().map(|level| SelectOption::new(level.as_str(), "")).collect();
     let default_idx = EffortLevel::ALL.iter().position(|l| *l == current).unwrap_or(0);
     Ok(EffortLevel::ALL[pick(&format!("{label} effort"), &options, default_idx)?])
 }

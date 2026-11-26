@@ -61,14 +61,8 @@ pub struct OrchestratorConfig {
 impl Default for OrchestratorConfig {
     fn default() -> Self {
         Self {
-            orchestrator: RoleModel {
-                model: "opus".to_owned(),
-                effort: EffortLevel::High,
-            },
-            executor: RoleModel {
-                model: "sonnet".to_owned(),
-                effort: EffortLevel::Medium,
-            },
+            orchestrator: RoleModel { model: "opus".to_owned(), effort: EffortLevel::High },
+            executor: RoleModel { model: "sonnet".to_owned(), effort: EffortLevel::Medium },
             executor_tools: Vec::new(),
         }
     }
@@ -79,16 +73,11 @@ impl Default for OrchestratorConfig {
 pub fn validate_model(raw: &str) -> Result<String> {
     let name = raw.trim();
     let is_full_id = name.starts_with("claude-")
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '[' | ']'));
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '[' | ']'));
     if MODEL_ALIASES.contains(&name) || is_full_id {
         return Ok(name.to_owned());
     }
-    bail!(
-        "unsupported model `{raw}` (use {} or a full `claude-*` ID)",
-        MODEL_ALIASES.join(", ")
-    )
+    bail!("unsupported model `{raw}` (use {} or a full `claude-*` ID)", MODEL_ALIASES.join(", "))
 }
 
 /// `true` for a Claude Code tool name or MCP pattern (`Read`, `mcp__server__tool`, `mcp__server__*`),

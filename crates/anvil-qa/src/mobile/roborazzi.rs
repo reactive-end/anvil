@@ -22,10 +22,7 @@ pub fn scan_roborazzi_diffs(repo_root: &Path) -> Result<Vec<QaViolation>> {
             if !path.is_file() {
                 continue;
             }
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
             if name.ends_with("_compare.png")
                 || name.ends_with("_diff.png")
                 || name.starts_with("diff_")
@@ -63,10 +60,7 @@ fn collect_roborazzi_dirs(dir: &Path, depth: usize, max_depth: usize, out: &mut 
         if !path.is_dir() {
             continue;
         }
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
         if matches!(name, ".git" | ".gradle" | "build" | "node_modules" | "target") {
             continue;
         }

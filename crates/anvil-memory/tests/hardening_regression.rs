@@ -92,10 +92,7 @@ fn sync_chunks_skips_unchanged_hash_and_reingests_modified_chunks() {
 
     // Appending invalid bytes changes the BLAKE3 hash so sync detects tampering instead of skipping.
     fs::write(&chunk_path, b"\xff\xfe not-json").expect("corrupt ingested file");
-    assert!(
-        engine.sync().is_err(),
-        "modified chunk with invalid bytes must fail on hash mismatch"
-    );
+    assert!(engine.sync().is_err(), "modified chunk with invalid bytes must fail on hash mismatch");
     assert!(engine.get(&saved.id).expect("get").is_some());
 }
 
@@ -131,9 +128,7 @@ fn sessions_stay_local_and_expired_sessions_are_filtered_from_queries() {
     };
     assert_eq!(chunk_count, 0, "Session memories must not write Git chunks");
 
-    let fts_hits = engine
-        .search("Keyword", Some(MemoryKind::Session), 10)
-        .expect("fts search");
+    let fts_hits = engine.search("Keyword", Some(MemoryKind::Session), 10).expect("fts search");
     assert_eq!(fts_hits.len(), 1);
     assert_eq!(fts_hits[0].id, act_obs.id);
 
@@ -238,10 +233,7 @@ fn mark_files_changed_updates_freshness_preserving_fts5_integrity() {
     let store = MemoryStore::open(&db_path).expect("reopen store");
     store
         .conn()
-        .execute(
-            "INSERT INTO observations_fts(observations_fts) VALUES('integrity-check')",
-            [],
-        )
+        .execute("INSERT INTO observations_fts(observations_fts) VALUES('integrity-check')", [])
         .expect("fts5 integrity check");
 }
 
@@ -263,10 +255,8 @@ fn reopen_skips_ddl_without_mutating_data_version() {
     }
 
     let observer = MemoryStore::open(&db_path).expect("open observer");
-    let user_version: i64 = observer
-        .conn()
-        .query_row("PRAGMA user_version", [], |r| r.get(0))
-        .expect("user_version");
+    let user_version: i64 =
+        observer.conn().query_row("PRAGMA user_version", [], |r| r.get(0)).expect("user_version");
     assert_eq!(user_version, 3);
 
     let data_version_before: i64 = observer
@@ -357,7 +347,8 @@ fn concurrent_engine_saves_avoid_sqlite_busy_with_immediate_tx() {
             let root = Arc::clone(&root);
             let barrier = Arc::clone(&barrier);
             thread::spawn(move || {
-                let mut eng = MemoryEngine::open_without_sync(&root, format!("dev-{i}")).expect("open");
+                let mut eng =
+                    MemoryEngine::open_without_sync(&root, format!("dev-{i}")).expect("open");
                 barrier.wait();
                 eng.save(make_input(
                     MemoryKind::Decision,
@@ -387,7 +378,8 @@ fn sync_cleans_deleted_chunk_orphans_expired_ttl_and_preserves_min_created_at() 
     let first = engine
         .save(make_input(MemoryKind::Decision, "orphan/topic", "Orphan Target", "Initial"))
         .expect("save orphan candidate");
-    let mut expiring = make_input(MemoryKind::Decision, "ttl/non-session", "Short Decision", "Body");
+    let mut expiring =
+        make_input(MemoryKind::Decision, "ttl/non-session", "Short Decision", "Body");
     expiring.ttl_seconds = Some(-10);
     engine.save(expiring).expect("save already expired");
     engine.sync().expect("sync purges expired non-session observation");

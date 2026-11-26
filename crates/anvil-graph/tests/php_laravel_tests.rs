@@ -15,48 +15,53 @@ fn write_repo_file(root: &Path, rel: &str, content: &str) {
     fs::write(path, content).expect("write fixture");
 }
 
-fn build_laravel_monorepo_fixture() -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    let root = tmp.path();
-
-    write_repo_file(
-        root,
+/// Files of a Laravel backend plus a React frontend, as `(path, content)`.
+const LARAVEL_MONOREPO: &[(&str, &str)] = &[
+    (
         "backend/composer.json",
         r#"{
           "autoload": { "psr-4": { "App\\": "app/" } },
           "autoload-dev": { "psr-4": { "Tests\\": "tests/" } }
         }"#,
-    );
-    write_repo_file(
-        root,
-        "backend/vendor/ignored/Fake.php",
-        "<?php\ndeclare(strict_types=1);\nclass Fake {}\n",
-    );
-    write_repo_file(
-        root,
+    ),
+    ("backend/vendor/ignored/Fake.php", "<?php\ndeclare(strict_types=1);\nclass Fake {}\n"),
+    (
         "backend/app/Services/ChargeService.php",
         "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Services;\n\nfinal class ChargeService\n{\n    public function listAll(): array { return []; }\n}\n",
-    );
-    write_repo_file(
-        root,
+    ),
+    (
         "backend/app/Http/Controllers/Api/ChargeController.php",
         "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Http\\Controllers\\Api;\n\nuse App\\Services\\ChargeService;\nuse Inertia\\Inertia;\n\nfinal class ChargeController\n{\n    public function index(ChargeService $charges)\n    {\n        $items = $charges->listAll();\n        return Inertia::render('Billing/Index', ['items' => $items]);\n    }\n\n    public function printView() { return view('billing.receipt'); }\n}\n",
-    );
-    write_repo_file(
-        root,
+    ),
+    (
         "backend/routes/api/billing.php",
         "<?php\n\ndeclare(strict_types=1);\n\nuse App\\Http\\Controllers\\Api\\ChargeController;\nuse Illuminate\\Support\\Facades\\Route;\n\nRoute::prefix('charges')->group(function (): void {\n    Route::get('/', [ChargeController::class, 'index']);\n});\n",
-    );
-    write_repo_file(root, "backend/resources/views/layouts/app.blade.php", "<html>@yield('content')</html>\n");
-    write_repo_file(root, "backend/resources/views/components/badge.blade.php", "<span>{{ $slot }}</span>\n");
-    write_repo_file(root, "backend/resources/views/billing/receipt.blade.php", "@extends('layouts.app')\n<x-badge>Paid</x-badge>\n");
-    write_repo_file(
-        root,
+    ),
+    ("backend/resources/views/layouts/app.blade.php", "<html>@yield('content')</html>\n"),
+    ("backend/resources/views/components/badge.blade.php", "<span>{{ $slot }}</span>\n"),
+    (
+        "backend/resources/views/billing/receipt.blade.php",
+        "@extends('layouts.app')\n<x-badge>Paid</x-badge>\n",
+    ),
+    (
         "backend/tests/Feature/Billing/ChargeControllerTest.php",
         "<?php\n\ndeclare(strict_types=1);\n\nnamespace Tests\\Feature\\Billing;\n\nuse App\\Http\\Controllers\\Api\\ChargeController;\n\nfinal class ChargeControllerTest\n{\n    public function test_index(): void { $ctrl = new ChargeController(); }\n}\n",
-    );
-    write_repo_file(root, "frontend/src/pages/Billing/Index.tsx", "export function BillingIndex() { return <div />; }\n");
-    write_repo_file(root, "frontend/src/api/charges.ts", "export async function fetchCharges() { return fetch('/api/charges'); }\n");
+    ),
+    (
+        "frontend/src/pages/Billing/Index.tsx",
+        "export function BillingIndex() { return <div />; }\n",
+    ),
+    (
+        "frontend/src/api/charges.ts",
+        "export async function fetchCharges() { return fetch('/api/charges'); }\n",
+    ),
+];
+
+fn build_laravel_monorepo_fixture() -> TempDir {
+    let tmp = TempDir::new().expect("tempdir");
+    for (rel, content) in LARAVEL_MONOREPO {
+        write_repo_file(tmp.path(), rel, content);
+    }
     tmp
 }
 
@@ -70,10 +75,15 @@ fn resolves_psr4_and_cross_stack_route_blast_radius() {
     let impacted: Vec<&str> = blast.impacted_files.iter().map(|i| i.file.as_str()).collect();
     assert!(impacted.contains(&"backend/app/Http/Controllers/Api/ChargeController.php"));
     assert!(impacted.contains(&"backend/routes/api/billing.php"));
-    assert!(blast.related_tests.contains(&"backend/tests/Feature/Billing/ChargeControllerTest.php".to_owned()));
+    assert!(
+        blast
+            .related_tests
+            .contains(&"backend/tests/Feature/Billing/ChargeControllerTest.php".to_owned())
+    );
 
     let route_blast = engine.blast_radius(&["backend/routes/api/billing.php".to_owned()], 3);
-    let route_impacted: Vec<&str> = route_blast.impacted_files.iter().map(|i| i.file.as_str()).collect();
+    let route_impacted: Vec<&str> =
+        route_blast.impacted_files.iter().map(|i| i.file.as_str()).collect();
     assert!(route_impacted.contains(&"frontend/src/api/charges.ts"));
 }
 
@@ -82,17 +92,24 @@ fn resolves_blade_inertia_and_php_read_symbol() {
     let tmp = build_laravel_monorepo_fixture();
     let engine = CodeGraphEngine::build(tmp.path(), AnvilConfig::default()).expect("build graph");
 
-    let blade_blast = engine.blast_radius(&["backend/resources/views/components/badge.blade.php".to_owned()], 3);
-    let blade_impacted: Vec<&str> = blade_blast.impacted_files.iter().map(|i| i.file.as_str()).collect();
+    let blade_blast =
+        engine.blast_radius(&["backend/resources/views/components/badge.blade.php".to_owned()], 3);
+    let blade_impacted: Vec<&str> =
+        blade_blast.impacted_files.iter().map(|i| i.file.as_str()).collect();
     assert!(blade_impacted.contains(&"backend/resources/views/billing/receipt.blade.php"));
     assert!(blade_impacted.contains(&"backend/app/Http/Controllers/Api/ChargeController.php"));
 
-    let inertia_blast = engine.blast_radius(&["frontend/src/pages/Billing/Index.tsx".to_owned()], 2);
-    let inertia_impacted: Vec<&str> = inertia_blast.impacted_files.iter().map(|i| i.file.as_str()).collect();
+    let inertia_blast =
+        engine.blast_radius(&["frontend/src/pages/Billing/Index.tsx".to_owned()], 2);
+    let inertia_impacted: Vec<&str> =
+        inertia_blast.impacted_files.iter().map(|i| i.file.as_str()).collect();
     assert!(inertia_impacted.contains(&"backend/app/Http/Controllers/Api/ChargeController.php"));
 
     let slice = engine
-        .read_symbol("backend/app/Http/Controllers/Api/ChargeController.php::ChargeController::index", true)
+        .read_symbol(
+            "backend/app/Http/Controllers/Api/ChargeController.php::ChargeController::index",
+            true,
+        )
         .expect("read_symbol ok")
         .expect("method found");
     assert!(slice.body.contains("Inertia::render"));

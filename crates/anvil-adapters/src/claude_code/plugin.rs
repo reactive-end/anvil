@@ -65,14 +65,18 @@ pub fn write_marketplace(dir: &Path) -> Result<()> {
     ensure_owned(dir, &previous)?;
     // Listed before any file lands, so an interrupted install never leaves unlisted files behind.
     let mut listed = previous.clone();
-    listed.extend(FILES.iter().map(|(rel, _)| (*rel).to_owned()).filter(|rel| !previous.contains(rel)));
+    listed.extend(
+        FILES.iter().map(|(rel, _)| (*rel).to_owned()).filter(|rel| !previous.contains(rel)),
+    );
     save_manifest(dir, listed)?;
     for (rel, body) in FILES {
         let target = dir.join(rel);
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
         }
-        fs::write(&target, body).with_context(|| format!("failed to write {}", target.display()))?;
+        fs::write(&target, body)
+            .with_context(|| format!("failed to write {}", target.display()))?;
     }
     for stale in previous.iter().filter(|old| !FILES.iter().any(|(rel, _)| rel == old)) {
         remove_listed(dir, stale)?;
@@ -83,7 +87,8 @@ pub fn write_marketplace(dir: &Path) -> Result<()> {
 
 fn save_manifest(dir: &Path, files: Vec<String>) -> Result<()> {
     fs::create_dir_all(dir).with_context(|| format!("failed to create {}", dir.display()))?;
-    let json = serde_json::to_string_pretty(&Manifest { files }).context("failed to encode file manifest")?;
+    let json = serde_json::to_string_pretty(&Manifest { files })
+        .context("failed to encode file manifest")?;
     fs::write(dir.join(MANIFEST), json).context("failed to write file manifest")
 }
 
@@ -189,7 +194,8 @@ mod tests {
     fn collect_shipped(base: &Path, dir: &Path, out: &mut Vec<String>) -> Result<()> {
         for entry in fs::read_dir(dir)? {
             let path = entry?.path();
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name =
+                path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             if path.is_dir() {
                 if name != "node_modules" {
                     collect_shipped(base, &path, out)?;

@@ -26,7 +26,16 @@ impl OutputParser for CargoParser {
             } else if has_cargo
                 && matches!(
                     tool.as_str(),
-                    "check" | "test" | "clippy" | "build" | "run" | "bench" | "doc" | "rustc" | "c" | "t"
+                    "check"
+                        | "test"
+                        | "clippy"
+                        | "build"
+                        | "run"
+                        | "bench"
+                        | "doc"
+                        | "rustc"
+                        | "c"
+                        | "t"
                 )
             {
                 has_subcmd = true;
@@ -60,13 +69,7 @@ impl OutputParser for CargoParser {
             .filter(|l| l.contains("error") || l.contains("FAILED") || l.contains("panicked"))
             .count()
             .max(1);
-        fail_output(
-            self.name(),
-            exit_code,
-            format!("FAIL (cargo): {total} issue(s)"),
-            lines,
-            total,
-        )
+        fail_output(self.name(), exit_code, format!("FAIL (cargo): {total} issue(s)"), lines, total)
     }
 }
 
@@ -79,12 +82,13 @@ fn extract_cargo_diagnostics(cleaned: &str) -> Vec<String> {
             .expect("valid cargo diag regex")
     });
     let short_re = SHORT_RE.get_or_init(|| {
-        Regex::new(r"^(.+?:\d+:\d+):\s*(error(?:\[[A-Z0-9]+\])?|warning(?:\[[a-zA-Z0-9_:-]+\])?):\s*(.+)$")
-            .expect("valid cargo short regex")
+        Regex::new(
+            r"^(.+?:\d+:\d+):\s*(error(?:\[[A-Z0-9]+\])?|warning(?:\[[a-zA-Z0-9_:-]+\])?):\s*(.+)$",
+        )
+        .expect("valid cargo short regex")
     });
-    let loc_re = LOC_RE.get_or_init(|| {
-        Regex::new(r"^\s*-->\s*(.+:\d+:\d+)\s*$").expect("valid cargo loc regex")
-    });
+    let loc_re = LOC_RE
+        .get_or_init(|| Regex::new(r"^\s*-->\s*(.+:\d+:\d+)\s*$").expect("valid cargo loc regex"));
 
     let mut lines = Vec::new();
     let mut pending: Option<(String, String)> = None;

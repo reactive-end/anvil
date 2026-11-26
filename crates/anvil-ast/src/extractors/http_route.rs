@@ -108,11 +108,7 @@ fn strip_leading_base_interpolation(input: &str) -> Option<&str> {
     if rest.is_empty() {
         return None;
     }
-    if rest.starts_with('/') {
-        Some(rest)
-    } else {
-        Some(input)
-    }
+    if rest.starts_with('/') { Some(rest) } else { Some(input) }
 }
 
 fn split_path_segments(path: &str) -> Vec<&str> {

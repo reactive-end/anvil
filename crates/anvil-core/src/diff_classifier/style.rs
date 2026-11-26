@@ -104,9 +104,8 @@ fn try_skip_style_attr(line: &str, idx: usize) -> Option<usize> {
     let quote_or_brace = *bytes.get(pos)?;
     match quote_or_brace {
         b'"' | b'\'' => skip_quoted(bytes, pos + 1, quote_or_brace),
-        b'{' => skip_braced(bytes, pos + 1).filter(|&end| {
-            end > pos + 1 && is_pure_style_braced(&bytes[pos + 1..end - 1])
-        }),
+        b'{' => skip_braced(bytes, pos + 1)
+            .filter(|&end| end > pos + 1 && is_pure_style_braced(&bytes[pos + 1..end - 1])),
         _ => None,
     }
 }

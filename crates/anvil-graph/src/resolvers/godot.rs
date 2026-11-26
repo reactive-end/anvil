@@ -222,7 +222,5 @@ fn find_godot_symbol(name: &str, project_dir: &str, graph: &CodeGraph) -> Option
 }
 
 fn file_node_id(graph: &CodeGraph, rel: &str) -> Option<NodeId> {
-    graph
-        .node_by_id(&CodeGraph::file_node_id(rel))
-        .map(|(nid, _)| nid)
+    graph.node_by_id(&CodeGraph::file_node_id(rel)).map(|(nid, _)| nid)
 }

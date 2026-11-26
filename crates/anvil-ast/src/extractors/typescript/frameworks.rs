@@ -69,13 +69,10 @@ fn parse_decorator<'a>(
                 }
                 _ => return None,
             };
-            let arg_obj = expr
-                .child_by_field_name("arguments")
-                .and_then(|args| {
-                    let mut cursor = args.walk();
-                    args.named_children(&mut cursor)
-                        .find(|n| n.kind() == "object")
-                });
+            let arg_obj = expr.child_by_field_name("arguments").and_then(|args| {
+                let mut cursor = args.walk();
+                args.named_children(&mut cursor).find(|n| n.kind() == "object")
+            });
             Some((name, arg_obj))
         }
         _ => None,
@@ -234,7 +231,12 @@ pub fn extract_di_params(
             for child in type_ann.named_children(&mut t_cursor) {
                 let text = state.node_text(child).trim();
                 if text.starts_with(char::is_uppercase) {
-                    state.push_edge(class_name.map(str::to_owned), text.to_owned(), EdgeKind::Injects, line);
+                    state.push_edge(
+                        class_name.map(str::to_owned),
+                        text.to_owned(),
+                        EdgeKind::Injects,
+                        line,
+                    );
                 }
             }
         }

@@ -5,13 +5,13 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::compressor;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::proc_util::{TimedOutput, run_command_with_timeout};
 use anvil_core::stats::{StatsEvent, record_event};
+use anyhow::{Context, Result, bail};
 
 use crate::commands::ExitCodeError;
 use crate::ui;
@@ -46,12 +46,7 @@ pub fn execute(root: &Path, cmd: &[String]) -> Result<()> {
     let cb = CircuitBreaker::new(root, config.circuit_breaker_limit);
     if compressed.passed {
         let _ = cb.record_success();
-        println!(
-            "{} ({}): {}",
-            ui::green("PASS"),
-            ui::cyan(&compressed.tool),
-            compressed.summary
-        );
+        println!("{} ({}): {}", ui::green("PASS"), ui::cyan(&compressed.tool), compressed.summary);
         return Ok(());
     }
 
@@ -111,21 +106,10 @@ fn record_compressor_stats(
     let compact_bytes = if compressed.passed {
         compressed.tool.len() + compressed.summary.len() + 9
     } else {
-        compressed.summary.len()
-            + compressed
-                .lines
-                .iter()
-                .map(|l| l.len() + 1)
-                .sum::<usize>()
+        compressed.summary.len() + compressed.lines.iter().map(|l| l.len() + 1).sum::<usize>()
     };
     if raw_bytes > compact_bytes {
-        let _ = record_event(
-            root,
-            StatsEvent::CompressorSaved {
-                raw_bytes,
-                compact_bytes,
-            },
-        );
+        let _ = record_event(root, StatsEvent::CompressorSaved { raw_bytes, compact_bytes });
     }
 }
 
@@ -154,9 +138,7 @@ fn run_process(
 
 fn is_not_found_error(err: &anyhow::Error) -> bool {
     err.chain().any(|cause| {
-        cause
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|io| io.kind() == ErrorKind::NotFound)
+        cause.downcast_ref::<std::io::Error>().is_some_and(|io| io.kind() == ErrorKind::NotFound)
     })
 }
 
@@ -164,26 +146,17 @@ fn run_via_shell(root: &Path, cmd: &[String], timeout: Duration) -> Result<Timed
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let escaped = cmd
-            .iter()
-            .map(|arg| escape_windows_cmd_arg(arg))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let escaped =
+            cmd.iter().map(|arg| escape_windows_cmd_arg(arg)).collect::<Vec<_>>().join(" ");
         let mut command = Command::new("cmd");
-        command
-            .args(["/D", "/S", "/C"])
-            .raw_arg(format!("\"{escaped}\""))
-            .current_dir(root);
+        command.args(["/D", "/S", "/C"]).raw_arg(format!("\"{escaped}\"")).current_dir(root);
         run_command_with_timeout(&mut command, timeout)
             .with_context(|| format!("failed to execute `{escaped}` via cmd /C"))
     }
     #[cfg(not(windows))]
     {
-        let escaped = cmd
-            .iter()
-            .map(|arg| escape_posix_shell_arg(arg))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let escaped =
+            cmd.iter().map(|arg| escape_posix_shell_arg(arg)).collect::<Vec<_>>().join(" ");
         let mut command = Command::new("sh");
         command.args(["-c", &escaped]).current_dir(root);
         run_command_with_timeout(&mut command, timeout)
@@ -200,10 +173,7 @@ fn escape_windows_cmd_arg(arg: &str) -> String {
     if !has_space_or_quote {
         let mut out = String::with_capacity(arg.len() + 4);
         for ch in arg.chars() {
-            if matches!(
-                ch,
-                '&' | '|' | '<' | '>' | '(' | ')' | '^' | '%' | '!' | ';' | ',' | '='
-            ) {
+            if matches!(ch, '&' | '|' | '<' | '>' | '(' | ')' | '^' | '%' | '!' | ';' | ',' | '=') {
                 out.push('^');
             }
             out.push(ch);
@@ -250,10 +220,7 @@ fn escape_posix_shell_arg(arg: &str) -> String {
     }
     let needs_quotes = arg.chars().any(|c| {
         c.is_whitespace()
-            || matches!(
-                c,
-                '"' | '\'' | '&' | '|' | ';' | '<' | '>' | '(' | ')' | '$' | '^' | '%'
-            )
+            || matches!(c, '"' | '\'' | '&' | '|' | ';' | '<' | '>' | '(' | ')' | '$' | '^' | '%')
     });
     if !needs_quotes {
         return arg.to_owned();

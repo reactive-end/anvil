@@ -97,7 +97,9 @@ fn check_js_ts_permission(node: Node<'_>, state: &mut RuleState<'_>) {
                 "Await the returned status (`status === 'granted'`) and handle `'denied'`/`'default'` states explicitly",
             );
         }
-    } else if text.contains("navigator.permissions.query") && has_empty_promise_then(node, state.source) {
+    } else if text.contains("navigator.permissions.query")
+        && has_empty_promise_then(node, state.source)
+    {
         emit_diag(
             node,
             state,
@@ -169,12 +171,7 @@ fn find_callback_lambda(call_node: Node<'_>) -> Option<Node<'_>> {
 
 fn extract_lambda_param_and_body(lambda_node: Node<'_>, source: &str) -> (String, String) {
     let raw = &source[lambda_node.byte_range()];
-    let inner = raw
-        .trim()
-        .strip_prefix('{')
-        .unwrap_or(raw)
-        .strip_suffix('}')
-        .unwrap_or(raw);
+    let inner = raw.trim().strip_prefix('{').unwrap_or(raw).strip_suffix('}').unwrap_or(raw);
     let (param, body) = match inner.split_once("->") {
         Some((lhs, rhs)) => {
             let p = lhs
@@ -216,7 +213,8 @@ fn has_unary_not(code: &str) -> bool {
         let next = bytes.get(i + 1).copied();
         let prev = i.checked_sub(1).and_then(|p| bytes.get(p).copied());
         let is_neq_or_bang_bang = matches!(next, Some(b'=' | b'!'));
-        let preceded_by_expr = prev.is_some_and(|p| p.is_ascii_alphanumeric() || matches!(p, b')' | b']' | b'!'));
+        let preceded_by_expr =
+            prev.is_some_and(|p| p.is_ascii_alphanumeric() || matches!(p, b')' | b']' | b'!'));
         if !is_neq_or_bang_bang && !preceded_by_expr {
             return true;
         }

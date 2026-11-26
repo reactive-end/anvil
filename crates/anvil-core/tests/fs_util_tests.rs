@@ -70,7 +70,12 @@ fn with_file_lock_serializes_threads_and_releases_on_error() -> Result<()> {
     drop(probe_after_err);
 
     // Held OS advisory lock blocks concurrent acquisition until timeout.
-    let held = OpenOptions::new().create(true).read(true).write(true).truncate(false).open(lock.as_path())?;
+    let held = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(lock.as_path())?;
     held.try_lock().expect("acquire outer lock");
     let timed_out: Result<()> = with_file_lock(&lock, 40, || Ok(()));
     assert!(timed_out.is_err());

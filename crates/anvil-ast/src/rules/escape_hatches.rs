@@ -62,11 +62,7 @@ fn classify_comment_escape(matched: &str, lang: Language) -> Option<&'static str
         if lang != Language::Python {
             return None;
         }
-        if lower.contains("noqa") {
-            Some("no-noqa")
-        } else {
-            Some("no-type-ignore")
-        }
+        if lower.contains("noqa") { Some("no-noqa") } else { Some("no-type-ignore") }
     } else if lower.starts_with("//") {
         (lang == Language::Dart).then_some("no-dart-ignore")
     } else if lower.starts_with("@phpstan-ignore") {
@@ -157,10 +153,16 @@ fn check_rust_attribute(node: Node<'_>, state: &mut RuleState<'_>) {
                 return;
             }
             "cfg_attr" => {
-                if let Some(args) = child.child_by_field_name("arguments").or_else(|| child.named_child(1))
+                if let Some(args) =
+                    child.child_by_field_name("arguments").or_else(|| child.named_child(1))
                     && cfg_attr_contains_allow_or_expect(args, state.source.as_bytes())
                 {
-                    report_if_disallowed(node, state, "no-rust-allow", "#[cfg_attr(..., allow(...))]");
+                    report_if_disallowed(
+                        node,
+                        state,
+                        "no-rust-allow",
+                        "#[cfg_attr(..., allow(...))]",
+                    );
                     return;
                 }
             }
@@ -172,10 +174,7 @@ fn check_rust_attribute(node: Node<'_>, state: &mut RuleState<'_>) {
 fn cfg_attr_contains_allow_or_expect(node: Node<'_>, src: &[u8]) -> bool {
     let mut stack = vec![node];
     while let Some(cur) = stack.pop() {
-        if matches!(
-            cur.kind(),
-            "string_literal" | "raw_string_literal" | "char_literal"
-        ) {
+        if matches!(cur.kind(), "string_literal" | "raw_string_literal" | "char_literal") {
             continue;
         }
         if cur.kind() == "identifier"

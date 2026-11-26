@@ -84,7 +84,8 @@ impl XmlScanState {
             self.check_text_clipping(tag, &selector, b, has_scrollable_ancestor, parent_bounds);
         }
 
-        let clickable_idx = register_clickable(tag, selector, bounds, self.seq, &mut self.clickables);
+        let clickable_idx =
+            register_clickable(tag, selector, bounds, self.seq, &mut self.clickables);
         if self_closing {
             self.seq += 1;
             if let Some(idx) = clickable_idx {
@@ -95,7 +96,14 @@ impl XmlScanState {
         }
     }
 
-    fn check_text_clipping(&mut self, tag: &str, selector: &str, b: Bounds, has_scrollable_ancestor: bool, parent_bounds: Option<Bounds>) {
+    fn check_text_clipping(
+        &mut self,
+        tag: &str,
+        selector: &str,
+        b: Bounds,
+        has_scrollable_ancestor: bool,
+        parent_bounds: Option<Bounds>,
+    ) {
         let text = extract_attr(tag, "text").unwrap_or("").trim();
         if text.is_empty() || has_scrollable_ancestor {
             return;
@@ -105,8 +113,10 @@ impl XmlScanState {
             return;
         }
         let collapsed = b.x2 <= b.x1 || b.y2 <= b.y1;
-        let out_of_viewport = b.x1 < 0 || b.y1 < 0 || b.x2 > self.viewport_width || b.y2 > self.viewport_height;
-        let clipped_by_parent = parent_bounds.is_some_and(|p| b.x1 < p.x1 || b.y1 < p.y1 || b.x2 > p.x2 || b.y2 > p.y2);
+        let out_of_viewport =
+            b.x1 < 0 || b.y1 < 0 || b.x2 > self.viewport_width || b.y2 > self.viewport_height;
+        let clipped_by_parent =
+            parent_bounds.is_some_and(|p| b.x1 < p.x1 || b.y1 < p.y1 || b.x2 > p.x2 || b.y2 > p.y2);
 
         if collapsed || out_of_viewport || clipped_by_parent {
             self.violations.push(QaViolation {
@@ -122,20 +132,28 @@ impl XmlScanState {
 
 /// Scans Android `uiautomator dump` XML in a single linear pass for clipped/out-of-viewport text
 /// and overlapping clickable controls.
-pub fn scan_uiautomator_xml(xml: &str, viewport_width: i32, viewport_height: i32) -> Vec<QaViolation> {
+pub fn scan_uiautomator_xml(
+    xml: &str,
+    viewport_width: i32,
+    viewport_height: i32,
+) -> Vec<QaViolation> {
     let mut state = XmlScanState::new(viewport_width, viewport_height);
     let mut pos = 0usize;
 
     while let Some(rel_lt) = xml[pos..].find('<') {
         let start = pos + rel_lt;
-        let Some(rel_gt) = xml[start..].find('>') else { break; };
+        let Some(rel_gt) = xml[start..].find('>') else {
+            break;
+        };
         let end = start + rel_gt;
         let tag = &xml[start + 1..end];
         pos = end + 1;
 
         if tag.starts_with("/node") {
             state.handle_close_node();
-        } else if tag.starts_with("node") && tag.as_bytes().get(4).is_none_or(|b| b.is_ascii_whitespace()) {
+        } else if tag.starts_with("node")
+            && tag.as_bytes().get(4).is_none_or(|b| b.is_ascii_whitespace())
+        {
             state.handle_open_node(tag);
         }
     }
@@ -164,12 +182,7 @@ fn register_clickable(
         return None;
     }
     let idx = clickables.len();
-    clickables.push(ClickableNode {
-        selector,
-        bounds: b,
-        enter_seq,
-        exit_seq: enter_seq,
-    });
+    clickables.push(ClickableNode { selector, bounds: b, enter_seq, exit_seq: enter_seq });
     Some(idx)
 }
 
@@ -233,10 +246,5 @@ fn node_selector(tag: &str) -> String {
     if let Some(desc) = extract_attr(tag, "content-desc").filter(|s| !s.is_empty()) {
         return desc.to_owned();
     }
-    extract_attr(tag, "class")
-        .unwrap_or("node")
-        .rsplit('.')
-        .next()
-        .unwrap_or("node")
-        .to_owned()
+    extract_attr(tag, "class").unwrap_or("node").rsplit('.').next().unwrap_or("node").to_owned()
 }

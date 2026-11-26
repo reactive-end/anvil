@@ -8,8 +8,8 @@ use tree_sitter::Node;
 use super::ExtractState;
 
 const PHP_BUILTIN_TYPES: &[&str] = &[
-    "int", "float", "string", "bool", "array", "object", "callable", "iterable", "mixed",
-    "void", "never", "null", "false", "true", "self", "static", "parent",
+    "int", "float", "string", "bool", "array", "object", "callable", "iterable", "mixed", "void",
+    "never", "null", "false", "true", "self", "static", "parent",
 ];
 
 /// Visits a single PHP AST node to extract symbols, imports, DI, calls, and Laravel edges.
@@ -42,7 +42,9 @@ fn extract_namespace_use(node: Node<'_>, state: &mut ExtractState<'_>) {
                 group_prefix = Some(clean_php_name(state.node_text(child)));
             }
             "namespace_use_clause" => {
-                if let Some(target) = extract_use_clause_target(child, group_prefix.as_deref(), state) {
+                if let Some(target) =
+                    extract_use_clause_target(child, group_prefix.as_deref(), state)
+                {
                     state.push_edge(None, target, EdgeKind::Imports, line);
                 }
             }
@@ -50,7 +52,8 @@ fn extract_namespace_use(node: Node<'_>, state: &mut ExtractState<'_>) {
                 let mut g_cursor = child.walk();
                 for item in child.named_children(&mut g_cursor) {
                     if item.kind() == "namespace_use_clause"
-                        && let Some(target) = extract_use_clause_target(item, group_prefix.as_deref(), state)
+                        && let Some(target) =
+                            extract_use_clause_target(item, group_prefix.as_deref(), state)
                     {
                         state.push_edge(None, target, EdgeKind::Imports, line);
                     }
@@ -67,9 +70,9 @@ fn extract_use_clause_target(
     state: &ExtractState<'_>,
 ) -> Option<String> {
     let mut cursor = clause.walk();
-    let name_node = clause.named_children(&mut cursor).find(|c| {
-        matches!(c.kind(), "qualified_name" | "namespace_name" | "name")
-    })?;
+    let name_node = clause
+        .named_children(&mut cursor)
+        .find(|c| matches!(c.kind(), "qualified_name" | "namespace_name" | "name"))?;
     let raw = clean_php_name(state.node_text(name_node));
     if raw.is_empty() {
         return None;
@@ -222,12 +225,7 @@ fn extract_injected_params(callable: Node<'_>, source_sym: &str, state: &mut Ext
         };
         let line = ExtractState::line_of(param);
         for type_name in collect_named_types(type_node, state) {
-            state.push_edge(
-                Some(source_sym.to_owned()),
-                type_name,
-                EdgeKind::Injects,
-                line,
-            );
+            state.push_edge(Some(source_sym.to_owned()), type_name, EdgeKind::Injects, line);
         }
     }
 }
@@ -283,15 +281,10 @@ fn extract_scoped_call(node: Node<'_>, state: &mut ExtractState<'_>) {
     if scope_txt.is_empty() || matches!(scope_txt.as_str(), "self" | "static" | "parent") {
         return;
     }
-    let method_txt = node
-        .child_by_field_name("name")
-        .map(|n| state.node_text(n).trim())
-        .unwrap_or("");
-    let target = if method_txt.is_empty() {
-        scope_txt
-    } else {
-        format!("{scope_txt}::{method_txt}")
-    };
+    let method_txt =
+        node.child_by_field_name("name").map(|n| state.node_text(n).trim()).unwrap_or("");
+    let target =
+        if method_txt.is_empty() { scope_txt } else { format!("{scope_txt}::{method_txt}") };
     if let Some(clean) = ExtractState::sanitize_call_target(target) {
         state.push_edge(
             enclosing_callable(node, state),
@@ -329,22 +322,20 @@ fn is_public_visibility(node: Node<'_>, state: &ExtractState<'_>) -> bool {
     true
 }
 
-fn build_callable_signature(node: Node<'_>, name: &str, state: &ExtractState<'_>) -> Option<String> {
-    let params = node
-        .child_by_field_name("parameters")
-        .map(|n| state.node_text(n).trim())
-        .unwrap_or("()");
+fn build_callable_signature(
+    node: Node<'_>,
+    name: &str,
+    state: &ExtractState<'_>,
+) -> Option<String> {
+    let params =
+        node.child_by_field_name("parameters").map(|n| state.node_text(n).trim()).unwrap_or("()");
     let ret = node
         .child_by_field_name("return_type")
         .map(|n| format!(": {}", state.node_text(n).trim()))
         .unwrap_or_default();
     let compact = format!("function {name}{params}{ret}");
     let one_line: String = compact.split_whitespace().collect::<Vec<_>>().join(" ");
-    if one_line.len() <= 160 {
-        Some(one_line)
-    } else {
-        Some(format!("{}...", &one_line[..157]))
-    }
+    if one_line.len() <= 160 { Some(one_line) } else { Some(format!("{}...", &one_line[..157])) }
 }
 
 pub(crate) fn enclosing_type_name(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
@@ -352,7 +343,10 @@ pub(crate) fn enclosing_type_name(node: Node<'_>, state: &ExtractState<'_>) -> O
     while let Some(parent) = cur {
         if matches!(
             parent.kind(),
-            "class_declaration" | "interface_declaration" | "trait_declaration" | "enum_declaration"
+            "class_declaration"
+                | "interface_declaration"
+                | "trait_declaration"
+                | "enum_declaration"
         ) {
             return parent
                 .child_by_field_name("name")
@@ -368,9 +362,7 @@ pub(crate) fn enclosing_callable(node: Node<'_>, state: &ExtractState<'_>) -> Op
     while let Some(parent) = cur {
         match parent.kind() {
             "method_declaration" => {
-                let m = parent
-                    .child_by_field_name("name")
-                    .map(|n| state.node_text(n).trim())?;
+                let m = parent.child_by_field_name("name").map(|n| state.node_text(n).trim())?;
                 return Some(match enclosing_type_name(parent, state) {
                     Some(cls) => format!("{cls}::{m}"),
                     None => m.to_owned(),

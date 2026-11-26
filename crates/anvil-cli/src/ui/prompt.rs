@@ -29,10 +29,7 @@ pub struct SelectOption {
 impl SelectOption {
     /// Creates an option with a primary label and secondary hint.
     pub fn new(label: impl Into<String>, hint: impl Into<String>) -> Self {
-        Self {
-            label: label.into(),
-            hint: hint.into(),
-        }
+        Self { label: label.into(), hint: hint.into() }
     }
 }
 
@@ -117,9 +114,7 @@ struct MultiSelectState {
 
 impl MultiSelectState {
     fn new(len: usize, defaults: &[bool]) -> Self {
-        let selected = (0..len)
-            .map(|i| defaults.get(i).copied().unwrap_or(false))
-            .collect();
+        let selected = (0..len).map(|i| defaults.get(i).copied().unwrap_or(false)).collect();
         Self { cursor: 0, selected }
     }
 
@@ -172,10 +167,7 @@ struct TextInputState {
 
 impl TextInputState {
     fn new(default_value: &str) -> Self {
-        Self {
-            value: String::new(),
-            default_value: default_value.to_owned(),
-        }
+        Self { value: String::new(), default_value: default_value.to_owned() }
     }
 
     fn apply_key(&mut self, code: KeyCode, mods: KeyModifiers) -> KeyAction {
@@ -187,7 +179,9 @@ impl TextInputState {
             KeyCode::Backspace => {
                 self.value.pop();
             }
-            KeyCode::Char(ch) if !mods.contains(KeyModifiers::CONTROL) && !mods.contains(KeyModifiers::ALT) => {
+            KeyCode::Char(ch)
+                if !mods.contains(KeyModifiers::CONTROL) && !mods.contains(KeyModifiers::ALT) =>
+            {
                 self.value.push(ch);
             }
             _ => {}
@@ -197,11 +191,7 @@ impl TextInputState {
 
     fn resolved(&self) -> String {
         let trimmed = self.value.trim();
-        if trimmed.is_empty() {
-            self.default_value.clone()
-        } else {
-            trimmed.to_owned()
-        }
+        if trimmed.is_empty() { self.default_value.clone() } else { trimmed.to_owned() }
     }
 }
 
@@ -386,7 +376,8 @@ fn render_select_frame(
     for (idx, opt) in options.iter().enumerate().take(end).skip(start) {
         let active = idx == cursor_idx;
         let pointer = if active { format!("{C_DIAMOND}▸{C_RESET}") } else { " ".to_owned() };
-        let bullet = if active { format!("{C_ACTIVE}●{C_RESET}") } else { format!("{C_DIM}○{C_RESET}") };
+        let bullet =
+            if active { format!("{C_ACTIVE}●{C_RESET}") } else { format!("{C_DIM}○{C_RESET}") };
         lines.push(format_option_row(opt, active, &pointer, &bullet, label_width, cols));
     }
     if end < options.len() {
@@ -418,11 +409,15 @@ fn render_multi_frame(
         let active = idx == state.cursor;
         let checked = state.selected.get(idx).copied().unwrap_or(false);
         let pointer = if active { format!("{C_DIAMOND}▸{C_RESET}") } else { " ".to_owned() };
-        let mark = if checked { format!("{C_GREEN}■{C_RESET}") } else { format!("{C_DIM}□{C_RESET}") };
+        let mark =
+            if checked { format!("{C_GREEN}■{C_RESET}") } else { format!("{C_DIM}□{C_RESET}") };
         lines.push(format_option_row(opt, active, &pointer, &mark, label_width, cols));
     }
     lines.push(format!("  {C_DIM}│{C_RESET}"));
-    lines.push(format_footer("↑/↓ move · Space toggle · a toggle all · Enter confirm · Esc cancel", cols));
+    lines.push(format_footer(
+        "↑/↓ move · Space toggle · a toggle all · Enter confirm · Esc cancel",
+        cols,
+    ));
     lines
 }
 
@@ -504,27 +499,16 @@ fn format_multi_summary(options: &[SelectOption], selected: &[bool]) -> String {
         .zip(selected.iter())
         .filter_map(|(o, on)| on.then_some(o.label.as_str()))
         .collect();
-    if chosen.is_empty() {
-        "None (SonarQube disabled)".to_owned()
-    } else {
-        chosen.join(", ")
-    }
+    if chosen.is_empty() { "None (SonarQube disabled)".to_owned() } else { chosen.join(", ") }
 }
 
 fn max_label_width(options: &[SelectOption], cols: usize) -> usize {
-    let raw_max = options
-        .iter()
-        .map(|o| o.label.chars().count())
-        .max()
-        .unwrap_or(12);
+    let raw_max = options.iter().map(|o| o.label.chars().count()).max().unwrap_or(12);
     raw_max.min(cols.saturating_sub(18).max(12))
 }
 
 fn term_cols() -> usize {
-    terminal::size()
-        .map(|(w, _)| usize::from(w))
-        .unwrap_or(80)
-        .max(40)
+    terminal::size().map(|(w, _)| usize::from(w)).unwrap_or(80).max(40)
 }
 
 fn truncate_plain(s: &str, max_cols: usize) -> String {
@@ -560,10 +544,7 @@ mod tests {
         assert_eq!(st.cursor, 0);
         assert_eq!(st.apply_key(KeyCode::Enter, KeyModifiers::NONE), KeyAction::Confirm);
         assert_eq!(st.apply_key(KeyCode::Esc, KeyModifiers::NONE), KeyAction::Cancel);
-        assert_eq!(
-            st.apply_key(KeyCode::Char('c'), KeyModifiers::CONTROL),
-            KeyAction::Cancel
-        );
+        assert_eq!(st.apply_key(KeyCode::Char('c'), KeyModifiers::CONTROL), KeyAction::Cancel);
     }
 
     #[test]

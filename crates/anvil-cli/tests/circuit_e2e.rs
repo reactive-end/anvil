@@ -41,13 +41,25 @@ fn setup_git_ts_repo() -> TempDir {
     let root = dir.path();
 
     Command::new("git").args(["init"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.name", "Test User"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
 
     fs::write(root.join("package.json"), r#"{"name":"sample","version":"1.0.0"}"#).unwrap();
     fs::write(root.join("tsconfig.json"), r#"{"compilerOptions":{"strict":true}}"#).unwrap();
     fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 2;\n}\n").unwrap();
+    fs::write(
+        root.join("src/core.ts"),
+        "export function compute(x: number): number {\n  return x * 2;\n}\n",
+    )
+    .unwrap();
     dir
 }
 
@@ -70,7 +82,11 @@ fn pre_tool_decision(root: &Path, tool_name: &str, tool_input: Value) -> (Value,
         "tool_input": tool_input,
     });
     let out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &payload.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "claude"],
+            &payload.to_string(),
+        ),
         tool_name,
     );
     let parsed: Value = serde_json::from_str(&out).unwrap();
@@ -80,10 +96,7 @@ fn pre_tool_decision(root: &Path, tool_name: &str, tool_input: Value) -> (Value,
     assert!(parsed["hookSpecificOutput"]["permissionDecision"].is_string());
     (
         parsed["hookSpecificOutput"]["permissionDecision"].clone(),
-        parsed["hookSpecificOutput"]["permissionDecisionReason"]
-            .as_str()
-            .unwrap_or("")
-            .to_owned(),
+        parsed["hookSpecificOutput"]["permissionDecisionReason"].as_str().unwrap_or("").to_owned(),
     )
 }
 
@@ -102,17 +115,29 @@ fn circuit_breaker_open_allows_read_and_reset_while_blocking_edits() {
             "tool_output": { "exitCode": 2, "stderr": "TS2322 type mismatch" }
         });
         assert_ok(
-            &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "claude"], &fail_post.to_string()),
+            &run_anvil_stdin(
+                root,
+                &["hook", "post-tool-use", "--adapter", "claude"],
+                &fail_post.to_string(),
+            ),
             "trip circuit breaker",
         );
     }
 
-    assert_eq!(pre_tool_decision(root, "Read", json!({ "file_path": "src/core.ts" })).0, json!("none"));
-    assert_eq!(pre_tool_decision(root, "Bash", json!({ "command": "anvil circuit status" })).0, json!("none"));
-    let (reset_dec, reset_reason) = pre_tool_decision(root, "Bash", json!({ "command": "anvil circuit reset" }));
+    assert_eq!(
+        pre_tool_decision(root, "Read", json!({ "file_path": "src/core.ts" })).0,
+        json!("none")
+    );
+    assert_eq!(
+        pre_tool_decision(root, "Bash", json!({ "command": "anvil circuit status" })).0,
+        json!("none")
+    );
+    let (reset_dec, reset_reason) =
+        pre_tool_decision(root, "Bash", json!({ "command": "anvil circuit reset" }));
     assert_eq!(reset_dec, json!("ask"));
     assert!(reset_reason.contains("confirm before running `anvil circuit reset`"));
-    let (edit_dec, edit_reason) = pre_tool_decision(root, "edit_file", json!({ "TargetFile": "src/core.ts" }));
+    let (edit_dec, edit_reason) =
+        pre_tool_decision(root, "edit_file", json!({ "TargetFile": "src/core.ts" }));
     assert_eq!(edit_dec, json!("deny"));
     assert!(edit_reason.contains("Circuit Breaker OPEN"));
 }
@@ -132,11 +157,16 @@ fn empty_stderr_with_distinct_stdout_does_not_false_trip_circuit_breaker() {
             "tool_output": { "exitCode": 1, "stderr": "", "stdout": msg }
         });
         assert_ok(
-            &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "claude"], &payload.to_string()),
+            &run_anvil_stdin(
+                root,
+                &["hook", "post-tool-use", "--adapter", "claude"],
+                &payload.to_string(),
+            ),
             "post fail with stdout",
         );
     }
 
-    let (edit_dec, _) = pre_tool_decision(root, "edit_file", json!({ "TargetFile": "src/core.ts" }));
+    let (edit_dec, _) =
+        pre_tool_decision(root, "edit_file", json!({ "TargetFile": "src/core.ts" }));
     assert_eq!(edit_dec, json!("none"));
 }

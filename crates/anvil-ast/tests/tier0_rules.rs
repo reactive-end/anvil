@@ -74,7 +74,8 @@ fn escape_hatches_blocked_unless_structured_anvil_allow() {
     assert_eq!(res.diagnostics.len(), 2);
     assert!(res.diagnostics.iter().all(|d| d.rule == "no-escape-hatches"));
 
-    let ts_unstructured = "// anvil-allow(ts-ignore): missing ref\n// @ts-ignore\nexport const a = 1;\n";
+    let ts_unstructured =
+        "// anvil-allow(ts-ignore): missing ref\n// @ts-ignore\nexport const a = 1;\n";
     let res_unstructured = analyze_file(Path::new("src/u.ts"), ts_unstructured, &cfg).expect("u");
     assert_eq!(res_unstructured.diagnostics.len(), 1);
 
@@ -116,7 +117,8 @@ fn barrel_rule_flags_pure_reexports_and_allows_real_logic() {
     assert_eq!(res.diagnostics.len(), 1);
     assert_eq!(res.diagnostics[0].rule, "no-barrel-files");
 
-    let with_logic = "export { Button } from './button';\nexport function bootstrap() { return 1; }\n";
+    let with_logic =
+        "export { Button } from './button';\nexport function bootstrap() { return 1; }\n";
     let ok = analyze_file(Path::new("src/index.ts"), with_logic, &cfg).expect("with logic");
     assert!(ok.diagnostics.is_empty(), "unexpected: {:?}", ok.diagnostics);
 
@@ -205,7 +207,8 @@ class MainActivity {
     }
 }
 "#;
-    let good = analyze_file(Path::new("app/MainActivity.kt"), good_kt, &cfg).expect("parse good kt");
+    let good =
+        analyze_file(Path::new("app/MainActivity.kt"), good_kt, &cfg).expect("parse good kt");
     assert!(
         !good.diagnostics.iter().any(|d| d.rule == "no-unverified-permission"),
         "expected 0 permission diagnostics, got: {:?}",
@@ -255,10 +258,8 @@ class Forwarded {
     let forwarded = analyze_file(Path::new("app/Fwd.kt"), forwarded_kt, &cfg).expect("fwd kt");
     assert!(!forwarded.diagnostics.iter().any(|d| d.rule == "no-unverified-permission"));
 
-    let module_doc = (0..8)
-        .map(|i| format!("//! Crate overview line {i}"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let module_doc =
+        (0..8).map(|i| format!("//! Crate overview line {i}")).collect::<Vec<_>>().join("\n");
     let doc_res = analyze_file(Path::new("src/lib.rs"), &module_doc, &cfg).expect("rust doc");
     assert!(
         !doc_res.diagnostics.iter().any(|d| d.rule == "no-narrative-comments"),

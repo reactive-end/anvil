@@ -84,13 +84,22 @@ fn detects_php_noise_files() {
 #[test]
 fn classifies_php_laravel_paths() {
     let deps = classify_paths(&["backend/composer.json"]);
-    assert_eq!((deps.primary_category, deps.minimum_tier, deps.needs_deps_audit), (DiffCategory::Deps, Tier::Tier2, true));
+    assert_eq!(
+        (deps.primary_category, deps.minimum_tier, deps.needs_deps_audit),
+        (DiffCategory::Deps, Tier::Tier2, true)
+    );
 
     let blade = classify_paths(&["backend/resources/views/users/index.blade.php"]);
-    assert_eq!((blade.primary_category, blade.minimum_tier, blade.needs_visual_qa), (DiffCategory::Ui, Tier::Tier2, true));
+    assert_eq!(
+        (blade.primary_category, blade.minimum_tier, blade.needs_visual_qa),
+        (DiffCategory::Ui, Tier::Tier2, true)
+    );
 
     let routes = classify_paths(&["backend/routes/api/billing.php"]);
-    assert_eq!((routes.primary_category, routes.minimum_tier), (DiffCategory::Contract, Tier::Tier1));
+    assert_eq!(
+        (routes.primary_category, routes.minimum_tier),
+        (DiffCategory::Contract, Tier::Tier1)
+    );
 
     let cfg = classify_paths(&["backend/phpstan.neon"]);
     assert_eq!((cfg.primary_category, cfg.minimum_tier), (DiffCategory::Config, Tier::Tier1));
@@ -109,7 +118,8 @@ fn php_output_compressor_handles_phpstan_phpunit_and_syntax_errors() -> Result<(
     assert_eq!(fail.total_errors, 1);
     assert!(fail.lines[0].contains("app/Services/BillingService.php:42:"));
 
-    let syntax_raw = "Parse error: syntax error, unexpected token \"}\" in app/Models/User.php on line 18\n";
+    let syntax_raw =
+        "Parse error: syntax error, unexpected token \"}\" in app/Models/User.php on line 18\n";
     let syn_fail = compress_output(None, "php -l app/Models/User.php", 255, syntax_raw, 50, 1200)?;
     assert!(!syn_fail.passed);
     assert!(syn_fail.lines[0].contains("app/Models/User.php:18: Parse error:"));

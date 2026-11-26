@@ -12,8 +12,20 @@ use crate::model::{CodeGraph, NodeId};
 use crate::resolvers::{join_normalized, normalize_join_rel, pick_preferred_symbol};
 
 const TS_EXTENSIONS: &[&str] = &[
-    "", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json",
-    "/index.ts", "/index.tsx", "/index.js", "/index.jsx",
+    "",
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".json",
+    "/index.ts",
+    "/index.tsx",
+    "/index.js",
+    "/index.jsx",
 ];
 
 /// Parsed `tsconfig*.json` resolution configuration.

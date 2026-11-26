@@ -162,6 +162,7 @@
     "LICENSE",
     "README.md",
     "clippy.toml",
+    "rustfmt.toml",
     "crates",
     "package.json",
     "scripts",

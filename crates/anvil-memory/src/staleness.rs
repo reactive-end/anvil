@@ -1,7 +1,7 @@
 //! Cross-validation of linked memory observations against `SymbolFreshnessProvider`.
 
-use anyhow::Result;
 use anvil_core::traits::SymbolFreshnessProvider;
+use anyhow::Result;
 
 use crate::model::StalenessUpdate;
 use crate::store::MemoryStore;

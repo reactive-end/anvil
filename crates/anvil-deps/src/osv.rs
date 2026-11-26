@@ -72,9 +72,8 @@ pub(crate) fn clean_version_for_osv(version_req: Option<&str>) -> Option<String>
         return None;
     }
 
-    let first_token = raw
-        .split(|c: char| c == ',' || c.is_whitespace())
-        .find(|seg| !seg.is_empty())?;
+    let first_token =
+        raw.split(|c: char| c == ',' || c.is_whitespace()).find(|seg| !seg.is_empty())?;
     let cleaned = first_token.trim_start_matches(['^', '~', '=', '>', '<', 'v']);
 
     if cleaned.is_empty()
@@ -121,9 +120,7 @@ fn post_osv_batch_json(body: &str) -> Result<String> {
 
     let mut buf = Vec::new();
     let mut reader = response.into_reader().take(MAX_OSV_RESPONSE_BYTES + 1);
-    reader
-        .read_to_end(&mut buf)
-        .context("failed to read OSV querybatch response")?;
+    reader.read_to_end(&mut buf).context("failed to read OSV querybatch response")?;
     if buf.len() as u64 > MAX_OSV_RESPONSE_BYTES {
         bail!("OSV querybatch response exceeded {MAX_OSV_RESPONSE_BYTES} byte safety cap");
     }
@@ -177,30 +174,12 @@ mod tests {
 
     #[test]
     fn cleans_valid_version_specs_and_rejects_ranges_or_wildcards() {
-        assert_eq!(
-            clean_version_for_osv(Some("^1.2.3")),
-            Some("1.2.3".to_owned())
-        );
-        assert_eq!(
-            clean_version_for_osv(Some("~=2.9.1")),
-            Some("2.9.1".to_owned())
-        );
-        assert_eq!(
-            clean_version_for_osv(Some(">=0.115.0, <1.0.0")),
-            Some("0.115.0".to_owned())
-        );
-        assert_eq!(
-            clean_version_for_osv(Some("  v12.4.0  ")),
-            Some("12.4.0".to_owned())
-        );
-        assert_eq!(
-            clean_version_for_osv(Some("==2.32.3")),
-            Some("2.32.3".to_owned())
-        );
-        assert_eq!(
-            clean_version_for_osv(Some("[standard]>=0.30.0")),
-            Some("0.30.0".to_owned())
-        );
+        assert_eq!(clean_version_for_osv(Some("^1.2.3")), Some("1.2.3".to_owned()));
+        assert_eq!(clean_version_for_osv(Some("~=2.9.1")), Some("2.9.1".to_owned()));
+        assert_eq!(clean_version_for_osv(Some(">=0.115.0, <1.0.0")), Some("0.115.0".to_owned()));
+        assert_eq!(clean_version_for_osv(Some("  v12.4.0  ")), Some("12.4.0".to_owned()));
+        assert_eq!(clean_version_for_osv(Some("==2.32.3")), Some("2.32.3".to_owned()));
+        assert_eq!(clean_version_for_osv(Some("[standard]>=0.30.0")), Some("0.30.0".to_owned()));
 
         assert_eq!(clean_version_for_osv(None), None);
         assert_eq!(clean_version_for_osv(Some("")), None);
@@ -208,10 +187,7 @@ mod tests {
         assert_eq!(clean_version_for_osv(Some("1.*")), None);
         assert_eq!(clean_version_for_osv(Some("*")), None);
         assert_eq!(clean_version_for_osv(Some("latest")), None);
-        assert_eq!(
-            clean_version_for_osv(Some(&"1".repeat(MAX_CLEAN_VERSION_LEN + 1))),
-            None
-        );
+        assert_eq!(clean_version_for_osv(Some(&"1".repeat(MAX_CLEAN_VERSION_LEN + 1))), None);
     }
 
     #[test]
@@ -229,10 +205,7 @@ mod tests {
             parsed,
             vec![
                 Vec::<String>::new(),
-                vec![
-                    "GHSA-35jh-r3h4-6jhm".to_owned(),
-                    "CVE-2021-23337".to_owned()
-                ],
+                vec!["GHSA-35jh-r3h4-6jhm".to_owned(), "CVE-2021-23337".to_owned()],
                 Vec::<String>::new(),
                 vec!["RUSTSEC-2024-0001".to_owned()],
             ]

@@ -32,8 +32,8 @@ pub mod worktree;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use anvil_core::git;
+use anyhow::{Context, Result};
 
 use crate::cli::{Cli, Command};
 
@@ -50,10 +50,7 @@ impl ExitCodeError {
     }
 
     pub fn with_message(code: i32, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            message: Some(message.into()),
-        }
+        Self { code, message: Some(message.into()) }
     }
 }
 
@@ -72,27 +69,24 @@ impl std::error::Error for ExitCodeError {}
 pub fn dispatch(cli: Cli) -> Result<()> {
     let root = resolve_repo_root(cli.root.as_deref())?;
     match cli.command {
-        Command::Init {
-            path,
-            adapter,
-            git_hooks,
-            sonar,
-            layout,
-        } => init::execute(
+        Command::Init { path, adapter, git_hooks, sonar, layout } => init::execute(
             &resolve_init_root(path.as_deref(), &root)?,
-            init::InitOptions {
-                adapter: &adapter,
-                git_hooks,
-                sonar: &sonar,
-                layout: &layout,
-            },
+            init::InitOptions { adapter: &adapter, git_hooks, sonar: &sonar, layout: &layout },
         ),
         Command::Sync { adapter } => sync::execute(&root, &adapter),
         Command::Doctor => doctor::execute(&root),
         Command::Hook { event, adapter } => hook::execute(&root, &event, &adapter),
         Command::Run { cmd } => run::execute(&root, &cmd),
         Command::Check { full, tier, no_tests, no_cache, staged, sonar, no_sonar, scope } => {
-            let opts = check::CheckOptions { full, tier_override: tier, no_tests, no_cache, staged, sonar, no_sonar };
+            let opts = check::CheckOptions {
+                full,
+                tier_override: tier,
+                no_tests,
+                no_cache,
+                staged,
+                sonar,
+                no_sonar,
+            };
             check::execute(&root, opts, &scope)
         }
         Command::Impact { files, depth, origin, typecheck } => {

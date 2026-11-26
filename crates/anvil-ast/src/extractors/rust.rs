@@ -32,11 +32,14 @@ fn enclosing_owner(node: Node<'_>, state: &ExtractState<'_>) -> Option<(String, 
     while let Some(parent) = cur {
         match parent.kind() {
             "impl_item" => {
-                let ty = parent.child_by_field_name("type").and_then(|n| clean_type_name(n, state))?;
+                let ty =
+                    parent.child_by_field_name("type").and_then(|n| clean_type_name(n, state))?;
                 return Some((ty, false));
             }
             "trait_item" => {
-                let name = parent.child_by_field_name("name").map(|n| state.node_text(n).trim().to_owned())?;
+                let name = parent
+                    .child_by_field_name("name")
+                    .map(|n| state.node_text(n).trim().to_owned())?;
                 return Some((name, is_public(parent)));
             }
             "function_item" => return None,
@@ -46,15 +49,29 @@ fn enclosing_owner(node: Node<'_>, state: &ExtractState<'_>) -> Option<(String, 
     None
 }
 
-fn extract_named_item(node: Node<'_>, kind: SymbolKind, sig: Option<&str>, state: &mut ExtractState<'_>) {
+fn extract_named_item(
+    node: Node<'_>,
+    kind: SymbolKind,
+    sig: Option<&str>,
+    state: &mut ExtractState<'_>,
+) {
     if let Some(name_node) = node.child_by_field_name("name") {
         let name = state.node_text(name_node).trim().to_owned();
-        state.push_symbol(name.clone(), name, kind, ExtractState::span_of(node), sig.map(str::to_owned), is_public(node));
+        state.push_symbol(
+            name.clone(),
+            name,
+            kind,
+            ExtractState::span_of(node),
+            sig.map(str::to_owned),
+            is_public(node),
+        );
     }
 }
 
 fn extract_mod(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let name = state.node_text(name_node).trim().to_owned();
     let span = ExtractState::span_of(node);
     state.push_symbol(name.clone(), name.clone(), SymbolKind::Module, span, None, is_public(node));
@@ -64,7 +81,9 @@ fn extract_mod(node: Node<'_>, state: &mut ExtractState<'_>) {
 }
 
 fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let name = state.node_text(name_node).trim().to_owned();
     let owner = enclosing_owner(node, state);
     let exported = is_public(node) || owner.as_ref().is_some_and(|(_, pub_trait)| *pub_trait);
@@ -76,7 +95,8 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
 }
 
 fn extract_impl(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(type_name) = node.child_by_field_name("type").and_then(|n| clean_type_name(n, state)) else {
+    let Some(type_name) = node.child_by_field_name("type").and_then(|n| clean_type_name(n, state))
+    else {
         return;
     };
     let span = ExtractState::span_of(node);
@@ -86,7 +106,14 @@ fn extract_impl(node: Node<'_>, state: &mut ExtractState<'_>) {
         Some(tr) => format!("impl {tr} for {type_name}"),
         None => format!("impl {type_name}"),
     };
-    state.push_symbol(label.clone(), label, SymbolKind::Unknown, span, Some("impl".to_owned()), false);
+    state.push_symbol(
+        label.clone(),
+        label,
+        SymbolKind::Unknown,
+        span,
+        Some("impl".to_owned()),
+        false,
+    );
     if let Some(tr) = trait_name {
         state.push_edge(Some(type_name), tr, EdgeKind::Implements, line);
     }
@@ -94,22 +121,22 @@ fn extract_impl(node: Node<'_>, state: &mut ExtractState<'_>) {
 
 fn clean_type_name(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
     match node.kind() {
-        "type_identifier" | "primitive_type" | "identifier" | "scoped_type_identifier" | "scoped_identifier" => {
+        "type_identifier"
+        | "primitive_type"
+        | "identifier"
+        | "scoped_type_identifier"
+        | "scoped_identifier" => {
             ExtractState::sanitize_call_target(state.node_text(node).trim().to_owned())
         }
-        "generic_type" | "reference_type" => node
-            .child_by_field_name("type")
-            .and_then(|inner| clean_type_name(inner, state)),
+        "generic_type" | "reference_type" => {
+            node.child_by_field_name("type").and_then(|inner| clean_type_name(inner, state))
+        }
         _ => None,
     }
 }
 
 fn extract_use(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let kind = if is_public(node) {
-        EdgeKind::ReExports
-    } else {
-        EdgeKind::Imports
-    };
+    let kind = if is_public(node) { EdgeKind::ReExports } else { EdgeKind::Imports };
     if let Some(arg) = node.child_by_field_name("argument") {
         collect_use_paths(arg, "", ExtractState::line_of(node), kind, state);
     }
@@ -125,7 +152,11 @@ fn collect_use_paths(
     match node.kind() {
         "identifier" | "scoped_identifier" | "crate" | "self" | "super" => {
             let text = state.node_text(node).trim();
-            let path = if text == "self" && !prefix.is_empty() { prefix.to_owned() } else { join_rust_path(prefix, text) };
+            let path = if text == "self" && !prefix.is_empty() {
+                prefix.to_owned()
+            } else {
+                join_rust_path(prefix, text)
+            };
             if let Some(clean) = ExtractState::sanitize_call_target(path) {
                 state.push_edge(None, clean, kind, line);
             }
@@ -179,8 +210,12 @@ fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {
 
 fn clean_rust_callee(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
     match node.kind() {
-        "identifier" | "scoped_identifier" => ExtractState::sanitize_call_target(state.node_text(node).trim().to_owned()),
-        "generic_function" => node.child_by_field_name("function").and_then(|n| clean_rust_callee(n, state)),
+        "identifier" | "scoped_identifier" => {
+            ExtractState::sanitize_call_target(state.node_text(node).trim().to_owned())
+        }
+        "generic_function" => {
+            node.child_by_field_name("function").and_then(|n| clean_rust_callee(n, state))
+        }
         "field_expression" => {
             let field_name = state.node_text(node.child_by_field_name("field")?).trim();
             if let Some(val) = node.child_by_field_name("value")
@@ -199,7 +234,9 @@ fn clean_rust_callee(node: Node<'_>, state: &ExtractState<'_>) -> Option<String>
 
 fn clean_rust_receiver(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
     match node.kind() {
-        "identifier" | "self" => ExtractState::sanitize_call_target(state.node_text(node).trim().to_owned()),
+        "identifier" | "self" => {
+            ExtractState::sanitize_call_target(state.node_text(node).trim().to_owned())
+        }
         "field_expression" => {
             let recv = clean_rust_receiver(node.child_by_field_name("value")?, state)?;
             let field = state.node_text(node.child_by_field_name("field")?).trim();

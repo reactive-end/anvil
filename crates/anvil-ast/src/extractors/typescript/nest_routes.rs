@@ -15,9 +15,8 @@ pub fn extract_method_routes(
     qualified_method: &str,
     state: &mut ExtractState<'_>,
 ) {
-    let prefix = class_node
-        .and_then(|cls| extract_controller_prefix(cls, state))
-        .unwrap_or_default();
+    let prefix =
+        class_node.and_then(|cls| extract_controller_prefix(cls, state)).unwrap_or_default();
 
     let mut cur = method_node.prev_named_sibling();
     while let Some(sib) = cur {

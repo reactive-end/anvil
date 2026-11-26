@@ -96,22 +96,14 @@ fn resolve_http_call<'a>(
     }
 
     let (receiver, verb) = callee.rsplit_once('.')?;
-    let recv_last = receiver
-        .rsplit('.')
-        .next()
-        .unwrap_or(receiver)
-        .to_ascii_lowercase();
-    let is_http_client = matches!(
-        recv_last.as_str(),
-        "http" | "httpclient" | "httpservice" | "axios" | "apiclient"
-    ) || recv_last.ends_with("httpclient")
-        || recv_last.ends_with("axios");
+    let recv_last = receiver.rsplit('.').next().unwrap_or(receiver).to_ascii_lowercase();
+    let is_http_client =
+        matches!(recv_last.as_str(), "http" | "httpclient" | "httpservice" | "axios" | "apiclient")
+            || recv_last.ends_with("httpclient")
+            || recv_last.ends_with("axios");
 
     if !is_http_client
-        || !matches!(
-            verb,
-            "get" | "post" | "put" | "patch" | "delete" | "head" | "options"
-        )
+        || !matches!(verb, "get" | "post" | "put" | "patch" | "delete" | "head" | "options")
     {
         return None;
     }
@@ -167,9 +159,9 @@ fn collect_url_parts(node: Node<'_>, state: &ExtractState<'_>) -> Option<(String
             let unquoted = ExtractState::unquote(state.node_text(node)).to_owned();
             Some((unquoted, true))
         }
-        "parenthesized_expression" => node
-            .named_child(0)
-            .and_then(|inner| collect_url_parts(inner, state)),
+        "parenthesized_expression" => {
+            node.named_child(0).and_then(|inner| collect_url_parts(inner, state))
+        }
         "binary_expression" => {
             let op = node.child_by_field_name("operator")?;
             if state.node_text(op).trim() != "+" {

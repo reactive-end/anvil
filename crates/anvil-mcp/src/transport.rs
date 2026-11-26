@@ -60,12 +60,7 @@ pub struct JsonRpcError {
 impl JsonRpcResponse {
     /// Constructs a success response for `id`.
     pub fn ok(id: Value, result: Value) -> Self {
-        Self {
-            jsonrpc: Cow::Borrowed(JSONRPC_VERSION),
-            id,
-            result: Some(result),
-            error: None,
-        }
+        Self { jsonrpc: Cow::Borrowed(JSONRPC_VERSION), id, result: Some(result), error: None }
     }
 
     /// Constructs an error response for `id`.
@@ -74,11 +69,7 @@ impl JsonRpcResponse {
             jsonrpc: Cow::Borrowed(JSONRPC_VERSION),
             id,
             result: None,
-            error: Some(JsonRpcError {
-                code,
-                message: message.into(),
-                data: None,
-            }),
+            error: Some(JsonRpcError { code, message: message.into(), data: None }),
         }
     }
 }
@@ -278,9 +269,7 @@ where
     F: FnMut(&JsonRpcRequest) -> Option<JsonRpcResponse>,
 {
     let mut body = vec![0u8; len];
-    reader
-        .read_exact(&mut body)
-        .context("failed to read Content-Length body")?;
+    reader.read_exact(&mut body).context("failed to read Content-Length body")?;
     let Ok(text) = std::str::from_utf8(&body) else {
         return Ok(Some(JsonRpcResponse::err(
             Value::Null,
@@ -311,21 +300,17 @@ where
     };
 
     if req.jsonrpc != JSONRPC_VERSION {
-        return req.id.map(|id| {
-            JsonRpcResponse::err(id, INVALID_REQUEST, "jsonrpc field must be \"2.0\"")
-        });
+        return req
+            .id
+            .map(|id| JsonRpcResponse::err(id, INVALID_REQUEST, "jsonrpc field must be \"2.0\""));
     }
     handler(&req)
 }
 
 fn write_response<W: Write>(writer: &mut W, resp: &JsonRpcResponse) -> Result<()> {
     serde_json::to_writer(&mut *writer, resp).context("failed to serialize JSON-RPC response")?;
-    writer
-        .write_all(b"\n")
-        .context("failed to write response newline")?;
-    writer
-        .flush()
-        .context("failed to flush JSON-RPC response")?;
+    writer.write_all(b"\n").context("failed to write response newline")?;
+    writer.flush().context("failed to flush JSON-RPC response")?;
     Ok(())
 }
 
@@ -333,12 +318,8 @@ fn write_content_length_response<W: Write>(writer: &mut W, resp: &JsonRpcRespons
     let payload = serde_json::to_vec(resp).context("failed to serialize JSON-RPC response")?;
     write!(writer, "Content-Length: {}\r\n\r\n", payload.len())
         .context("failed to write Content-Length header")?;
-    writer
-        .write_all(&payload)
-        .context("failed to write Content-Length body")?;
-    writer
-        .flush()
-        .context("failed to flush JSON-RPC response")?;
+    writer.write_all(&payload).context("failed to write Content-Length body")?;
+    writer.flush().context("failed to flush JSON-RPC response")?;
     Ok(())
 }
 
@@ -351,9 +332,7 @@ mod tests {
     use super::*;
 
     fn echo_handler(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
-        req.id
-            .clone()
-            .map(|id| JsonRpcResponse::ok(id, json!({ "method": req.method })))
+        req.id.clone().map(|id| JsonRpcResponse::ok(id, json!({ "method": req.method })))
     }
 
     fn frame_content_length(body: &str, extra_header: Option<&str>) -> String {
@@ -397,10 +376,8 @@ mod tests {
         serve_reader_writer(Cursor::new(input.as_bytes()), &mut out, echo_handler).unwrap();
 
         let text = String::from_utf8(out).unwrap();
-        let lines: Vec<JsonRpcResponse> = text
-            .lines()
-            .map(|l| serde_json::from_str(l).unwrap())
-            .collect();
+        let lines: Vec<JsonRpcResponse> =
+            text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].id, json!(1));
         assert_eq!(lines[0].result, Some(json!({ "method": "ping" })));
@@ -458,10 +435,7 @@ mod tests {
         assert_eq!(resps.len(), 2);
         assert_eq!(resps[0].id, Value::Null);
         assert_eq!(resps[0].error.as_ref().unwrap().code, PARSE_ERROR);
-        assert_eq!(
-            resps[0].error.as_ref().unwrap().message,
-            "frame exceeds 16 MiB limit"
-        );
+        assert_eq!(resps[0].error.as_ref().unwrap().message, "frame exceeds 16 MiB limit");
         assert_eq!(resps[1].id, json!(9));
         assert_eq!(resps[1].result, Some(json!({ "method": "ping" })));
     }
@@ -477,17 +451,12 @@ mod tests {
             .unwrap();
 
         let text = String::from_utf8(out).unwrap();
-        let resps: Vec<JsonRpcResponse> = text
-            .lines()
-            .map(|l| serde_json::from_str(l).unwrap())
-            .collect();
+        let resps: Vec<JsonRpcResponse> =
+            text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!(resps.len(), 2);
         assert_eq!(resps[0].id, Value::Null);
         assert_eq!(resps[0].error.as_ref().unwrap().code, PARSE_ERROR);
-        assert_eq!(
-            resps[0].error.as_ref().unwrap().message,
-            "frame exceeds 16 MiB limit"
-        );
+        assert_eq!(resps[0].error.as_ref().unwrap().message, "frame exceeds 16 MiB limit");
         assert_eq!(resps[1].id, json!(7));
         assert_eq!(resps[1].result, Some(json!({ "method": "ping" })));
     }

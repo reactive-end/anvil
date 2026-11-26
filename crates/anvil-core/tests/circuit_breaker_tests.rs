@@ -13,13 +13,19 @@ fn circuit_breaker_trips_exactly_on_third_consecutive_identical_failure() -> Res
     let tmp = TempDir::new()?;
     let cb = CircuitBreaker::new(tmp.path(), 3);
 
-    let s1 = cb.record_failure("tsc", "src/app.ts(10,5): error TS2322: Type mismatch", "tsc --noEmit")?;
+    let s1 =
+        cb.record_failure("tsc", "src/app.ts(10,5): error TS2322: Type mismatch", "tsc --noEmit")?;
     assert_eq!((s1.state, s1.consecutive_failures), (CircuitState::Closed, 1));
 
-    let s2 = cb.record_failure("tsc", "src\\app.ts(42,12): error TS2322: Type mismatch", "tsc --noEmit")?;
+    let s2 = cb.record_failure(
+        "tsc",
+        "src\\app.ts(42,12): error TS2322: Type mismatch",
+        "tsc --noEmit",
+    )?;
     assert_eq!((s2.state, s2.consecutive_failures), (CircuitState::Closed, 2));
 
-    let s3 = cb.record_failure("tsc", "src/app.ts:99:1 error TS2322: Type mismatch", "tsc --noEmit")?;
+    let s3 =
+        cb.record_failure("tsc", "src/app.ts:99:1 error TS2322: Type mismatch", "tsc --noEmit")?;
     assert_eq!((s3.state, s3.consecutive_failures), (CircuitState::Open, 3));
     let esc = s3.escalation.as_ref().expect("escalation summary present");
     assert_eq!((esc.tool.as_str(), esc.consecutive_failures), ("tsc", 3));
@@ -57,10 +63,7 @@ fn different_error_resets_streak_and_success_clears_closed_streak() -> Result<()
     let cleared = cb.record_success()?;
     assert_eq!(cleared.consecutive_failures, 0);
     assert!(cleared.last_fingerprint.is_none());
-    assert_eq!(
-        normalize_error("C:\\repo\\a.ts(10,3)  0xDEADBEEF"),
-        "C:/repo/a.ts:<loc> 0x<addr>"
-    );
+    assert_eq!(normalize_error("C:\\repo\\a.ts(10,3)  0xDEADBEEF"), "C:/repo/a.ts:<loc> 0x<addr>");
     Ok(())
 }
 
@@ -108,14 +111,8 @@ fn circuit_breaker_handles_concurrent_updates_via_file_lock() -> Result<()> {
 #[test]
 fn command_family_key_and_scoped_command_success() -> Result<()> {
     assert_eq!(command_family_key("npx vitest run a.ts"), "vitest");
-    assert_eq!(
-        command_family_key("NODE_ENV=test bunx --yes tsc --noEmit"),
-        "tsc"
-    );
-    assert_eq!(
-        command_family_key("C:\\tools\\cargo.exe test -p anvil-core"),
-        "cargo test"
-    );
+    assert_eq!(command_family_key("NODE_ENV=test bunx --yes tsc --noEmit"), "tsc");
+    assert_eq!(command_family_key("C:\\tools\\cargo.exe test -p anvil-core"), "cargo test");
     assert_eq!(command_family_key("git status --short"), "git status");
 
     let tmp = TempDir::new()?;

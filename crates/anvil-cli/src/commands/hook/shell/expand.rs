@@ -8,20 +8,44 @@ const MAX_DEPTH: usize = 6;
 const SHELLS: &[&str] = &["bash", "sh", "zsh", "dash", "ksh", "fish"];
 const POWERSHELLS: &[&str] = &["powershell", "pwsh"];
 const EVALUATORS: &[&str] = &["eval", "iex", "invoke-expression"];
-const DOWNLOADERS: &[&str] = &[
-    "curl", "wget", "iwr", "irm", "invoke-webrequest", "invoke-restmethod", "base64",
-];
+const DOWNLOADERS: &[&str] =
+    &["curl", "wget", "iwr", "irm", "invoke-webrequest", "invoke-restmethod", "base64"];
 const KEYWORDS: &[&str] = &["if", "then", "else", "elif", "do", "while", "until", "!"];
 const WRAPPERS: &[&str] = &[
-    "sudo", "doas", "gsudo", "su", "env", "command", "builtin", "exec", "nohup", "time", "timeout",
-    "gtimeout", "nice", "ionice", "stdbuf", "setsid", "xargs", "parallel", "busybox", "watch",
-    "wsl", "ssh", "npx", "bunx", "script", "chroot", "start", "start-process", "runas", "strace",
+    "sudo",
+    "doas",
+    "gsudo",
+    "su",
+    "env",
+    "command",
+    "builtin",
+    "exec",
+    "nohup",
+    "time",
+    "timeout",
+    "gtimeout",
+    "nice",
+    "ionice",
+    "stdbuf",
+    "setsid",
+    "xargs",
+    "parallel",
+    "busybox",
+    "watch",
+    "wsl",
+    "ssh",
+    "npx",
+    "bunx",
+    "script",
+    "chroot",
+    "start",
+    "start-process",
+    "runas",
+    "strace",
 ];
 const SCRIPT_ARG_WRAPPERS: &[&str] = &["su", "wsl", "ssh", "watch", "parallel", "script"];
 const PRINTERS: &[&str] = &["echo", "printf", "write-output", "write-host"];
-const SEARCHERS: &[&str] = &[
-    "rg", "grep", "egrep", "fgrep", "select-string", "sls", "findstr",
-];
+const SEARCHERS: &[&str] = &["rg", "grep", "egrep", "fgrep", "select-string", "sls", "findstr"];
 
 /// A single program invocation reachable from the inspected command text.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -69,8 +93,7 @@ pub fn expand(cmd: &str) -> Expansion {
 
 fn expand_script(cmd: &str, depth: usize, out: &mut Expansion) {
     if depth > MAX_DEPTH {
-        out.opaque
-            .get_or_insert("running deeply nested shell code that cannot be inspected");
+        out.opaque.get_or_insert("running deeply nested shell code that cannot be inspected");
         return;
     }
     let script = parse(cmd);
@@ -107,8 +130,7 @@ fn expand_segment(seg: &Segment, producer: Option<&Segment>, depth: usize, out: 
         .and_then(|p| strip_prelude(&p.args).first())
         .is_some_and(|word| DOWNLOADERS.contains(&command_name(word).as_str()));
     if seg.piped_in && reads_program_from_stdin(&inv, downloaded) {
-        out.opaque
-            .get_or_insert("piping content into a shell or interpreter");
+        out.opaque.get_or_insert("piping content into a shell or interpreter");
     }
     expand_invocation(inv, depth, out);
 }
@@ -121,8 +143,7 @@ fn expand_invocation(inv: Invocation, depth: usize, out: &mut Expansion) {
         }
     }
     if is_encoded_powershell(&inv) {
-        out.opaque
-            .get_or_insert("running an encoded PowerShell command");
+        out.opaque.get_or_insert("running an encoded PowerShell command");
     }
     if let Some(script) = inline_script(&inv) {
         expand_script(&script, depth + 1, out);
@@ -172,10 +193,8 @@ fn is_wrapper(inv: &Invocation) -> bool {
 }
 
 fn is_interpreter(name: &str) -> bool {
-    matches!(
-        name,
-        "py" | "node" | "deno" | "bun" | "perl" | "ruby" | "php"
-    ) || name.starts_with("python")
+    matches!(name, "py" | "node" | "deno" | "bun" | "perl" | "ruby" | "php")
+        || name.starts_with("python")
 }
 
 fn strip_prelude(words: &[String]) -> &[String] {
@@ -195,9 +214,7 @@ fn is_env_assignment(word: &str) -> bool {
 
 fn printed_text(seg: &Segment) -> Option<String> {
     let (head, args) = strip_prelude(&seg.args).split_first()?;
-    PRINTERS
-        .contains(&command_name(head).as_str())
-        .then(|| args.join(" "))
+    PRINTERS.contains(&command_name(head).as_str()).then(|| args.join(" "))
 }
 
 fn reads_program_from_stdin(inv: &Invocation, downloaded: bool) -> bool {
@@ -225,12 +242,10 @@ fn inline_script(inv: &Invocation) -> Option<String> {
         return shell_script_arg(&inv.args);
     }
     if name == "cmd" {
-        let idx = inv.args.iter().position(|a| {
-            matches!(
-                a.to_ascii_lowercase().as_str(),
-                "/c" | "//c" | "/k" | "//k"
-            )
-        })?;
+        let idx = inv
+            .args
+            .iter()
+            .position(|a| matches!(a.to_ascii_lowercase().as_str(), "/c" | "//c" | "/k" | "//k"))?;
         return Some(rejoin(&inv.args[idx + 1..]));
     }
     if POWERSHELLS.contains(&name) {
@@ -315,11 +330,9 @@ fn collect_inline_code(inv: &Invocation, depth: usize, out: &mut Expansion) {
 }
 
 fn spawns_processes(code: &str) -> bool {
-    [
-        "system(", "subprocess", "exec", "spawn", "popen", "Popen", "passthru(",
-    ]
-    .iter()
-    .any(|marker| code.contains(marker))
+    ["system(", "subprocess", "exec", "spawn", "popen", "Popen", "passthru("]
+        .iter()
+        .any(|marker| code.contains(marker))
 }
 
 /// Extracts the contents of quoted string literals from inline source code.

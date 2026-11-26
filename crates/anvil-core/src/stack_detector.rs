@@ -39,11 +39,8 @@ impl WorkspaceDetection {
     /// Returns `true` when `config` was modified.
     pub fn merge_into_config(&self, config: &mut AnvilConfig) -> bool {
         let before = config.clone();
-        let existing_sonar: rustc_hash::FxHashMap<String, bool> = config
-            .subrepos
-            .iter()
-            .map(|s| (s.path.clone(), s.sonar_enabled))
-            .collect();
+        let existing_sonar: rustc_hash::FxHashMap<String, bool> =
+            config.subrepos.iter().map(|s| (s.path.clone(), s.sonar_enabled)).collect();
         let mut all_stacks: FxHashSet<StackKind> = config.stacks.iter().copied().collect();
         let mut all_tools: FxHashSet<ToolKind> = config.tools.iter().copied().collect();
         config.subrepos.clear();
@@ -79,53 +76,64 @@ impl WorkspaceDetection {
     }
 }
 
+const JS_STACKS: &[StackKind] = &[
+    StackKind::React,
+    StackKind::Vue,
+    StackKind::Svelte,
+    StackKind::Vite,
+    StackKind::NextJs,
+    StackKind::Astro,
+    StackKind::Angular,
+    StackKind::NestJs,
+    StackKind::ExpoReactNative,
+    StackKind::TypeScript,
+];
+
+/// Files and folders a stack keeps at the repository root, for any of the listed stacks.
+const STACK_ROOT_ENTRIES: &[(&[StackKind], &[&str])] = &[
+    (
+        JS_STACKS,
+        &[
+            "package.json",
+            "tsconfig.json",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "bun.lock",
+        ],
+    ),
+    (&[StackKind::Rust], &["Cargo.toml", "Cargo.lock", "clippy.toml", "crates", "src"]),
+    (
+        &[StackKind::KotlinAndroid],
+        &[
+            "app",
+            "gradle",
+            "gradlew",
+            "gradlew.bat",
+            "build.gradle.kts",
+            "settings.gradle.kts",
+            "build.gradle",
+            "settings.gradle",
+            "gradle.properties",
+        ],
+    ),
+    (
+        &[StackKind::FlutterDart],
+        &["pubspec.yaml", "pubspec.lock", "analysis_options.yaml", "lib", "test"],
+    ),
+    (&[StackKind::Python], &["pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"]),
+    (
+        &[StackKind::Godot],
+        &["project.godot", "export_presets.cfg", "default_bus_layout.tres", "icon.svg"],
+    ),
+];
+
 fn extend_stack_root_allowlist(config: &mut AnvilConfig) {
-    let mut extras: Vec<String> = Vec::new();
-    let has_js = config.stacks.iter().any(|s| {
-        matches!(
-            s,
-            StackKind::React
-                | StackKind::Vue
-                | StackKind::Svelte
-                | StackKind::Vite
-                | StackKind::NextJs
-                | StackKind::Astro
-                | StackKind::Angular
-                | StackKind::NestJs
-                | StackKind::ExpoReactNative
-                | StackKind::TypeScript
-        )
-    });
-    if has_js {
-        extras.extend(
-            ["package.json", "tsconfig.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"]
-                .into_iter()
-                .map(str::to_owned),
-        );
-    }
-    if config.stacks.contains(&StackKind::Rust) {
-        extras.extend(["Cargo.toml", "Cargo.lock", "clippy.toml", "crates", "src"].into_iter().map(str::to_owned));
-    }
-    if config.stacks.contains(&StackKind::KotlinAndroid) {
-        extras.extend(
-            ["app", "gradle", "gradlew", "gradlew.bat", "build.gradle.kts", "settings.gradle.kts", "build.gradle", "settings.gradle", "gradle.properties"]
-                .into_iter()
-                .map(str::to_owned),
-        );
-    }
-    if config.stacks.contains(&StackKind::FlutterDart) {
-        extras.extend(["pubspec.yaml", "pubspec.lock", "analysis_options.yaml", "lib", "test"].into_iter().map(str::to_owned));
-    }
-    if config.stacks.contains(&StackKind::Python) {
-        extras.extend(["pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"].into_iter().map(str::to_owned));
-    }
-    if config.stacks.contains(&StackKind::Godot) {
-        extras.extend(
-            ["project.godot", "export_presets.cfg", "default_bus_layout.tres", "icon.svg"]
-                .into_iter()
-                .map(str::to_owned),
-        );
-    }
+    let mut extras: Vec<String> = STACK_ROOT_ENTRIES
+        .iter()
+        .filter(|(stacks, _)| stacks.iter().any(|stack| config.stacks.contains(stack)))
+        .flat_map(|(_, entries)| entries.iter().map(|entry| (*entry).to_owned()))
+        .collect();
     push_php_laravel_allowlist(&config.stacks, &mut extras);
     for sub in &config.subrepos {
         if let Some(top) = sub.path.split('/').next().filter(|s| !s.is_empty() && *s != ".") {
@@ -143,9 +151,19 @@ fn push_php_laravel_allowlist(stacks: &[StackKind], extras: &mut Vec<String>) {
     if stacks.contains(&StackKind::Php) || stacks.contains(&StackKind::Laravel) {
         extras.extend(
             [
-                "composer.json", "composer.lock", "phpunit.xml", "phpunit.xml.dist",
-                "phpstan.neon", "phpstan.neon.dist", "psalm.xml", "psalm.xml.dist",
-                "pint.json", ".php-cs-fixer.php", ".php-cs-fixer.dist.php", "src", "tests",
+                "composer.json",
+                "composer.lock",
+                "phpunit.xml",
+                "phpunit.xml.dist",
+                "phpstan.neon",
+                "phpstan.neon.dist",
+                "psalm.xml",
+                "psalm.xml.dist",
+                "pint.json",
+                ".php-cs-fixer.php",
+                ".php-cs-fixer.dist.php",
+                "src",
+                "tests",
             ]
             .into_iter()
             .map(str::to_owned),
@@ -154,8 +172,16 @@ fn push_php_laravel_allowlist(stacks: &[StackKind], extras: &mut Vec<String>) {
     if stacks.contains(&StackKind::Laravel) {
         extras.extend(
             [
-                "artisan", "app", "bootstrap", "config", "database",
-                "lang", "public", "resources", "routes", "storage",
+                "artisan",
+                "app",
+                "bootstrap",
+                "config",
+                "database",
+                "lang",
+                "public",
+                "resources",
+                "routes",
+                "storage",
             ]
             .into_iter()
             .map(str::to_owned),
@@ -257,7 +283,15 @@ fn is_ignored_dir(path: &Path) -> bool {
     name.starts_with('.')
         || matches!(
             name,
-            "node_modules" | "target" | "dist" | "build" | "venv" | "__pycache__" | "Pods" | "vendor" | "storage"
+            "node_modules"
+                | "target"
+                | "dist"
+                | "build"
+                | "venv"
+                | "__pycache__"
+                | "Pods"
+                | "vendor"
+                | "storage"
         )
 }
 
@@ -277,11 +311,7 @@ fn inspect_repo_dir(dir: &Path, rel_path: &str) -> Result<Option<DetectedRepo>> 
     if stacks.is_empty() && tools.is_empty() && !(is_child && (has_git || has_pkg_json)) {
         return Ok(None);
     }
-    let name = dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("root")
-        .to_owned();
+    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("root").to_owned();
     let mut sorted_stacks: Vec<_> = stacks.into_iter().collect();
     sorted_stacks.sort();
     let mut sorted_tools: Vec<_> = tools.into_iter().collect();

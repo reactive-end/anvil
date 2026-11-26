@@ -13,10 +13,7 @@ pub struct ReportBudget {
 
 impl Default for ReportBudget {
     fn default() -> Self {
-        Self {
-            max_lines: 50,
-            max_tokens: 1200,
-        }
+        Self { max_lines: 50, max_tokens: 1200 }
     }
 }
 
@@ -32,14 +29,7 @@ pub fn build_report(
     let web_passed = web_captures.iter().all(ViewportCapture::passed);
     let passed = web_passed && mobile_violations.is_empty();
 
-    QaReport {
-        platform,
-        passed,
-        before,
-        after,
-        mobile_violations,
-        notes,
-    }
+    QaReport { platform, passed, before, after, mobile_violations, notes }
 }
 
 /// Formats a [`QaReport`] into a deterministic, token-budgeted summary string.
@@ -59,11 +49,7 @@ pub fn format_compressed_report(report: &QaReport, budget: ReportBudget) -> Stri
     append_viewport_deltas(report, &mut lines);
     append_notes(&report.notes, &mut lines);
 
-    let active_captures = if report.after.is_empty() {
-        &report.before
-    } else {
-        &report.after
-    };
+    let active_captures = if report.after.is_empty() { &report.before } else { &report.after };
     let all_violations: Vec<&QaViolation> = active_captures
         .iter()
         .flat_map(|c| c.violations.iter())
@@ -97,10 +83,7 @@ fn format_single_viewport(
     cap: &ViewportCapture,
     before_count: Option<usize>,
 ) -> String {
-    let mut line = format!(
-        "- {} ({}x{}): ",
-        cap.name, cap.width, cap.height
-    );
+    let mut line = format!("- {} ({}x{}): ", cap.name, cap.width, cap.height);
     let current = cap.total_violations();
     if let Some(prev) = before_count {
         let _ = write!(line, "before={prev} -> {phase}={current}");
@@ -132,11 +115,8 @@ fn append_budgeted_violations(
         let formatted = format_violation_line(v);
         let next_chars = used_chars + formatted.len() + 1;
         let reserve_tail = idx + 1 < violations.len();
-        let line_limit = if reserve_tail {
-            budget.max_lines.saturating_sub(1)
-        } else {
-            budget.max_lines
-        };
+        let line_limit =
+            if reserve_tail { budget.max_lines.saturating_sub(1) } else { budget.max_lines };
 
         if lines.len() >= line_limit || (char_budget > 0 && next_chars > char_budget) {
             let remaining = violations.len() - idx;

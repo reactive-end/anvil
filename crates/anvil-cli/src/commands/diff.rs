@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::diff_grep::{compress_diff, is_noise_file};
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_graph::model::{CodeGraph, NodeKind};
 use anvil_graph::store;
+use anyhow::{Context, Result, bail};
 
 /// Executes `anvil diff [--max-lines N] [--max-tokens N]`.
 pub fn execute(root: &Path, max_lines: usize, max_tokens: usize) -> Result<()> {
@@ -77,8 +77,7 @@ fn collect_touched_files(raw_diff: &str) -> Vec<String> {
         let path = if let Some(idx) = rest.rfind("\" \"b/") {
             Some(rest[idx + 5..].trim_end_matches('"').to_owned())
         } else {
-            rest.rsplit_once(" b/")
-                .map(|(_, b)| b.trim_matches('"').to_owned())
+            rest.rsplit_once(" b/").map(|(_, b)| b.trim_matches('"').to_owned())
         };
         if let Some(rel) = path
             && !is_noise_file(&rel)

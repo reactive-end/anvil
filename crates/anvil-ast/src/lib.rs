@@ -8,9 +8,9 @@ pub mod sfc;
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_core::traits::{FileAstFacts, Language, LanguageExtractor};
+use anyhow::Result;
 use rayon::prelude::*;
 
 /// Crate version marker for workspace smoke checks.
@@ -62,10 +62,7 @@ pub fn analyze_file(path: &Path, source: &str, config: &AnvilConfig) -> Result<F
     }
 
     let language = detect_language(path);
-    if matches!(
-        language,
-        Language::GdScript | Language::GodotScene | Language::GdShader
-    ) {
+    if matches!(language, Language::GdScript | Language::GodotScene | Language::GdShader) {
         return Ok(godot::analyze_godot(
             path,
             &normalized_file,
@@ -128,9 +125,5 @@ impl LanguageExtractor for TreeSitterExtractor {
 
 fn normalize_path(path: &Path) -> String {
     let raw = path.to_string_lossy();
-    if raw.contains('\\') {
-        raw.replace('\\', "/")
-    } else {
-        raw.into_owned()
-    }
+    if raw.contains('\\') { raw.replace('\\', "/") } else { raw.into_owned() }
 }

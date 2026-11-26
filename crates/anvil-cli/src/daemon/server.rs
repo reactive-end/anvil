@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::atomic_write;
 use anvil_graph::{CodeGraphEngine, store};
+use anyhow::{Context, Result};
 use chrono::Utc;
 use ulid::Ulid;
 
@@ -51,37 +51,21 @@ pub fn run_foreground(repo_root: &Path) -> Result<()> {
     listener
         .set_nonblocking(true)
         .context("failed to configure non-blocking daemon TCP listener")?;
-    let port = listener
-        .local_addr()
-        .context("failed to read local daemon bound port")?
-        .port();
+    let port = listener.local_addr().context("failed to read local daemon bound port")?.port();
     let token = Ulid::new().to_string();
     let pid = std::process::id();
 
-    let persisted = PersistedDaemonState {
-        pid,
-        port,
-        token: token.clone(),
-        started_at: Utc::now(),
-    };
+    let persisted =
+        PersistedDaemonState { pid, port, token: token.clone(), started_at: Utc::now() };
     let state_bytes = serde_json::to_vec_pretty(&persisted)?;
     atomic_write(&state_path(repo_root), &state_bytes)?;
 
-    let shared_state = Arc::new(Mutex::new(DaemonState {
-        engine,
-        disk_sig: disk_file_sig(repo_root),
-    }));
+    let shared_state =
+        Arc::new(Mutex::new(DaemonState { engine, disk_sig: disk_file_sig(repo_root) }));
     let shutdown = Arc::new(AtomicBool::new(false));
     let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
     let idle_secs = resolve_idle_timeout_secs();
-    accept_loop(
-        &listener,
-        &token,
-        &shared_state,
-        &shutdown,
-        &last_activity,
-        idle_secs,
-    );
+    accept_loop(&listener, &token, &shared_state, &shutdown, &last_activity, idle_secs);
 
     remove_owned_state(repo_root, pid);
     Ok(())
@@ -97,7 +81,9 @@ fn accept_loop(
 ) {
     let active_conns = Arc::new(AtomicUsize::new(0));
     while !shutdown.load(Ordering::Acquire) {
-        if idle_secs > 0 && epoch_secs().saturating_sub(last_activity.load(Ordering::Acquire)) >= idle_secs {
+        if idle_secs > 0
+            && epoch_secs().saturating_sub(last_activity.load(Ordering::Acquire)) >= idle_secs
+        {
             break;
         }
         match listener.accept() {
@@ -115,9 +101,7 @@ fn accept_loop(
 }
 
 fn epoch_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
 fn resolve_idle_timeout_secs() -> u64 {
@@ -176,9 +160,8 @@ fn handle_connection(
         return;
     }
     if line.len() > MAX_DAEMON_REQ_BYTES {
-        let err = DaemonResponse::Error {
-            message: "daemon request exceeds 1 MiB limit".to_owned(),
-        };
+        let err =
+            DaemonResponse::Error { message: "daemon request exceeds 1 MiB limit".to_owned() };
         if let Ok(mut payload) = serde_json::to_vec(&err) {
             payload.push(b'\n');
             let _ = stream.write_all(&payload);
@@ -190,12 +173,8 @@ fn handle_connection(
         Ok(env) if env.token == expected_token => {
             dispatch_request(env.request, shared_state, shutdown)
         }
-        Ok(_) => DaemonResponse::Error {
-            message: "unauthorized daemon token".to_owned(),
-        },
-        Err(err) => DaemonResponse::Error {
-            message: format!("invalid request JSON: {err}"),
-        },
+        Ok(_) => DaemonResponse::Error { message: "unauthorized daemon token".to_owned() },
+        Err(err) => DaemonResponse::Error { message: format!("invalid request JSON: {err}") },
     };
 
     if let Ok(mut payload) = serde_json::to_vec(&response) {
@@ -216,9 +195,7 @@ fn dispatch_request(
     }
 
     let Ok(mut state) = shared_state.lock() else {
-        return DaemonResponse::Error {
-            message: "daemon engine lock poisoned".to_owned(),
-        };
+        return DaemonResponse::Error { message: "daemon engine lock poisoned".to_owned() };
     };
     refresh_if_disk_changed(&mut state);
 
@@ -236,28 +213,23 @@ fn dispatch_request(
                 }
                 DaemonResponse::Updated { rel_path, changed }
             }
-            Err(err) => DaemonResponse::Error {
-                message: err.to_string(),
-            },
+            Err(err) => DaemonResponse::Error { message: err.to_string() },
         },
-        DaemonRequest::Query { term, limit } => DaemonResponse::QueryHits {
-            hits: state.engine.query(&term, limit),
-        },
+        DaemonRequest::Query { term, limit } => {
+            DaemonResponse::QueryHits { hits: state.engine.query(&term, limit) }
+        }
         DaemonRequest::Outline { target, max_tokens } => DaemonResponse::OutlineResult {
             outline: state.engine.outline(target.as_deref(), max_tokens),
         },
-        DaemonRequest::ReadSymbol {
-            symbol,
-            include_imports,
-        } => match state.engine.read_symbol(&symbol, include_imports) {
-            Ok(slice) => DaemonResponse::SymbolSliceResult { slice },
-            Err(err) => DaemonResponse::Error {
-                message: err.to_string(),
-            },
-        },
-        DaemonRequest::BlastRadius { files, depth } => DaemonResponse::BlastResult {
-            report: state.engine.blast_radius(&files, depth),
-        },
+        DaemonRequest::ReadSymbol { symbol, include_imports } => {
+            match state.engine.read_symbol(&symbol, include_imports) {
+                Ok(slice) => DaemonResponse::SymbolSliceResult { slice },
+                Err(err) => DaemonResponse::Error { message: err.to_string() },
+            }
+        }
+        DaemonRequest::BlastRadius { files, depth } => {
+            DaemonResponse::BlastResult { report: state.engine.blast_radius(&files, depth) }
+        }
     }
 }
 
@@ -304,23 +276,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
         fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(
-            root.join("src/alpha.ts"),
-            "export function alphaOne(): number { return 1; }\n",
-        )
-        .unwrap();
+        fs::write(root.join("src/alpha.ts"), "export function alphaOne(): number { return 1; }\n")
+            .unwrap();
 
-        let cfg = AnvilConfig {
-            stacks: vec![StackKind::TypeScript],
-            ..AnvilConfig::default()
-        };
+        let cfg = AnvilConfig { stacks: vec![StackKind::TypeScript], ..AnvilConfig::default() };
         let engine = CodeGraphEngine::build(root, cfg.clone()).unwrap();
         engine.save().unwrap();
 
-        let shared = Arc::new(Mutex::new(DaemonState {
-            engine,
-            disk_sig: disk_file_sig(root),
-        }));
+        let shared = Arc::new(Mutex::new(DaemonState { engine, disk_sig: disk_file_sig(root) }));
         let shutdown = Arc::new(AtomicBool::new(false));
 
         // External rebuild adds a brand-new file and saves graph.bin directly to disk.
@@ -334,10 +297,7 @@ mod tests {
 
         // Dispatching Query should reload graph.bin from disk rather than serving stale RAM.
         let resp = dispatch_request(
-            DaemonRequest::Query {
-                term: "betaFreshSymbol".to_owned(),
-                limit: 5,
-            },
+            DaemonRequest::Query { term: "betaFreshSymbol".to_owned(), limit: 5 },
             &shared,
             &shutdown,
         );
@@ -358,9 +318,7 @@ mod tests {
         )
         .unwrap();
         let upd = dispatch_request(
-            DaemonRequest::UpdateFile {
-                rel_path: "src/alpha.ts".to_owned(),
-            },
+            DaemonRequest::UpdateFile { rel_path: "src/alpha.ts".to_owned() },
             &shared,
             &shutdown,
         );

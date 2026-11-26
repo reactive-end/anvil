@@ -32,10 +32,7 @@ fn graph_build_save_update_and_blast_radius_benchmark() {
 
     let (save_ms, load_ms) = measure_store(&engine);
     let sample = pick_sample_file(&engine);
-    engine
-        .graph
-        .file_hashes
-        .insert(sample.clone(), "forced-stale-hash".to_owned());
+    engine.graph.file_hashes.insert(sample.clone(), "forced-stale-hash".to_owned());
     let inc_start = Instant::now();
     let updated = builder::update_file(&mut engine.graph, &repo_root, &sample, &config)
         .expect("single-file incremental update");
@@ -105,7 +102,10 @@ fn write_workspace(root: &Path) {
         } else {
             let _ = writeln!(body, "export function step0(x: number): number {{\n  return x;\n}}");
         }
-        let _ = writeln!(body, "export class Service{idx} {{\n  run(): number {{\n    return step{idx}({idx});\n  }}\n}}");
+        let _ = writeln!(
+            body,
+            "export class Service{idx} {{\n  run(): number {{\n    return step{idx}({idx});\n  }}\n}}"
+        );
         fs::write(src.join(format!("module_{idx}.ts")), body).expect("write module");
     }
 }

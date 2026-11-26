@@ -63,11 +63,7 @@ fn react_prop_breakage_blast_radius_excludes_unrelated_files() {
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("build graph");
     let report = engine.blast_radius(&["src/components/Button.tsx".to_owned()], 2);
 
-    let impacted_paths: Vec<&str> = report
-        .impacted_files
-        .iter()
-        .map(|i| i.file.as_str())
-        .collect();
+    let impacted_paths: Vec<&str> = report.impacted_files.iter().map(|i| i.file.as_str()).collect();
     assert!(
         impacted_paths.contains(&"src/screens/CheckoutScreen.tsx"),
         "expected CheckoutScreen.tsx in impacted: {impacted_paths:?}"
@@ -83,10 +79,7 @@ fn react_prop_breakage_blast_radius_excludes_unrelated_files() {
         .expect("checkout item");
     assert!(checkout.is_screen);
 
-    assert_eq!(
-        report.related_tests,
-        vec!["src/components/Button.test.tsx".to_owned()]
-    );
+    assert_eq!(report.related_tests, vec!["src/components/Button.test.tsx".to_owned()]);
 }
 
 #[test]
@@ -101,11 +94,7 @@ fn angular_selector_modification_impacts_consuming_html_template() {
          @Component({ selector: 'app-header', templateUrl: './header.component.html' })\n\
          export class HeaderComponent { title = 'Anvil'; }\n",
     );
-    write_repo_file(
-        root,
-        "src/app/header/header.component.html",
-        "<header>{{ title }}</header>\n",
-    );
+    write_repo_file(root, "src/app/header/header.component.html", "<header>{{ title }}</header>\n");
     write_repo_file(
         root,
         "src/app/app.component.html",
@@ -126,11 +115,7 @@ fn angular_selector_modification_impacts_consuming_html_template() {
 
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("build angular graph");
     let report = engine.blast_radius(&["src/app/header/header.component.ts".to_owned()], 2);
-    let impacted: Vec<&str> = report
-        .impacted_files
-        .iter()
-        .map(|i| i.file.as_str())
-        .collect();
+    let impacted: Vec<&str> = report.impacted_files.iter().map(|i| i.file.as_str()).collect();
 
     assert!(
         impacted.contains(&"src/app/app.component.html"),
@@ -161,13 +146,19 @@ fn overengineering_check_accepts_a_new_abstraction_with_one_consumer() {
     );
 
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("build");
-    let report = engine.check_overengineering(&["src/core/SingleUseFactory.ts".to_owned()], &Default::default());
+    let report = engine
+        .check_overengineering(&["src/core/SingleUseFactory.ts".to_owned()], &Default::default());
     assert!(!report.flagged, "one non-test consumer is normal: {:?}", report.findings);
     assert!(report.findings.is_empty(), "no finding for a used abstraction: {:?}", report.findings);
     assert_eq!(report.flagged, !report.findings.is_empty());
 
     write_repo_file(root, "src/core/Lonely.ts", "export class Lonely { run() { return 2; } }\n");
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("rebuild");
-    let orphan = engine.check_overengineering(&["src/core/Lonely.ts".to_owned()], &Default::default());
-    assert!(orphan.flagged, "the same check still fires when nothing imports the file: {:?}", orphan.findings);
+    let orphan =
+        engine.check_overengineering(&["src/core/Lonely.ts".to_owned()], &Default::default());
+    assert!(
+        orphan.flagged,
+        "the same check still fires when nothing imports the file: {:?}",
+        orphan.findings
+    );
 }

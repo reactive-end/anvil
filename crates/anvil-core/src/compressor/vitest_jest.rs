@@ -52,11 +52,8 @@ impl OutputParser for VitestJestParser {
                 .collect();
         }
 
-        let total = lines
-            .iter()
-            .filter(|l| l.starts_with("FAIL ") || l.starts_with("● "))
-            .count()
-            .max(1);
+        let total =
+            lines.iter().filter(|l| l.starts_with("FAIL ") || l.starts_with("● ")).count().max(1);
         fail_output(
             self.name(),
             exit_code,

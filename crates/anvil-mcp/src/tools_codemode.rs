@@ -1,8 +1,8 @@
 //! Sandboxed Code Mode dispatcher (`code_exec`) over read-only Anvil MCP tools.
 
-use anyhow::{Result, bail};
 use anvil_codemode::{CodeModePolicy, ToolDispatcher, execute_script};
 use anvil_core::stats::{StatsEvent, record_event};
+use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
 use crate::McpServer;
@@ -54,16 +54,11 @@ pub fn call_code_exec(server: &mut McpServer, args: &Value) -> Result<Value> {
         .and_then(Value::as_str)
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| anyhow::anyhow!("`script` string is required"))?;
-    let max_calls = args
-        .get("max_calls")
-        .and_then(Value::as_u64)
-        .map_or(32, |n| (n as usize).clamp(1, 64));
+    let max_calls =
+        args.get("max_calls").and_then(Value::as_u64).map_or(32, |n| (n as usize).clamp(1, 64));
 
     let root = server.repo_root().to_path_buf();
-    let policy = CodeModePolicy {
-        max_calls,
-        ..CodeModePolicy::default()
-    };
+    let policy = CodeModePolicy { max_calls, ..CodeModePolicy::default() };
     let mut dispatcher = McpDispatcher(server);
     let res = execute_script(script, CODE_MODE_ALLOWLIST, &mut dispatcher, &policy)?;
 

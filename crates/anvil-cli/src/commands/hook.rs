@@ -16,10 +16,10 @@ mod token_guard;
 mod token_guard_media;
 mod token_guard_shell;
 
+use anyhow::Result;
 use std::io::{self, Read};
 use std::path::Path;
 use std::time::Instant;
-use anyhow::Result;
 
 use anvil_adapters::contract::{
     AdapterKind, HookEvent, HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput,
@@ -45,24 +45,28 @@ use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
 use crate::daemon::try_request;
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
 use payload::{
-    extract_command_field, extract_rel_file, extract_target_file_path,
-    is_circuit_reset_command, is_circuit_status_command, is_mutating_file_tool, is_read_only_tool,
-    is_within_root, resolve_hook_targets, should_bypass_stop, should_wrap_with_anvil_run,
+    extract_command_field, extract_rel_file, extract_target_file_path, is_circuit_reset_command,
+    is_circuit_status_command, is_mutating_file_tool, is_read_only_tool, is_within_root,
+    resolve_hook_targets, should_bypass_stop, should_wrap_with_anvil_run,
 };
+
+fn install_git_hook(root: &Path) -> Result<()> {
+    let updated = git_install::install_pre_commit_hook(root)?;
+    println!(
+        "{}",
+        if updated {
+            "installed `.git/hooks/pre-commit`"
+        } else {
+            "`.git/hooks/pre-commit` unchanged or no `.git` directory"
+        }
+    );
+    Ok(())
+}
 
 /// Executes `anvil hook <event> --adapter <antigravity|claude>`.
 pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     if event_raw.eq_ignore_ascii_case("install-git") {
-        let updated = git_install::install_pre_commit_hook(root)?;
-        println!(
-            "{}",
-            if updated {
-                "installed `.git/hooks/pre-commit`"
-            } else {
-                "`.git/hooks/pre-commit` unchanged or no `.git` directory"
-            }
-        );
-        return Ok(());
+        return install_git_hook(root);
     }
     let started = Instant::now();
     let adapter = AdapterKind::parse(adapter_raw)?;
@@ -96,7 +100,9 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         }
         HookEvent::PreToolUse => handle_pre_tool_use(&effective_root, &config, &input, adapter),
         HookEvent::PostToolUse => handle_post_tool_use(&effective_root, &config, &input),
-        HookEvent::Stop => handle_stop(&effective_root, &config, &input, should_bypass_stop(&raw_stdin)),
+        HookEvent::Stop => {
+            handle_stop(&effective_root, &config, &input, should_bypass_stop(&raw_stdin))
+        }
     };
 
     let rendered = match adapter {
@@ -164,12 +170,7 @@ fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
     match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
         Ok(st) if st.is_open() => {
             let msg = "Circuit Breaker is OPEN; run `anvil circuit reset` after fixing.".to_owned();
-            messages.push(InboxMessage::new(
-                "circuit-breaker",
-                MessageLevel::Error,
-                msg,
-                None,
-            ));
+            messages.push(InboxMessage::new("circuit-breaker", MessageLevel::Error, msg, None));
         }
         Ok(_) => {}
         Err(err) => error_log::log_hook_error(root, "session-start:circuit", &err),
@@ -181,10 +182,8 @@ fn append_session_memory(root: &Path, author: &str, messages: &mut Vec<InboxMess
     match MemoryEngine::open(root, author) {
         Ok(mem) => match mem.session_context(450) {
             Ok(hits) if !hits.is_empty() => {
-                let summary: Vec<String> = hits
-                    .into_iter()
-                    .map(|h| format!("[{}] {}", h.kind, h.title))
-                    .collect();
+                let summary: Vec<String> =
+                    hits.into_iter().map(|h| format!("[{}] {}", h.kind, h.title)).collect();
                 messages.push(InboxMessage::new(
                     "anvil-memory",
                     MessageLevel::Info,
@@ -206,10 +205,8 @@ fn append_session_graph(root: &Path, messages: &mut Vec<InboxMessage>) {
     }
     match store::read_header(&bin_path) {
         Ok(header) => {
-            let msg = format!(
-                "Graph ready ({} nodes, {} edges)",
-                header.live_nodes, header.live_edges
-            );
+            let msg =
+                format!("Graph ready ({} nodes, {} edges)", header.live_nodes, header.live_edges);
             messages.push(InboxMessage::new("anvil-graph", MessageLevel::Info, msg, None));
         }
         Err(err) => error_log::log_hook_error(root, "session-start:graph-header", &err),
@@ -276,7 +273,9 @@ fn format_resume_inbox_msg(brief: &anvil_tasks::TaskResumeBrief) -> String {
         };
         parts.push(format!("LastCmd: [{status}] {cmd}"));
     }
-    parts.push("Run `task_resume` / `anvil tasks resume` before restarting from scratch.".to_owned());
+    parts.push(
+        "Run `task_resume` / `anvil tasks resume` before restarting from scratch.".to_owned(),
+    );
     parts.join(" | ")
 }
 
@@ -333,7 +332,9 @@ fn handle_pre_tool_use(
     }
     if let Some((key, cmd)) = cmd_field {
         if security_guard::bypasses_git_hooks(cmd) {
-            return HookOutcome::deny("Forbidden `--no-verify` bypass flag detected (git hooks must run).");
+            return HookOutcome::deny(
+                "Forbidden `--no-verify` bypass flag detected (git hooks must run).",
+            );
         }
         if should_wrap_with_anvil_run(cmd)
             && let Some(mut obj) = input.tool_input.as_ref().and_then(Value::as_object).cloned()
@@ -478,7 +479,8 @@ fn append_stop_advisories(
         let msg = texts::impact(lang, blast.impacted_files.len(), blast.related_tests.len());
         messages.push(InboxMessage::new("tier1:impact", MessageLevel::Info, msg, None));
     }
-    let classified = classify_files(&changed.iter().map(ChangedFile::from_path).collect::<Vec<_>>());
+    let classified =
+        classify_files(&changed.iter().map(ChangedFile::from_path).collect::<Vec<_>>());
     if classified.needs_visual_qa && !is_visual_qa_skipped(root, config) {
         messages.push(InboxMessage::new(
             "tier2:qa",
@@ -506,13 +508,9 @@ fn resolve_stop_blast(
     config: &AnvilConfig,
     changed: &[String],
 ) -> Option<anvil_graph::impact::BlastRadiusReport> {
-    if let Some(DaemonResponse::BlastResult { report }) = try_request(
-        root,
-        DaemonRequest::BlastRadius {
-            files: changed.to_vec(),
-            depth: 2,
-        },
-    ) {
+    if let Some(DaemonResponse::BlastResult { report }) =
+        try_request(root, DaemonRequest::BlastRadius { files: changed.to_vec(), depth: 2 })
+    {
         return Some(report);
     }
     match CodeGraphEngine::load_cached(root, config.clone()) {
@@ -581,18 +579,10 @@ fn check_subrepo_stop_gates(
 
 fn collect_subrepo_stop_paths(root: &Path, config: &AnvilConfig) -> Vec<String> {
     if !config.subrepos.is_empty() {
-        return config
-            .subrepos
-            .iter()
-            .filter(|s| s.path != ".")
-            .map(|s| s.path.clone())
-            .collect();
+        return config.subrepos.iter().filter(|s| s.path != ".").map(|s| s.path.clone()).collect();
     }
     if root.join(".harness").is_dir() {
         return Vec::new();
     }
-    discover_umbrella_subrepos(root)
-        .into_iter()
-        .map(|s| s.rel_path)
-        .collect()
+    discover_umbrella_subrepos(root).into_iter().map(|s| s.rel_path).collect()
 }

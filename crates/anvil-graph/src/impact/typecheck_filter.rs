@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::traits::CompressedOutput;
+use anyhow::Result;
 
 struct PartitionResult<'a> {
     kept: Vec<&'a str>,
@@ -57,11 +57,7 @@ pub fn filter_typecheck_output(
         });
     }
 
-    let payload = if has_kept_error {
-        part.kept.join("\n")
-    } else {
-        raw_output.to_owned()
-    };
+    let payload = if has_kept_error { part.kept.join("\n") } else { raw_output.to_owned() };
     compress_output(repo_root, label, exit_code, &payload, max_lines, max_tokens)
 }
 
@@ -76,7 +72,10 @@ fn normalize_patterns(impacted_files: &[String]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn partition_diagnostics<'a>(raw_output: &'a str, patterns: &[(String, String)]) -> PartitionResult<'a> {
+fn partition_diagnostics<'a>(
+    raw_output: &'a str,
+    patterns: &[(String, String)],
+) -> PartitionResult<'a> {
     let mut kept = Vec::new();
     let mut suppressed_other_file = 0usize;
     let mut unattributed_errors = 0usize;
@@ -124,11 +123,7 @@ fn partition_diagnostics<'a>(raw_output: &'a str, patterns: &[(String, String)])
         unattributed_errors += 1;
     }
 
-    PartitionResult {
-        kept,
-        suppressed_other_file,
-        unattributed_errors,
-    }
+    PartitionResult { kept, suppressed_other_file, unattributed_errors }
 }
 
 fn has_explicit_file_path(line: &str) -> bool {
@@ -140,8 +135,7 @@ fn has_explicit_file_path(line: &str) -> bool {
     EXTS.iter().any(|ext| {
         lower.match_indices(ext).any(|(idx, _)| {
             let after = &lower[idx + ext.len()..];
-            after.is_empty()
-                || after.starts_with([':', '(', ' ', '\t', ',', ')', '\r', '\n'])
+            after.is_empty() || after.starts_with([':', '(', ' ', '\t', ',', ')', '\r', '\n'])
         })
     })
 }
@@ -151,15 +145,10 @@ pub(crate) fn line_matches_path(line: &str, pat: &str) -> bool {
         return false;
     }
     for (idx, _) in line.match_indices(pat) {
-        let prev_ok = line[..idx]
-            .chars()
-            .next_back()
-            .is_none_or(|c| !is_path_ident_char(c));
+        let prev_ok = line[..idx].chars().next_back().is_none_or(|c| !is_path_ident_char(c));
         let after = &line[idx + pat.len()..];
-        let next_ok = after
-            .chars()
-            .next()
-            .is_none_or(|c| !is_path_ident_char(c) && c != '/' && c != '\\');
+        let next_ok =
+            after.chars().next().is_none_or(|c| !is_path_ident_char(c) && c != '/' && c != '\\');
         if prev_ok && next_ok {
             return true;
         }

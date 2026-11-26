@@ -33,11 +33,7 @@ pub(crate) fn ingest_hyperedges(
                 GraphNode {
                     id: sem_id_str,
                     kind: NodeKind::Semantic,
-                    label: if he.label.is_empty() {
-                        he.id.clone()
-                    } else {
-                        he.label.clone()
-                    },
+                    label: if he.label.is_empty() { he.id.clone() } else { he.label.clone() },
                     file: norm_file.clone(),
                     line: 1,
                     end_line: 0,

@@ -14,8 +14,8 @@ pub fn scan_logcat(logcat: &str) -> Vec<QaViolation> {
     let fatal_re = FATAL_RE.get_or_init(|| {
         Regex::new(r"(?i)FATAL EXCEPTION(?::\s*(.+))?").unwrap_or_else(|_| unreachable!())
     });
-    let anr_re = ANR_RE
-        .get_or_init(|| Regex::new(r"ANR in\s+([^\s(]+)").unwrap_or_else(|_| unreachable!()));
+    let anr_re =
+        ANR_RE.get_or_init(|| Regex::new(r"ANR in\s+([^\s(]+)").unwrap_or_else(|_| unreachable!()));
 
     let mut violations = Vec::new();
     for (idx, line) in logcat.lines().enumerate() {

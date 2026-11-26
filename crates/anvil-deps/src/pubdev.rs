@@ -77,14 +77,8 @@ pub fn parse_pubdev_registry_json(package: &str, body: &str) -> Result<PackageHe
     let root: Value = serde_json::from_str(body)
         .with_context(|| format!("invalid pub.dev JSON for `{package}`"))?;
 
-    let discontinued = root
-        .get("isDiscontinued")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let replaced_by = root
-        .get("replacedBy")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty());
+    let discontinued = root.get("isDiscontinued").and_then(Value::as_bool).unwrap_or(false);
+    let replaced_by = root.get("replacedBy").and_then(Value::as_str).filter(|s| !s.is_empty());
 
     let deprecation_message = if discontinued {
         Some(match replaced_by {
@@ -96,14 +90,10 @@ pub fn parse_pubdev_registry_json(package: &str, body: &str) -> Result<PackageHe
     };
 
     let latest = root.get("latest");
-    let latest_version = latest
-        .and_then(|l| l.get("version"))
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let last_publish = latest
-        .and_then(|l| l.get("published"))
-        .and_then(Value::as_str)
-        .and_then(parse_rfc3339_utc);
+    let latest_version =
+        latest.and_then(|l| l.get("version")).and_then(Value::as_str).map(str::to_owned);
+    let last_publish =
+        latest.and_then(|l| l.get("published")).and_then(Value::as_str).and_then(parse_rfc3339_utc);
     let repository_url = latest
         .and_then(|l| l.get("pubspec"))
         .and_then(|p| p.get("repository").or_else(|| p.get("homepage")))

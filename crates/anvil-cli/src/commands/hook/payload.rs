@@ -57,16 +57,11 @@ pub fn resolve_hook_root(default_root: &Path, cwd: Option<&str>) -> PathBuf {
     if path.join(".harness").is_dir() {
         return path;
     }
-    find_initialized_root_upward(&path)
-        .or_else(|| git::repo_root(&path).ok())
-        .unwrap_or(path)
+    find_initialized_root_upward(&path).or_else(|| git::repo_root(&path).ok()).unwrap_or(path)
 }
 
 fn find_initialized_root_upward(start: &Path) -> Option<PathBuf> {
-    start
-        .ancestors()
-        .find(|dir| dir.join(".harness").is_dir())
-        .map(Path::to_path_buf)
+    start.ancestors().find(|dir| dir.join(".harness").is_dir()).map(Path::to_path_buf)
 }
 
 fn paths_equal(a: &Path, b: &Path) -> bool {
@@ -105,11 +100,7 @@ pub(super) fn extract_target_file_path(
 ) -> Option<PathBuf> {
     let raw = extract_raw_file_path(tool_input)?;
     let p = PathBuf::from(raw);
-    if p.is_absolute() {
-        Some(p)
-    } else {
-        Some(cwd_root.join(p))
-    }
+    if p.is_absolute() { Some(p) } else { Some(cwd_root.join(p)) }
 }
 
 /// Checks loop-guard continuation flags across Antigravity and Claude Code `Stop` payloads.
@@ -151,7 +142,8 @@ pub fn contains_shell_metacharacters(cmd: &str) -> bool {
 /// Returns `true` if a simple shell command should be transparently wrapped with `anvil run --`.
 pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
     let trimmed = cmd.trim();
-    if trimmed.is_empty() || contains_shell_metacharacters(trimmed) || trimmed.contains("anvil run") {
+    if trimmed.is_empty() || contains_shell_metacharacters(trimmed) || trimmed.contains("anvil run")
+    {
         return false;
     }
     let tokens = split_shell_tokens(trimmed);
@@ -169,10 +161,30 @@ pub fn should_wrap_with_anvil_run(cmd: &str) -> bool {
 fn matches_wrappable_command(prog: &str, norm_rest: &[String], raw_rest: &[String]) -> bool {
     if matches!(
         prog,
-        "tsc" | "tsgo" | "eslint" | "biome" | "vitest" | "jest" | "pytest" | "ruff"
-            | "pyright" | "mypy" | "ktlint" | "detekt" | "gdlint" | "gradlew" | "phpstan"
-            | "psalm" | "phpunit" | "pest" | "pint" | "vue-tsc" | "godot" | "godot4"
-            | "sonar" | "sonar-scanner"
+        "tsc"
+            | "tsgo"
+            | "eslint"
+            | "biome"
+            | "vitest"
+            | "jest"
+            | "pytest"
+            | "ruff"
+            | "pyright"
+            | "mypy"
+            | "ktlint"
+            | "detekt"
+            | "gdlint"
+            | "gradlew"
+            | "phpstan"
+            | "psalm"
+            | "phpunit"
+            | "pest"
+            | "pint"
+            | "vue-tsc"
+            | "godot"
+            | "godot4"
+            | "sonar"
+            | "sonar-scanner"
     ) {
         return true;
     }
@@ -315,10 +327,7 @@ fn skip_anvil_global_flags(tokens: &[String]) -> Option<usize> {
     while let Some(tok) = tokens.get(idx).map(String::as_str) {
         if matches!(tok, "--root" | "--repo") {
             idx += 2;
-        } else if tok == "--no-color"
-            || tok.starts_with("--root=")
-            || tok.starts_with("--repo=")
-        {
+        } else if tok == "--no-color" || tok.starts_with("--root=") || tok.starts_with("--repo=") {
             idx += 1;
         } else {
             break;

@@ -169,10 +169,7 @@ fn should_keep_unresolved(edge: &EdgeRef) -> bool {
 }
 
 fn is_pass1_edge(kind: EdgeKind) -> bool {
-    matches!(
-        kind,
-        EdgeKind::Imports | EdgeKind::ReExports | EdgeKind::RendersTemplate
-    )
+    matches!(kind, EdgeKind::Imports | EdgeKind::ReExports | EdgeKind::RendersTemplate)
 }
 
 fn resolve_source_node_id(edge: &EdgeRef, graph: &CodeGraph) -> Option<NodeId> {

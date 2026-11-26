@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use boa_engine::property::Attribute;
-use boa_engine::{Context, JsArgs, JsError, JsNativeError, JsResult, JsValue, NativeFunction, Source, js_string};
+use boa_engine::{
+    Context, JsArgs, JsError, JsNativeError, JsResult, JsValue, NativeFunction, Source, js_string,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -96,18 +98,15 @@ pub fn execute_script(
     let script_owned = script.to_owned();
 
     let vm_outcome = thread::scope(|scope| {
-        let handle = scope.spawn(move || {
-            run_js_vm(&script_owned, tools, req_tx, resp_rx, &policy_cloned)
-        });
+        let handle =
+            scope.spawn(move || run_js_vm(&script_owned, tools, req_tx, resp_rx, &policy_cloned));
         while let Ok(call) = req_rx.recv() {
             let res = dispatcher.call(&call.tool, call.args);
             if resp_tx.send(res).is_err() {
                 break;
             }
         }
-        handle
-            .join()
-            .map_err(|_| anyhow::anyhow!("Code Mode VM thread panicked"))?
+        handle.join().map_err(|_| anyhow::anyhow!("Code Mode VM thread panicked"))?
     })?;
 
     let (value, calls_executed, intermediate_bytes) = vm_outcome;
@@ -151,10 +150,8 @@ fn run_js_vm(
     let _guard = BridgeResetGuard;
 
     let mut ctx = Context::default();
-    ctx.runtime_limits_mut()
-        .set_loop_iteration_limit(policy.max_loop_iterations);
-    ctx.runtime_limits_mut()
-        .set_recursion_limit(policy.max_recursion);
+    ctx.runtime_limits_mut().set_loop_iteration_limit(policy.max_loop_iterations);
+    ctx.runtime_limits_mut().set_recursion_limit(policy.max_recursion);
 
     let call_fn = NativeFunction::from_copy_closure(host_call_tool).to_js_function(ctx.realm());
     ctx.register_global_property(js_string!("__anvil_call"), call_fn, Attribute::all())
@@ -175,9 +172,7 @@ fn run_js_vm(
         .unwrap_or(Value::Null);
 
     let (calls_executed, intermediate_bytes) = ACTIVE_BRIDGE.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map_or((0, 0), |b| (b.calls_executed, b.intermediate_bytes))
+        cell.borrow().as_ref().map_or((0, 0), |b| (b.calls_executed, b.intermediate_bytes))
     });
     Ok((json_val, calls_executed, intermediate_bytes))
 }
@@ -188,7 +183,9 @@ fn build_anvil_namespace_js(allowed_tools: &[String]) -> String {
         if let Ok(lit) = serde_json::to_string(tool)
             && is_valid_js_ident(tool)
         {
-            entries.push(format!("{tool}: function(args) {{ return __anvil_call({lit}, args || {{}}); }}"));
+            entries.push(format!(
+                "{tool}: function(args) {{ return __anvil_call({lit}, args || {{}}); }}"
+            ));
         }
     }
     format!(
@@ -207,10 +204,7 @@ fn is_valid_js_ident(name: &str) -> bool {
 }
 
 fn host_call_tool(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
-    let tool_name = args
-        .get_or_undefined(0)
-        .to_string(ctx)?
-        .to_std_string_escaped();
+    let tool_name = args.get_or_undefined(0).to_string(ctx)?.to_std_string_escaped();
     let raw_arg = args.get_or_undefined(1);
     let json_arg = if raw_arg.is_undefined() || raw_arg.is_null() {
         Value::Object(Default::default())
@@ -220,9 +214,7 @@ fn host_call_tool(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRes
 
     let response = ACTIVE_BRIDGE.with(|cell| -> Result<Value, String> {
         let mut guard = cell.borrow_mut();
-        let bridge = guard
-            .as_mut()
-            .ok_or_else(|| "Code Mode bridge is inactive".to_owned())?;
+        let bridge = guard.as_mut().ok_or_else(|| "Code Mode bridge is inactive".to_owned())?;
         if Instant::now() > bridge.deadline {
             return Err("Code Mode execution timed out".to_owned());
         }
@@ -230,18 +222,12 @@ fn host_call_tool(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRes
             return Err(format!("tool `{tool_name}` is not allowlisted in Code Mode"));
         }
         if bridge.calls_executed >= bridge.max_calls {
-            return Err(format!(
-                "Code Mode call limit ({}) exceeded",
-                bridge.max_calls
-            ));
+            return Err(format!("Code Mode call limit ({}) exceeded", bridge.max_calls));
         }
         bridge.calls_executed += 1;
         bridge
             .req_tx
-            .send(BridgeCall {
-                tool: tool_name,
-                args: json_arg,
-            })
+            .send(BridgeCall { tool: tool_name, args: json_arg })
             .map_err(|_| "Code Mode host channel closed".to_owned())?;
         let val = bridge
             .resp_rx
@@ -253,8 +239,7 @@ fn host_call_tool(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRes
         Ok(val)
     });
 
-    let payload = response.map_err(|msg| {
-        JsError::from_native(JsNativeError::error().with_message(msg))
-    })?;
+    let payload =
+        response.map_err(|msg| JsError::from_native(JsNativeError::error().with_message(msg)))?;
     JsValue::from_json(&payload, ctx)
 }

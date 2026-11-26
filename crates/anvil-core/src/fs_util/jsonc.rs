@@ -56,7 +56,8 @@ fn strip_trailing_commas(input: &str) -> String {
             out.push(c);
             continue;
         }
-        if c == ',' && matches!(chars[i + 1..].iter().find(|ch| !ch.is_whitespace()), Some('}' | ']'))
+        if c == ','
+            && matches!(chars[i + 1..].iter().find(|ch| !ch.is_whitespace()), Some('}' | ']'))
         {
             continue;
         }

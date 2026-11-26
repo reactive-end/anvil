@@ -50,10 +50,7 @@ pub struct CodeGraph {
 impl CodeGraph {
     /// Creates an empty graph bound to a normalized repository root string.
     pub fn new(repo_root: impl Into<String>) -> Self {
-        Self {
-            repo_root: repo_root.into(),
-            ..Self::default()
-        }
+        Self { repo_root: repo_root.into(), ..Self::default() }
     }
 
     /// Canonical node ID for a repository-relative file path.
@@ -146,9 +143,7 @@ impl CodeGraph {
     /// Returns a human-readable target name for a `CompactEdge`.
     pub fn edge_target_label(&self, edge: &CompactEdge) -> &str {
         if edge.is_resolved() {
-            self.nodes
-                .get(edge.target as usize)
-                .map_or("", |n| n.label.as_str())
+            self.nodes.get(edge.target as usize).map_or("", |n| n.label.as_str())
         } else {
             self.external_str(edge.target).unwrap_or("")
         }

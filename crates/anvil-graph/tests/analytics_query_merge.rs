@@ -5,9 +5,9 @@ use std::path::Path;
 
 use anvil_core::config::AnvilConfig;
 use anvil_core::traits::{FreshnessState, SymbolFreshnessProvider};
+use anvil_graph::CodeGraphEngine;
 use anvil_graph::merge::merge_graphs;
 use anvil_graph::model::NodeKind;
-use anvil_graph::CodeGraphEngine;
 use tempfile::TempDir;
 
 fn write_repo_file(root: &Path, rel: &str, content: &str) {
@@ -45,9 +45,7 @@ fn query_path_explain_origin_analytics_and_freshness() {
     assert!(!hits.is_empty());
     assert_eq!(hits[0].label, "verifyToken");
 
-    let path = engine
-        .shortest_path("src/api/session.ts", "src/core/auth.ts")
-        .expect("path exists");
+    let path = engine.shortest_path("src/api/session.ts", "src/core/auth.ts").expect("path exists");
     assert_eq!(path.steps.len(), 2);
 
     let origin = engine.find_origin("src/core/index.ts").expect("origin");
@@ -83,9 +81,7 @@ fn query_path_explain_origin_analytics_and_freshness() {
         .expect("needs verification");
     assert_eq!(modified.state, FreshnessState::NeedsVerification);
 
-    let stale = engine
-        .check_freshness(&["src/core/missing.ts".to_owned()], &[])
-        .expect("stale");
+    let stale = engine.check_freshness(&["src/core/missing.ts".to_owned()], &[]).expect("stale");
     assert_eq!(stale.state, FreshnessState::Stale);
 }
 
@@ -104,13 +100,10 @@ fn multi_repo_merge_and_graphify_overlay() {
         "src/api.ts",
         "export function fetchOrders() { return OrderDto(); }\n",
     );
-    write_repo_file(
-        back_dir.path(),
-        "src/orders.ts",
-        "export class OrderDto {}\n",
-    );
+    write_repo_file(back_dir.path(), "src/orders.ts", "export class OrderDto {}\n");
 
-    let mut front = CodeGraphEngine::build(front_dir.path(), AnvilConfig::default()).expect("front");
+    let mut front =
+        CodeGraphEngine::build(front_dir.path(), AnvilConfig::default()).expect("front");
     let back = CodeGraphEngine::build(back_dir.path(), AnvilConfig::default()).expect("back");
 
     // Apply Graphify NetworkX overlay with semantic/rationale node & hyperedge

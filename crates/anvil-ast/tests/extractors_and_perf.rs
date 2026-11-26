@@ -39,15 +39,32 @@ export function ProfileCard({ title }: CardProps) {
 
     assert!(facts.symbols.iter().any(|s| s.name == "CardProps" && s.kind == SymbolKind::Interface));
     assert!(facts.symbols.iter().any(|s| s.name == "CardId" && s.kind == SymbolKind::TypeAlias));
-    assert!(facts.symbols.iter().any(|s| s.name == "ProfileCard" && s.kind == SymbolKind::Component));
+    assert!(
+        facts.symbols.iter().any(|s| s.name == "ProfileCard" && s.kind == SymbolKind::Component)
+    );
 
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "./Button"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "Button.variant"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "Button.onClick"));
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "./Button")
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "Button.variant")
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "Button.onClick")
+    );
 }
 
 #[test]
-fn extracts_angular_component_and_html_template_and_nestjs() {
+fn extracts_angular_component_and_html_template() {
     let cfg = AnvilConfig::default();
     let ng_ts = r#"
 import { Component } from '@angular/core';
@@ -58,15 +75,41 @@ import { Component } from '@angular/core';
 export class UserCardComponent {}
 "#;
     let ts_facts = analyze_file(Path::new("src/user-card.component.ts"), ng_ts, &cfg).expect("ng");
-    assert!(ts_facts.symbols.iter().any(|s| s.name == "app-user-card" && s.kind == SymbolKind::Component));
-    assert!(ts_facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate && e.target_path_or_symbol == "./user-card.component.html"));
+    assert!(
+        ts_facts
+            .symbols
+            .iter()
+            .any(|s| s.name == "app-user-card" && s.kind == SymbolKind::Component)
+    );
+    assert!(ts_facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate
+        && e.target_path_or_symbol == "./user-card.component.html"));
 
     let ng_html = r#"<section><app-user-card [user]="activeUser" (selected)="onSelect($event)"></app-user-card></section>"#;
-    let html_facts = analyze_file(Path::new("src/user-card.component.html"), ng_html, &cfg).expect("html");
-    assert!(html_facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate && e.target_path_or_symbol == "app-user-card"));
-    assert!(html_facts.edges.iter().any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "app-user-card.user"));
-    assert!(html_facts.edges.iter().any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "onSelect"));
+    let html_facts =
+        analyze_file(Path::new("src/user-card.component.html"), ng_html, &cfg).expect("html");
+    assert!(
+        html_facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::RendersTemplate
+                && e.target_path_or_symbol == "app-user-card")
+    );
+    assert!(
+        html_facts.edges.iter().any(
+            |e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "app-user-card.user"
+        )
+    );
+    assert!(
+        html_facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "onSelect")
+    );
+}
 
+#[test]
+fn extracts_nestjs_module_injections_and_providers() {
+    let cfg = AnvilConfig::default();
     let nest = r#"
 @Injectable()
 export class AuthService {
@@ -80,10 +123,27 @@ export class AuthService {
 export class AuthModule {}
 "#;
     let nest_facts = analyze_file(Path::new("src/auth.module.ts"), nest, &cfg).expect("nest");
-    assert!(nest_facts.symbols.iter().any(|s| s.name == "AuthModule" && s.kind == SymbolKind::Module));
-    assert!(nest_facts.edges.iter().any(|e| e.kind == EdgeKind::Injects && e.target_path_or_symbol == "UserRepo"));
-    assert!(nest_facts.edges.iter().any(|e| e.kind == EdgeKind::Provides && e.target_path_or_symbol == "AuthService"));
-    assert!(nest_facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "UsersModule"));
+    assert!(
+        nest_facts.symbols.iter().any(|s| s.name == "AuthModule" && s.kind == SymbolKind::Module)
+    );
+    assert!(
+        nest_facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Injects && e.target_path_or_symbol == "UserRepo")
+    );
+    assert!(
+        nest_facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Provides && e.target_path_or_symbol == "AuthService")
+    );
+    assert!(
+        nest_facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "UsersModule")
+    );
 }
 
 #[test]
@@ -92,24 +152,50 @@ fn extracts_python_kotlin_dart_and_css() {
 
     let py = "from core.auth import BaseUser\nclass Admin(BaseUser):\n    def verify(self):\n        check_token()\n";
     let py_f = analyze_file(Path::new("app/admin.py"), py, &cfg).expect("py");
-    assert!(py_f.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "core.auth"));
-    assert!(py_f.edges.iter().any(|e| e.kind == EdgeKind::Extends && e.target_path_or_symbol == "BaseUser"));
-    assert!(py_f.symbols.iter().any(|s| s.qualified_name == "Admin.verify" && s.kind == SymbolKind::Method));
+    assert!(
+        py_f.edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "core.auth")
+    );
+    assert!(
+        py_f.edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Extends && e.target_path_or_symbol == "BaseUser")
+    );
+    assert!(
+        py_f.symbols
+            .iter()
+            .any(|s| s.qualified_name == "Admin.verify" && s.kind == SymbolKind::Method)
+    );
 
     let kt = "import androidx.compose.runtime.Composable\n@Composable\nfun Greeting(name: String) { Text(name) }\nclass RepoImpl : BaseRepo(), IRepo {}\n";
     let kt_f = analyze_file(Path::new("app/Greeting.kt"), kt, &cfg).expect("kt");
     assert!(kt_f.symbols.iter().any(|s| s.name == "Greeting" && s.kind == SymbolKind::Component));
-    assert!(kt_f.edges.iter().any(|e| e.kind == EdgeKind::Extends && e.target_path_or_symbol == "BaseRepo"));
-    assert!(kt_f.edges.iter().any(|e| e.kind == EdgeKind::Implements && e.target_path_or_symbol == "IRepo"));
+    assert!(
+        kt_f.edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Extends && e.target_path_or_symbol == "BaseRepo")
+    );
+    assert!(
+        kt_f.edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Implements && e.target_path_or_symbol == "IRepo")
+    );
 
     let dart = "import 'package:flutter/material.dart';\nclass HomeCard extends StatelessWidget {\n  Widget build(BuildContext context) => Container();\n}\n";
     let dart_f = analyze_file(Path::new("lib/home_card.dart"), dart, &cfg).expect("dart");
     assert!(dart_f.symbols.iter().any(|s| s.name == "HomeCard" && s.kind == SymbolKind::Component));
-    assert!(dart_f.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "package:flutter/material.dart"));
+    assert!(dart_f.edges.iter().any(|e| e.kind == EdgeKind::Imports
+        && e.target_path_or_symbol == "package:flutter/material.dart"));
 
     let css = "@import './tokens.css';\n:root { --brand: #111; }\n.btn-primary { color: var(--brand); }\n";
     let css_f = analyze_file(Path::new("src/styles.css"), css, &cfg).expect("css");
-    assert!(css_f.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "./tokens.css"));
+    assert!(
+        css_f
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "./tokens.css")
+    );
     assert!(css_f.symbols.iter().any(|s| s.name == ".btn-primary"));
     assert!(css_f.symbols.iter().any(|s| s.name == "--brand"));
 }

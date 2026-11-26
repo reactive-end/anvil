@@ -26,18 +26,12 @@ fn check_cache_hits_and_invalidates_on_edit() {
     write_file(root, "src/util.rs", b"pub fn b() -> i32 { 2 }\n");
     write_file(root, "Cargo.toml", b"[package]\nname = \"demo\"\n");
 
-    let k1 = compute_scope_key(
-        root,
-        &["src/util.rs".to_owned(), "./src/lib.rs".to_owned()],
-        "tier1-v1",
-    )
-    .expect("compute key");
-    let k1_reordered = compute_scope_key(
-        root,
-        &["src\\lib.rs".to_owned(), "src/util.rs".to_owned()],
-        "tier1-v1",
-    )
-    .expect("compute reordered key");
+    let k1 =
+        compute_scope_key(root, &["src/util.rs".to_owned(), "./src/lib.rs".to_owned()], "tier1-v1")
+            .expect("compute key");
+    let k1_reordered =
+        compute_scope_key(root, &["src\\lib.rs".to_owned(), "src/util.rs".to_owned()], "tier1-v1")
+            .expect("compute reordered key");
     assert_eq!(k1, k1_reordered);
     assert!(lookup(root, &k1).expect("lookup miss").is_none());
 
@@ -55,22 +49,16 @@ fn check_cache_hits_and_invalidates_on_edit() {
     assert!(hit.passed && hit.summary == "PASS tier1");
 
     write_file(root, "src/lib.rs", b"pub fn a() -> i32 { 42 }\n");
-    let k2 = compute_scope_key(
-        root,
-        &["src/lib.rs".to_owned(), "src/util.rs".to_owned()],
-        "tier1-v1",
-    )
-    .expect("compute key after edit");
+    let k2 =
+        compute_scope_key(root, &["src/lib.rs".to_owned(), "src/util.rs".to_owned()], "tier1-v1")
+            .expect("compute key after edit");
     assert_ne!(k1, k2);
     assert!(lookup(root, &k2).expect("lookup after edit").is_none());
 
     write_file(root, "package.json", b"{\"name\":\"demo\"}\n");
-    let k3 = compute_scope_key(
-        root,
-        &["src/lib.rs".to_owned(), "src/util.rs".to_owned()],
-        "tier1-v1",
-    )
-    .expect("compute key after manifest edit");
+    let k3 =
+        compute_scope_key(root, &["src/lib.rs".to_owned(), "src/util.rs".to_owned()], "tier1-v1")
+            .expect("compute key after manifest edit");
     assert_ne!(k2, k3);
 }
 
@@ -137,20 +125,13 @@ fn stats_record_accumulate_and_reset() {
         StatsEvent::HookCall { elapsed_ms: 14 },
         StatsEvent::HookCall { elapsed_ms: 6 },
         StatsEvent::CheckCacheHit,
-        StatsEvent::CompressorSaved {
-            raw_bytes: 1000,
-            compact_bytes: 200,
-        },
+        StatsEvent::CompressorSaved { raw_bytes: 1000, compact_bytes: 200 },
         StatsEvent::SymbolReadSaved { tokens_saved: 120 },
         StatsEvent::OutlineSaved { tokens_saved: 80 },
         StatsEvent::TokenGuard { blocked: true, tokens_avoided: 40 },
         StatsEvent::TokenGuard { blocked: false, tokens_avoided: 0 },
-        StatsEvent::RuleHit {
-            rule: "no-ts-ignore".to_owned(),
-        },
-        StatsEvent::RuleHit {
-            rule: "no-ts-ignore".to_owned(),
-        },
+        StatsEvent::RuleHit { rule: "no-ts-ignore".to_owned() },
+        StatsEvent::RuleHit { rule: "no-ts-ignore".to_owned() },
     ];
     for event in events {
         record_event(root, event).expect("record event");
@@ -293,7 +274,8 @@ fn traits_symbol_def_and_route_edges_serde_compat() {
         "signature": null,
         "exported": true
     }"#;
-    let parsed: SymbolDef = serde_json::from_str(legacy_json).expect("deserialize legacy SymbolDef");
+    let parsed: SymbolDef =
+        serde_json::from_str(legacy_json).expect("deserialize legacy SymbolDef");
     assert_eq!((parsed.kind, parsed.line, parsed.end_line), (SymbolKind::Class, 12, 0));
 
     let exposes = serde_json::to_string(&EdgeKind::ExposesRoute).expect("serialize ExposesRoute");
@@ -307,14 +289,28 @@ fn godot_parser_log_rotation_and_tier0_cache_work() {
     let root = tmp.path();
 
     let raw = "Godot Engine v4.3.stable\nSCRIPT ERROR: Parse Error: Identifier not found\n   at: GDScript::reload (res://player.gd:12)\n";
-    let compressed = anvil_core::compressor::compress_output(Some(root), "godot --headless --check-only", 1, raw, 50, 1200)
-        .expect("compress godot output");
+    let compressed = anvil_core::compressor::compress_output(
+        Some(root),
+        "godot --headless --check-only",
+        1,
+        raw,
+        50,
+        1200,
+    )
+    .expect("compress godot output");
     assert!(!compressed.passed);
     assert_eq!(compressed.tool, "godot");
     assert!(compressed.lines.iter().any(|l| l.contains("SCRIPT ERROR:")));
 
     for i in 0..54 {
-        let _ = anvil_core::compressor::compress_output(Some(root), "godot", 1, &format!("ERROR: {i}"), 50, 1200);
+        let _ = anvil_core::compressor::compress_output(
+            Some(root),
+            "godot",
+            1,
+            &format!("ERROR: {i}"),
+            50,
+            1200,
+        );
     }
     let log_count = fs::read_dir(root.join(".harness/.state/logs")).expect("logs dir").count();
     assert_eq!(log_count, 50, "raw logs should rotate at max 50");

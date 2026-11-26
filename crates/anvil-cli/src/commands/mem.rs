@@ -2,11 +2,11 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_graph::CodeGraphEngine;
 use anvil_memory::{MemoryEngine, MemoryKind, ObservationInput};
 use anvil_tasks::{resolve_author, resolve_author_fast};
+use anyhow::Result;
 
 use crate::cli::subcmds::MemSubcmd;
 
@@ -154,7 +154,10 @@ fn cmd_context(mem: &MemoryEngine, max_tokens: usize) -> Result<()> {
     let hits = mem.session_context(max_tokens)?;
     println!("session context ({} hits, budget={max_tokens} tokens):", hits.len());
     for hit in hits {
-        println!("- [{}][{:?}] {} ({}) — {}", hit.kind, hit.freshness, hit.title, hit.id, hit.snippet);
+        println!(
+            "- [{}][{:?}] {} ({}) — {}",
+            hit.kind, hit.freshness, hit.title, hit.id, hit.snippet
+        );
     }
     Ok(())
 }

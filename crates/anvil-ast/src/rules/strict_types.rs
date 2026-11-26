@@ -53,9 +53,7 @@ pub fn check_php_strict_types(root: Node<'_>, state: &mut RuleState<'_>) {
         line: tag_line,
         column: 1,
         message: "PHP file is missing mandatory `declare(strict_types=1);` header".to_owned(),
-        suggestion: Some(
-            "Add `declare(strict_types=1);` immediately after `<?php`".to_owned(),
-        ),
+        suggestion: Some("Add `declare(strict_types=1);` immediately after `<?php`".to_owned()),
     });
 }
 

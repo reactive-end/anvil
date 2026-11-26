@@ -58,8 +58,8 @@ struct RawRect {
 
 /// Evaluates raw `dom_audit.js` JSON plus console/page errors into a [`ViewportCapture`].
 pub fn evaluate_dom_audit(input: WebEvalInput<'_>) -> Result<ViewportCapture> {
-    let raw: RawDomAudit = serde_json::from_str(input.dom_json)
-        .context("failed to parse dom_audit.js JSON output")?;
+    let raw: RawDomAudit =
+        serde_json::from_str(input.dom_json).context("failed to parse dom_audit.js JSON output")?;
     Ok(build_capture(
         input.viewport_name,
         input.width,

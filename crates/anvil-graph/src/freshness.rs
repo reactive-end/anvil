@@ -2,8 +2,8 @@
 
 use std::fs;
 
-use anyhow::Result;
 use anvil_core::traits::{FreshnessReport, FreshnessState, SymbolFreshnessProvider};
+use anyhow::Result;
 
 use crate::CodeGraphEngine;
 use crate::model::CodeGraph;
@@ -19,7 +19,9 @@ impl SymbolFreshnessProvider for CodeGraph {
             if !self.file_hashes.contains_key(&norm) {
                 return Ok(FreshnessReport {
                     state: FreshnessState::Stale,
-                    reason: Some(format!("Referenced file `{norm}` no longer exists in code graph")),
+                    reason: Some(format!(
+                        "Referenced file `{norm}` no longer exists in code graph"
+                    )),
                 });
             }
         }
@@ -31,10 +33,7 @@ impl SymbolFreshnessProvider for CodeGraph {
                 });
             }
         }
-        Ok(FreshnessReport {
-            state: FreshnessState::Fresh,
-            reason: None,
-        })
+        Ok(FreshnessReport { state: FreshnessState::Fresh, reason: None })
     }
 }
 

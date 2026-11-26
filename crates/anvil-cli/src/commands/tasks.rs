@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::proc_util::{TimedOutput, run_command_with_timeout};
@@ -18,6 +17,7 @@ use anvil_tasks::{
     record_task_skip, resolve_author, resolve_merge, sanitize_group_name, start_task_in_group,
     task_progress_rel_path, validate_curated_task_title, write_task_plan,
 };
+use anyhow::{Context, Result, bail};
 
 use crate::cli::subcmds::TasksSubcmd;
 use crate::commands::ExitCodeError;
@@ -28,19 +28,19 @@ use crate::ui::prompt::{self, PromptOutcome, SelectOption};
 /// Executes `anvil tasks <subcommand>`.
 pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
     match sub {
-        TasksSubcmd::Start { request, group, id, author } => cmd_start(
-            root,
-            &request,
-            group.as_deref(),
-            id.as_deref(),
-            author.as_deref(),
-        ),
+        TasksSubcmd::Start { request, group, id, author } => {
+            cmd_start(root, &request, group.as_deref(), id.as_deref(), author.as_deref())
+        }
         TasksSubcmd::Record { title, summary, status, group, id, files, author } => cmd_record(
             root,
             &title,
             &summary,
             parse_status(&status)?,
-            TaskTarget { author: author.as_deref(), group: group.as_deref(), task_id: id.as_deref() },
+            TaskTarget {
+                author: author.as_deref(),
+                group: group.as_deref(),
+                task_id: id.as_deref(),
+            },
             &files,
         ),
         TasksSubcmd::Skip { reason } => cmd_skip(root, &reason.join(" ")),
@@ -76,7 +76,15 @@ pub fn execute(root: &Path, sub: TasksSubcmd) -> Result<()> {
 fn execute_progress_cmd(root: &Path, sub: TasksSubcmd) -> Result<()> {
     match sub {
         TasksSubcmd::Update {
-            task_id, summary, status, done, next, blocker, evidence, files, author,
+            task_id,
+            summary,
+            status,
+            done,
+            next,
+            blocker,
+            evidence,
+            files,
+            author,
         } => cmd_append(
             root,
             &task_id,
@@ -181,10 +189,7 @@ fn cmd_migrate_ids(root: &Path) -> Result<()> {
 
 fn cmd_skip(root: &Path, reason: &str) -> Result<()> {
     let state = record_task_skip(root, reason)?;
-    println!(
-        "skipped task creation: {}",
-        state.skip_reason.unwrap_or_default()
-    );
+    println!("skipped task creation: {}", state.skip_reason.unwrap_or_default());
     Ok(())
 }
 
@@ -209,13 +214,8 @@ fn cmd_import(
     let list = parse_feature_list_json(&raw)?;
     let target_repo = resolve_import_target_repo(root, list.project.as_deref())?;
     let target_group = resolve_import_group(&target_repo, &src_path, &list, explicit_group, flat)?;
-    let report = import_feature_list_in_group(
-        &target_repo,
-        &list,
-        target_group.as_deref(),
-        author,
-        force,
-    )?;
+    let report =
+        import_feature_list_in_group(&target_repo, &list, target_group.as_deref(), author, force)?;
 
     let dest_label = match target_group.as_deref() {
         Some(g) => format!("{}/.harness/tasks/{g}/", target_repo.display()),
@@ -260,10 +260,7 @@ fn resolve_import_group(
             "Subdirectory .harness/tasks/<name>/",
             format!("grouped by module (default: {suggested})"),
         ),
-        SelectOption::new(
-            "Directly in .harness/tasks/",
-            "flat root folder (no subdirectory)",
-        ),
+        SelectOption::new("Directly in .harness/tasks/", "flat root folder (no subdirectory)"),
     ];
     let title = format!("Where should these {} tasks be stored?", list.features.len());
     match prompt::select(
@@ -276,7 +273,11 @@ fn resolve_import_group(
         PromptOutcome::Cancelled => Err(ExitCodeError::silent(130).into()),
         PromptOutcome::Confirmed(1) => Ok(None),
         PromptOutcome::Confirmed(_) => {
-            match prompt::text_input("Subdirectory name under .harness/tasks/", "Task group", &suggested)? {
+            match prompt::text_input(
+                "Subdirectory name under .harness/tasks/",
+                "Task group",
+                &suggested,
+            )? {
                 PromptOutcome::Confirmed(name) => sanitize_group_name(&name).map(Some),
                 PromptOutcome::Cancelled => Err(ExitCodeError::silent(130).into()),
             }
@@ -330,10 +331,7 @@ fn resolve_import_target_repo(root: &Path, project: Option<&str>) -> Result<Path
     if let Some(idx) = find_project_match_idx(&subrepos, project) {
         return Ok(subrepos[idx].1.clone());
     }
-    bail!(
-        "workspace root `{}` has multiple subrepos; pass `--root <subrepo>`",
-        root.display()
-    );
+    bail!("workspace root `{}` has multiple subrepos; pass `--root <subrepo>`", root.display());
 }
 
 fn discover_initialized_subrepos(root: &Path) -> Vec<(String, PathBuf)> {
@@ -365,11 +363,7 @@ fn find_project_match_idx(subrepos: &[(String, PathBuf)], project: Option<&str>)
                 .iter()
                 .position(|(name, _)| name.to_ascii_lowercase().ends_with(&format!("-{proj}")))
         })
-        .or_else(|| {
-            subrepos
-                .iter()
-                .position(|(name, _)| name.to_ascii_lowercase().contains(&proj))
-        })
+        .or_else(|| subrepos.iter().position(|(name, _)| name.to_ascii_lowercase().contains(&proj)))
 }
 
 fn cmd_export(root: &Path, output: Option<&Path>, project: Option<&str>) -> Result<()> {
@@ -415,11 +409,7 @@ fn cmd_verify(root: &Path, task_id: &str, record: bool) -> Result<()> {
     let _ = record_active_command_outcome(root, verify_cmd, compressed.passed);
     if record {
         let author = resolve_author(root)?;
-        let st = if compressed.passed {
-            TaskStatus::Done
-        } else {
-            TaskStatus::InProgress
-        };
+        let st = if compressed.passed { TaskStatus::Done } else { TaskStatus::InProgress };
         let ev = format!("verify (exit={}): {}", timed.status_code, compressed.summary);
         let _ = record_task_progress(
             root,
@@ -456,10 +446,7 @@ fn run_verify_shell(root: &Path, raw_cmd: &str, timeout: Duration) -> Result<Tim
     {
         use std::os::windows::process::CommandExt;
         let mut command = Command::new("cmd");
-        command
-            .args(["/D", "/S", "/C"])
-            .raw_arg(format!("\"{raw_cmd}\""))
-            .current_dir(root);
+        command.args(["/D", "/S", "/C"]).raw_arg(format!("\"{raw_cmd}\"")).current_dir(root);
         run_command_with_timeout(&mut command, timeout)
             .with_context(|| format!("failed to run verify command `{raw_cmd}`"))
     }
@@ -483,10 +470,7 @@ fn cmd_append(
         None => resolve_author(root)?,
     };
     let resolved_files = collect_task_files(root, Some(task_id), update.files);
-    let scoped = ProgressUpdate {
-        files: &resolved_files,
-        ..update
-    };
+    let scoped = ProgressUpdate { files: &resolved_files, ..update };
     let (task, entry) = record_task_progress(root, task_id, &resolved_author, scoped)?;
     println!(
         "updated {} [{}] entry={} files={} progress={}",
@@ -512,7 +496,13 @@ fn cmd_resume(root: &Path, task_id: Option<&str>) -> Result<()> {
         println!("no active or in_progress task to resume");
         return Ok(());
     };
-    println!("{} {} [{}] {}", ui::accent("resume:"), ui::cyan(&brief.task_id), brief.status, brief.title);
+    println!(
+        "{} {} [{}] {}",
+        ui::accent("resume:"),
+        ui::cyan(&brief.task_id),
+        brief.status,
+        brief.title
+    );
     ui::print_kv("progress_file", &brief.progress_file);
     ui::print_kv("summary", &brief.summary);
     if !brief.done_steps.is_empty() {
@@ -551,7 +541,12 @@ fn looks_like_learning(summary: &str) -> bool {
         .any(|kw| lower.contains(kw))
 }
 
-fn cmd_plan(root: &Path, task_id: &str, markdown_or_file: &str, author: Option<String>) -> Result<()> {
+fn cmd_plan(
+    root: &Path,
+    task_id: &str,
+    markdown_or_file: &str,
+    author: Option<String>,
+) -> Result<()> {
     let resolved_author = match author {
         Some(a) => a,
         None => resolve_author(root)?,
@@ -581,9 +576,7 @@ fn cmd_list(
         .filter(|t| filter.is_none_or(|s| t.status == s))
         .filter(|t| {
             g_norm.is_none_or(|g| {
-                t.task_id
-                    .split_once('/')
-                    .is_some_and(|(pfx, _)| pfx.eq_ignore_ascii_case(g))
+                t.task_id.split_once('/').is_some_and(|(pfx, _)| pfx.eq_ignore_ascii_case(g))
                     || t.project.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(g))
             })
         })
@@ -606,6 +599,8 @@ fn parse_status(raw: &str) -> Result<TaskStatus> {
         "in_progress" | "in-progress" | "progress" | "wip" => Ok(TaskStatus::InProgress),
         "blocked" => Ok(TaskStatus::Blocked),
         "done" | "completed" | "verified" => Ok(TaskStatus::Done),
-        other => bail!("invalid task status `{other}` (expected not_started|in_progress|blocked|done)"),
+        other => {
+            bail!("invalid task status `{other}` (expected not_started|in_progress|blocked|done)")
+        }
     }
 }

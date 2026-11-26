@@ -3,12 +3,12 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::config::{AnvilConfig, WebQaDriver};
 use anvil_qa::QaEngine;
 use anvil_qa::onboarding::{parse_mobile_driver, parse_web_driver};
 use anvil_qa::report::ReportBudget;
 use anvil_qa::web::{WebEvalInput, run_playwright_capture};
+use anyhow::{Context, Result, bail};
 
 use crate::cli::subcmds::QaSubcmd;
 use crate::commands::ExitCodeError;
@@ -33,24 +33,10 @@ pub fn execute(root: &Path, sub: QaSubcmd) -> Result<()> {
             Ok(())
         }
         eval_sub @ QaSubcmd::EvalWeb { .. } => cmd_eval_web(root, &engine, eval_sub),
-        QaSubcmd::Run {
-            url,
-            phase,
-            out_dir,
-        } => cmd_run(root, &engine, &url, &phase, &out_dir),
-        QaSubcmd::ScanMobile {
-            xml,
-            logcat,
-            width,
-            height,
-        } => cmd_scan_mobile(
-            root,
-            &engine,
-            xml.as_deref(),
-            logcat.as_deref(),
-            width,
-            height,
-        ),
+        QaSubcmd::Run { url, phase, out_dir } => cmd_run(root, &engine, &url, &phase, &out_dir),
+        QaSubcmd::ScanMobile { xml, logcat, width, height } => {
+            cmd_scan_mobile(root, &engine, xml.as_deref(), logcat.as_deref(), width, height)
+        }
     }
 }
 
@@ -68,14 +54,7 @@ fn cmd_onboard(root: &Path, engine: &QaEngine) -> Result<()> {
 }
 
 fn cmd_eval_web(root: &Path, engine: &QaEngine, sub: QaSubcmd) -> Result<()> {
-    let QaSubcmd::EvalWeb {
-        dom_json,
-        viewport,
-        width,
-        height,
-        console_errors,
-        page_errors,
-    } = sub
+    let QaSubcmd::EvalWeb { dom_json, viewport, width, height, console_errors, page_errors } = sub
     else {
         return Ok(());
     };
@@ -119,11 +98,8 @@ fn cmd_scan_mobile(
     let xml = xml_path.map(read_text_tolerant).transpose()?;
     let logcat = logcat_path.map(read_text_tolerant).transpose()?;
 
-    let violations = engine.scan_mobile_artifacts(
-        xml.as_deref(),
-        (width, height),
-        logcat.as_deref(),
-    )?;
+    let violations =
+        engine.scan_mobile_artifacts(xml.as_deref(), (width, height), logcat.as_deref())?;
     let report = engine.finalize_report(
         engine.detect_platform(&config),
         Vec::new(),
@@ -153,11 +129,8 @@ fn cmd_run(root: &Path, engine: &QaEngine, url: &str, phase: &str, out_dir: &Pat
         }
         WebQaDriver::Playwright | WebQaDriver::Unconfigured => {}
     }
-    let resolved_out = if out_dir.is_absolute() {
-        out_dir.to_path_buf()
-    } else {
-        root.join(out_dir)
-    };
+    let resolved_out =
+        if out_dir.is_absolute() { out_dir.to_path_buf() } else { root.join(out_dir) };
     let captures = run_playwright_capture(url, phase, &resolved_out, Some(root))?;
     let report = if phase == "before" {
         engine.finalize_report(
@@ -185,24 +158,15 @@ fn cmd_run(root: &Path, engine: &QaEngine, url: &str, phase: &str, out_dir: &Pat
 
 /// Reads UTF-8, UTF-16LE/BE (e.g. PowerShell redirection), or lossy byte logs without failing.
 fn read_text_tolerant(path: &Path) -> Result<String> {
-    let bytes =
-        fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     if bytes.starts_with(&[0xFF, 0xFE]) {
-        let units: Vec<u16> = bytes[2..]
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|c| u16::from_le_bytes(*c))
-            .collect();
+        let units: Vec<u16> =
+            bytes[2..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
         return Ok(String::from_utf16_lossy(&units));
     }
     if bytes.starts_with(&[0xFE, 0xFF]) {
-        let units: Vec<u16> = bytes[2..]
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|c| u16::from_be_bytes(*c))
-            .collect();
+        let units: Vec<u16> =
+            bytes[2..].as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect();
         return Ok(String::from_utf16_lossy(&units));
     }
     let lossy = String::from_utf8_lossy(&bytes);

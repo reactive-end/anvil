@@ -34,18 +34,35 @@ fn committed_repo() -> TempDir {
     git(root, &["init"]);
     git(root, &["config", "user.name", "Test"]);
     git(root, &["config", "user.email", "test@example.com"]);
-    fs::write(root.join("package.json"), r#"{"name":"sample","version":"1.0.0"}"#).expect("package.json");
+    fs::write(root.join("package.json"), r#"{"name":"sample","version":"1.0.0"}"#)
+        .expect("package.json");
     fs::create_dir_all(root.join("src")).expect("src");
-    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 2;\n}\n").expect("core.ts");
+    fs::write(
+        root.join("src/core.ts"),
+        "export function compute(x: number): number {\n  return x * 2;\n}\n",
+    )
+    .expect("core.ts");
     assert!(anvil(root, &["init"]).status.success());
-    fs::write(root.join(".gitignore"), ".harness/.state/\nanvil-home/\nclaude-config/\n").expect("gitignore");
+    fs::write(root.join(".gitignore"), ".harness/.state/\nanvil-home/\nclaude-config/\n")
+        .expect("gitignore");
     git(root, &["add", "-A"]);
     git(root, &["commit", "-m", "init"]);
     dir
 }
 
 fn log(repo: &Path, category: &str) -> String {
-    let out = anvil(repo, &["review", "log", "missing error handling", "--category", category, "--file", "src/core.ts:2"]);
+    let out = anvil(
+        repo,
+        &[
+            "review",
+            "log",
+            "missing error handling",
+            "--category",
+            category,
+            "--file",
+            "src/core.ts:2",
+        ],
+    );
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     stdout(&out)
 }
@@ -59,7 +76,10 @@ fn review_findings_after_green_feed_the_quality_section_and_the_ratchet_hint() {
     assert!(before_any_check.contains("no green check before it"), "{before_any_check}");
     assert!(before_any_check.contains("new category"), "{before_any_check}");
 
-    assert!(anvil(root, &["check", "--tier", "0", "--no-cache"]).status.success(), "clean tree must pass");
+    assert!(
+        anvil(root, &["check", "--tier", "0", "--no-cache"]).status.success(),
+        "clean tree must pass"
+    );
     for _ in 0..3 {
         assert!(log(root, "error-handling").contains("after a green check"));
     }
@@ -79,8 +99,12 @@ fn review_findings_after_green_feed_the_quality_section_and_the_ratchet_hint() {
 fn a_finding_after_a_red_check_is_not_after_green() {
     let repo = committed_repo();
     let root = repo.path();
-    fs::write(root.join("src/bad.ts"), "// @ts-ignore\nexport const bad: number = 'x';\n").expect("bad.ts");
-    assert!(!anvil(root, &["check", "--tier", "0", "--no-cache"]).status.success(), "escape hatch must fail");
+    fs::write(root.join("src/bad.ts"), "// @ts-ignore\nexport const bad: number = 'x';\n")
+        .expect("bad.ts");
+    assert!(
+        !anvil(root, &["check", "--tier", "0", "--no-cache"]).status.success(),
+        "escape hatch must fail"
+    );
     assert!(log(root, "naming").contains("no green check before it"));
 }
 

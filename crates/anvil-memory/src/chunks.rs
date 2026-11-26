@@ -4,8 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use anyhow::{Context, Result};
 use anvil_core::fs_util::{atomic_write, sanitize_author};
+use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::TransactionBehavior;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -45,11 +45,8 @@ struct PendingChunk {
 /// skips unchanged `(mtime_ns, byte_len)` / hashes, cleans deleted-chunk orphans and expired rows.
 pub fn sync_chunks(chunks_dir: &Path, store: &mut MemoryStore) -> Result<SyncStats> {
     let now_ms = Utc::now().timestamp_millis();
-    let chunk_files = if chunks_dir.exists() {
-        list_sorted_chunk_files(chunks_dir)?
-    } else {
-        Vec::new()
-    };
+    let chunk_files =
+        if chunks_dir.exists() { list_sorted_chunk_files(chunks_dir)? } else { Vec::new() };
     let ingested_meta = store.ingested_chunk_meta()?;
     let pending = collect_pending_chunks(&chunk_files, &ingested_meta, now_ms)?;
     let removed_chunks = collect_removed_chunks(&chunk_files, &ingested_meta);
@@ -81,7 +78,8 @@ fn apply_sync_tx(
         file_meta.push((chunk.filename, chunk.blake3_hash, chunk.mtime_ns, chunk.byte_len));
         all_records.extend(chunk.records);
     }
-    all_records.sort_by(|a, b| a.1.updated_at.cmp(&b.1.updated_at).then_with(|| a.1.id.cmp(&b.1.id)));
+    all_records
+        .sort_by(|a, b| a.1.updated_at.cmp(&b.1.updated_at).then_with(|| a.1.id.cmp(&b.1.id)));
 
     let tx = store.conn_mut().transaction_with_behavior(TransactionBehavior::Immediate)?;
     for (filename, record) in &all_records {
@@ -90,7 +88,9 @@ fn apply_sync_tx(
         }
     }
     for (filename, hash, mtime_ns, byte_len) in &file_meta {
-        MemoryStore::record_ingested_chunk_meta_in_tx(&tx, filename, hash, now_ms, *mtime_ns, *byte_len)?;
+        MemoryStore::record_ingested_chunk_meta_in_tx(
+            &tx, filename, hash, now_ms, *mtime_ns, *byte_len,
+        )?;
     }
     for old_file in removed_chunks {
         delete_removed_chunk_in_tx(&tx, old_file)?;
@@ -104,15 +104,9 @@ fn collect_removed_chunks(
     files: &[PathBuf],
     ingested_meta: &FxHashMap<String, IngestedChunkMeta>,
 ) -> Vec<String> {
-    let on_disk: FxHashSet<&str> = files
-        .iter()
-        .filter_map(|p| p.file_name().and_then(|n| n.to_str()))
-        .collect();
-    ingested_meta
-        .keys()
-        .filter(|name| !on_disk.contains(name.as_str()))
-        .cloned()
-        .collect()
+    let on_disk: FxHashSet<&str> =
+        files.iter().filter_map(|p| p.file_name().and_then(|n| n.to_str())).collect();
+    ingested_meta.keys().filter(|name| !on_disk.contains(name.as_str())).cloned().collect()
 }
 
 fn list_sorted_chunk_files(chunks_dir: &Path) -> Result<Vec<PathBuf>> {
@@ -191,13 +185,8 @@ fn parse_jsonl_records(bytes: &[u8], path: &Path, now_ms: i64) -> Result<Vec<Mem
         if trimmed.is_empty() {
             continue;
         }
-        let parsed: MemoryChunkRecord = serde_json::from_str(trimmed).with_context(|| {
-            format!(
-                "invalid JSONL record at {}:{}",
-                path.display(),
-                idx + 1
-            )
-        })?;
+        let parsed: MemoryChunkRecord = serde_json::from_str(trimmed)
+            .with_context(|| format!("invalid JSONL record at {}:{}", path.display(), idx + 1))?;
         if parsed.expires_at.is_some_and(|exp| exp <= now_ms) {
             continue;
         }

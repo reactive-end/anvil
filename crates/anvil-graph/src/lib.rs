@@ -13,19 +13,17 @@ pub mod store;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_core::git::AddedLines;
 use anvil_core::traits::{CompressedOutput, Diagnostic};
+use anyhow::Result;
 
 use crate::analytics::{CommunitySummary, GodNode};
 use crate::builder::IncrementalStats;
 use crate::graphify_compat::OverlayStats;
 use crate::impact::{BlastRadiusReport, OverengineeringReport};
 use crate::model::CodeGraph;
-use crate::query::{
-    ExplainResult, OriginResult, PathResult, QueryHit, RepoOutline, SymbolSlice,
-};
+use crate::query::{ExplainResult, OriginResult, PathResult, QueryHit, RepoOutline, SymbolSlice};
 
 /// Crate version marker for workspace smoke checks.
 pub fn crate_name() -> &'static str {
@@ -44,11 +42,7 @@ impl CodeGraphEngine {
     pub fn build(repo_root: impl AsRef<Path>, config: AnvilConfig) -> Result<Self> {
         let root = repo_root.as_ref().to_path_buf();
         let graph = builder::build_full(&root, &config)?;
-        Ok(Self {
-            repo_root: root,
-            config,
-            graph,
-        })
+        Ok(Self { repo_root: root, config, graph })
     }
 
     /// Pure binary load from `.harness/.state/graph.bin` (zero walk, zero hashing, zero communities).
@@ -60,7 +54,10 @@ impl CodeGraphEngine {
             match store::load_binary(&bin_path) {
                 Ok(g) => g,
                 Err(err) => {
-                    eprintln!("warning: corrupt graph cache {}: {err}; rebuilding", bin_path.display());
+                    eprintln!(
+                        "warning: corrupt graph cache {}: {err}; rebuilding",
+                        bin_path.display()
+                    );
                     builder::build_full(&root, &config)?
                 }
             }
@@ -89,7 +86,10 @@ impl CodeGraphEngine {
                     g
                 }
                 Err(err) => {
-                    eprintln!("warning: corrupt graph cache {}: {err}; rebuilding", bin_path.display());
+                    eprintln!(
+                        "warning: corrupt graph cache {}: {err}; rebuilding",
+                        bin_path.display()
+                    );
                     builder::build_full(&root, &config)?
                 }
             }
@@ -197,7 +197,10 @@ impl CodeGraphEngine {
     }
 
     /// Invokes native typecheckers filtered to `impacted_files` via `anvil-core` compressor.
-    pub fn run_impacted_typecheck(&self, impacted_files: &[String]) -> Result<Vec<CompressedOutput>> {
+    pub fn run_impacted_typecheck(
+        &self,
+        impacted_files: &[String],
+    ) -> Result<Vec<CompressedOutput>> {
         impact::run_impacted_typecheck(&self.repo_root, &self.config, impacted_files)
     }
 

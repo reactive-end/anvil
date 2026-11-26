@@ -21,13 +21,8 @@ pub fn visit_node(node: Node<'_>, state: &mut ExtractState<'_>) {
 fn enclosing_class(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
     let mut cur = node.parent();
     while let Some(parent) = cur {
-        if matches!(
-            parent.kind(),
-            "class_declaration" | "mixin_declaration" | "enum_declaration"
-        ) {
-            return parent
-                .child_by_field_name("name")
-                .map(|n| state.node_text(n).to_owned());
+        if matches!(parent.kind(), "class_declaration" | "mixin_declaration" | "enum_declaration") {
+            return parent.child_by_field_name("name").map(|n| state.node_text(n).to_owned());
         }
         cur = parent.parent();
     }
@@ -60,32 +55,18 @@ fn extract_class(node: Node<'_>, state: &mut ExtractState<'_>) {
         ) {
             is_widget = true;
         }
-        state.push_edge(
-            Some(class_name.clone()),
-            super_name,
-            EdgeKind::Extends,
-            line,
-        );
+        state.push_edge(Some(class_name.clone()), super_name, EdgeKind::Extends, line);
     }
 
     if let Some(ifaces) = node.child_by_field_name("interfaces") {
         let mut cursor = ifaces.walk();
         for child in ifaces.named_children(&mut cursor) {
             let iface = state.node_text(child).trim().to_owned();
-            state.push_edge(
-                Some(class_name.clone()),
-                iface,
-                EdgeKind::Implements,
-                line,
-            );
+            state.push_edge(Some(class_name.clone()), iface, EdgeKind::Implements, line);
         }
     }
 
-    let kind = if is_widget {
-        SymbolKind::Component
-    } else {
-        SymbolKind::Class
-    };
+    let kind = if is_widget { SymbolKind::Component } else { SymbolKind::Class };
     state.push_symbol(
         class_name.clone(),
         class_name,
@@ -144,11 +125,6 @@ fn dart_function_span(sig_node: Node<'_>) -> (u32, u32) {
 fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {
     if let Some(fn_node) = node.child_by_field_name("function") {
         let callee = state.node_text(fn_node).trim().to_owned();
-        state.push_edge(
-            None,
-            callee,
-            EdgeKind::Calls,
-            ExtractState::line_of(node),
-        );
+        state.push_edge(None, callee, EdgeKind::Calls, ExtractState::line_of(node));
     }
 }

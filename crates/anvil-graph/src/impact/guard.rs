@@ -22,8 +22,7 @@ use text::Corpus;
 
 /// Rule id printed with every finding.
 pub const RULE: &str = "overengineering:unused-new-code";
-const SUGGESTION: &str =
-    "wire it into its caller in this change, delete it, or add anvil-allow(overengineering): <reason>";
+const SUGGESTION: &str = "wire it into its caller in this change, delete it, or add anvil-allow(overengineering): <reason>";
 
 /// New code with no consumer in non-test code.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -51,7 +50,8 @@ pub fn check_overengineering(
     added_files: &[String],
     added_lines: &AddedLines,
 ) -> OverengineeringReport {
-    let mut added: Vec<String> = added_files.iter().map(|f| CodeGraph::normalize_rel_path(f)).collect();
+    let mut added: Vec<String> =
+        added_files.iter().map(|f| CodeGraph::normalize_rel_path(f)).collect();
     added.sort();
     added.dedup();
     let mut modified: Vec<(&String, &Vec<(u32, u32)>)> =
@@ -88,7 +88,11 @@ impl<'a> Guard<'a> {
     }
 
     /// `new_lines` is `None` for an added file and the added ranges for a modified one.
-    fn check_file(&self, file: &str, new_lines: Option<&[(u32, u32)]>) -> Vec<OverengineeringFinding> {
+    fn check_file(
+        &self,
+        file: &str,
+        new_lines: Option<&[(u32, u32)]>,
+    ) -> Vec<OverengineeringFinding> {
         let Some(language) = self.file_language(file) else {
             return Vec::new();
         };
@@ -110,13 +114,20 @@ impl<'a> Guard<'a> {
         }
         let mut candidates = self.candidates(file);
         if let Some(ranges) = new_lines {
-            candidates.retain(|c| ranges.iter().any(|&(first, last)| (first..=last).contains(&c.node.line)));
+            candidates.retain(|c| {
+                ranges.iter().any(|&(first, last)| (first..=last).contains(&c.node.line))
+            });
         }
-        if candidates.is_empty() || candidates.iter().any(|c| conventions::is_macro_reached(language, &source, c.node)) {
+        if candidates.is_empty()
+            || candidates.iter().any(|c| conventions::is_macro_reached(language, &source, c.node))
+        {
             return Vec::new();
         }
         let whole_file_is_new = new_lines.is_none();
-        if whole_file_is_new && self.file_consumers(file) == 0 && !self.any_mentioned_elsewhere(file, &candidates) {
+        if whole_file_is_new
+            && self.file_consumers(file) == 0
+            && !self.any_mentioned_elsewhere(file, &candidates)
+        {
             return vec![self.whole_file_finding(file, &candidates)];
         }
         self.unused_symbols(file, &source, &candidates)
@@ -154,7 +165,10 @@ impl<'a> Guard<'a> {
 
     /// The non-test file an edge comes from, unless the edge is not a real use of `file`.
     fn consumer_source(&self, edge: &CompactEdge, file: &str) -> Option<&'a str> {
-        if !edge.is_resolved() || edge.kind == GraphEdgeKind::Contains || is_mod_declaration(self.graph, edge) {
+        if !edge.is_resolved()
+            || edge.kind == GraphEdgeKind::Contains
+            || is_mod_declaration(self.graph, edge)
+        {
             return None;
         }
         let src = self.graph.get_node(edge.source)?;
@@ -178,14 +192,20 @@ impl<'a> Guard<'a> {
             .filter(|src| src.file != file && conventions::is_test_like(&src.file))
             .map(|src| src.file.as_str())
             .collect();
-        !tests.is_empty() && tests.iter().all(|t| conventions::base_stem(t) != stem) && self.file_consumers(file) == 0
+        !tests.is_empty()
+            && tests.iter().all(|t| conventions::base_stem(t) != stem)
+            && self.file_consumers(file) == 0
     }
 
     fn any_mentioned_elsewhere(&self, file: &str, candidates: &[Candidate<'_>]) -> bool {
         candidates.iter().any(|c| self.corpus.mentioned_outside(self.graph, file, &c.node.label))
     }
 
-    fn whole_file_finding(&self, file: &str, candidates: &[Candidate<'_>]) -> OverengineeringFinding {
+    fn whole_file_finding(
+        &self,
+        file: &str,
+        candidates: &[Candidate<'_>],
+    ) -> OverengineeringFinding {
         let line = candidates.iter().map(|c| c.node.line).min().unwrap_or(1);
         let names: Vec<&str> = candidates.iter().map(|c| c.node.label.as_str()).collect();
         OverengineeringFinding {
@@ -193,12 +213,20 @@ impl<'a> Guard<'a> {
             file: file.to_owned(),
             line,
             symbol: None,
-            message: format!("new file `{file}` has no non-test consumer (defines {})", names.join(", ")),
+            message: format!(
+                "new file `{file}` has no non-test consumer (defines {})",
+                names.join(", ")
+            ),
             suggestion: SUGGESTION,
         }
     }
 
-    fn unused_symbols(&self, file: &str, source: &str, candidates: &[Candidate<'_>]) -> Vec<OverengineeringFinding> {
+    fn unused_symbols(
+        &self,
+        file: &str,
+        source: &str,
+        candidates: &[Candidate<'_>],
+    ) -> Vec<OverengineeringFinding> {
         candidates
             .iter()
             .filter(|c| !self.symbol_is_used(file, source, c))
@@ -225,10 +253,9 @@ impl<'a> Guard<'a> {
         self.graph.incoming_edges(nid).into_iter().any(|edge| {
             edge.is_resolved()
                 && edge.kind != GraphEdgeKind::Contains
-                && self
-                    .graph
-                    .get_node(edge.source)
-                    .is_some_and(|src| src.kind != NodeKind::Semantic && !conventions::is_test_like(&src.file))
+                && self.graph.get_node(edge.source).is_some_and(|src| {
+                    src.kind != NodeKind::Semantic && !conventions::is_test_like(&src.file)
+                })
         })
     }
 }
@@ -258,7 +285,10 @@ fn is_mod_declaration(graph: &CodeGraph, edge: &CompactEdge) -> bool {
     let (Some(src), Some(tgt)) = (graph.get_node(edge.source), graph.get_node(edge.target)) else {
         return false;
     };
-    if src.kind != NodeKind::File || tgt.kind != NodeKind::File || src.language != Some(Language::Rust) {
+    if src.kind != NodeKind::File
+        || tgt.kind != NodeKind::File
+        || src.language != Some(Language::Rust)
+    {
         return false;
     }
     graph.file_nodes.get(&src.file).is_some_and(|nids| {
@@ -272,14 +302,18 @@ fn is_mod_declaration(graph: &CodeGraph, edge: &CompactEdge) -> bool {
 /// resolver is not working for that repository, and silence beats guessing.
 fn resolving_languages(graph: &CodeGraph) -> FxHashSet<Language> {
     let mut active = FxHashSet::default();
-    for edge in graph.edges.iter().filter(|e| e.is_resolved() && e.kind != GraphEdgeKind::Contains) {
+    for edge in graph.edges.iter().filter(|e| e.is_resolved() && e.kind != GraphEdgeKind::Contains)
+    {
         if is_mod_declaration(graph, edge) {
             continue;
         }
-        let (Some(src), Some(tgt)) = (graph.get_node(edge.source), graph.get_node(edge.target)) else {
+        let (Some(src), Some(tgt)) = (graph.get_node(edge.source), graph.get_node(edge.target))
+        else {
             continue;
         };
-        if !src.file.is_empty() && src.file != tgt.file && !is_test_file(&src.file)
+        if !src.file.is_empty()
+            && src.file != tgt.file
+            && !is_test_file(&src.file)
             && let Some(language) = tgt.language
         {
             active.insert(language);

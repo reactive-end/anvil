@@ -3,8 +3,9 @@
 mod quality;
 
 pub use quality::{
-    CategoryStats, LoggedReview, NewFinding, QualityStats, RATCHET_HINT_THRESHOLD, ReviewEntry, SEVERITIES,
-    SOURCES, list_reviews, log_review, record_check_outcome, scope_key, validate_category,
+    CategoryStats, LoggedReview, NewFinding, QualityStats, RATCHET_HINT_THRESHOLD, ReviewEntry,
+    SEVERITIES, SOURCES, list_reviews, log_review, record_check_outcome, scope_key,
+    validate_category,
 };
 
 use std::fs::{self, OpenOptions};
@@ -48,12 +49,24 @@ pub struct AnvilStats {
 /// Telemetry events recorded by `anvil` subsystems.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatsEvent {
-    HookCall { elapsed_ms: u64 },
+    HookCall {
+        elapsed_ms: u64,
+    },
     CheckCacheHit,
-    CompressorSaved { raw_bytes: usize, compact_bytes: usize },
-    SymbolReadSaved { tokens_saved: u64 },
-    OutlineSaved { tokens_saved: u64 },
-    CodeModeExec { calls_executed: u64, tokens_saved: u64 },
+    CompressorSaved {
+        raw_bytes: usize,
+        compact_bytes: usize,
+    },
+    SymbolReadSaved {
+        tokens_saved: u64,
+    },
+    OutlineSaved {
+        tokens_saved: u64,
+    },
+    CodeModeExec {
+        calls_executed: u64,
+        tokens_saved: u64,
+    },
     TokenGuard {
         blocked: bool,
         #[serde(default)]
@@ -61,7 +74,9 @@ pub enum StatsEvent {
     },
     SecurityPrompt,
     StopBlocked,
-    RuleHit { rule: String },
+    RuleHit {
+        rule: String,
+    },
     CheckOutcome {
         passed: bool,
         #[serde(default)]
@@ -130,10 +145,7 @@ pub fn load_stats(repo_root: &Path) -> Result<AnvilStats> {
     let mut stats = read_stats_or_default(&path)?;
     fold_jsonl(&jsonl, &mut stats);
 
-    if fs::metadata(&jsonl)
-        .map(|m| m.len() >= STATS_JSONL_COMPACT_BYTES)
-        .unwrap_or(false)
-    {
+    if fs::metadata(&jsonl).map(|m| m.len() >= STATS_JSONL_COMPACT_BYTES).unwrap_or(false) {
         let _ = compact_stats(repo_root);
     }
     Ok(stats)
@@ -203,8 +215,8 @@ fn read_stats_or_default(path: &Path) -> Result<AnvilStats> {
     if !path.exists() {
         return Ok(AnvilStats::default());
     }
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     serde_json::from_str(&raw).with_context(|| format!("failed to parse {}", path.display()))
 }
 
@@ -223,6 +235,24 @@ fn record_hook_latency(stats: &mut AnvilStats, elapsed_ms: u64) {
     }
 }
 
+fn record_compressor(stats: &mut AnvilStats, raw_bytes: usize, compact_bytes: usize) {
+    let saved_tokens = estimate_tokens(raw_bytes.saturating_sub(compact_bytes));
+    stats.compressor_runs = stats.compressor_runs.saturating_add(1);
+    stats.tokens_raw_compressor =
+        stats.tokens_raw_compressor.saturating_add(estimate_tokens(raw_bytes));
+    stats.tokens_saved_compressor = stats.tokens_saved_compressor.saturating_add(saved_tokens);
+}
+
+fn record_token_guard(stats: &mut AnvilStats, blocked: bool, tokens_avoided: u64) {
+    stats.tokens_avoided_token_guard =
+        stats.tokens_avoided_token_guard.saturating_add(tokens_avoided);
+    if blocked {
+        stats.token_guard_blocks = stats.token_guard_blocks.saturating_add(1);
+    } else {
+        stats.token_guard_warnings = stats.token_guard_warnings.saturating_add(1);
+    }
+}
+
 fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
     match event {
         StatsEvent::HookCall { elapsed_ms } => {
@@ -231,17 +261,8 @@ fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
         StatsEvent::CheckCacheHit => {
             stats.check_cache_hits = stats.check_cache_hits.saturating_add(1);
         }
-        StatsEvent::CompressorSaved {
-            raw_bytes,
-            compact_bytes,
-        } => {
-            let saved_tokens = estimate_tokens(raw_bytes.saturating_sub(compact_bytes));
-            stats.compressor_runs = stats.compressor_runs.saturating_add(1);
-            stats.tokens_raw_compressor = stats
-                .tokens_raw_compressor
-                .saturating_add(estimate_tokens(raw_bytes));
-            stats.tokens_saved_compressor =
-                stats.tokens_saved_compressor.saturating_add(saved_tokens);
+        StatsEvent::CompressorSaved { raw_bytes, compact_bytes } => {
+            record_compressor(stats, raw_bytes, compact_bytes)
         }
         StatsEvent::SymbolReadSaved { tokens_saved } => {
             stats.tokens_saved_symbol_read =
@@ -250,25 +271,13 @@ fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
         StatsEvent::OutlineSaved { tokens_saved } => {
             stats.tokens_saved_outline = stats.tokens_saved_outline.saturating_add(tokens_saved);
         }
-        StatsEvent::CodeModeExec {
-            calls_executed: _,
-            tokens_saved,
-        } => {
+        StatsEvent::CodeModeExec { calls_executed: _, tokens_saved } => {
             stats.code_mode_calls = stats.code_mode_calls.saturating_add(1);
             stats.tokens_saved_code_mode =
                 stats.tokens_saved_code_mode.saturating_add(tokens_saved);
         }
-        StatsEvent::TokenGuard {
-            blocked,
-            tokens_avoided,
-        } => {
-            stats.tokens_avoided_token_guard =
-                stats.tokens_avoided_token_guard.saturating_add(tokens_avoided);
-            if blocked {
-                stats.token_guard_blocks = stats.token_guard_blocks.saturating_add(1);
-            } else {
-                stats.token_guard_warnings = stats.token_guard_warnings.saturating_add(1);
-            }
+        StatsEvent::TokenGuard { blocked, tokens_avoided } => {
+            record_token_guard(stats, blocked, tokens_avoided)
         }
         StatsEvent::SecurityPrompt => {
             stats.security_prompts = stats.security_prompts.saturating_add(1);
@@ -301,18 +310,11 @@ mod tests {
         // Each RuleHit line is 46 bytes; 1_600 events write ~72 KiB and force one compaction.
         let total = 1_600u64;
         for i in 0..total {
-            record_event(
-                root,
-                StatsEvent::RuleHit {
-                    rule: format!("no-eval-variant-{i:04}"),
-                },
-            )
-            .expect("record event");
+            record_event(root, StatsEvent::RuleHit { rule: format!("no-eval-variant-{i:04}") })
+                .expect("record event");
         }
 
-        let jsonl_len = fs::metadata(stats_jsonl_path(root))
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let jsonl_len = fs::metadata(stats_jsonl_path(root)).map(|m| m.len()).unwrap_or(0);
         assert!(
             jsonl_len < STATS_JSONL_COMPACT_BYTES,
             "stats.jsonl should auto-compact below 64 KiB, got {jsonl_len}"

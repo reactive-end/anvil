@@ -253,11 +253,7 @@ pub enum TasksSubcmd {
         limit: usize,
     },
     /// Git custom merge driver for conflict-free `tasks.json` resolution.
-    MergeDriver {
-        base: PathBuf,
-        current: PathBuf,
-        other: PathBuf,
-    },
+    MergeDriver { base: PathBuf, current: PathBuf, other: PathBuf },
 }
 
 #[derive(Debug, Subcommand)]

@@ -94,11 +94,7 @@ fn normalize_tool_value(val: Option<Value>) -> Option<Value> {
 ///
 /// For `PostToolUse`, findings are queued into `.harness/.state/inbox.json` and `{}` is returned.
 /// For `PreInvocation`, queued inbox messages are drained and emitted via `injectSteps`.
-pub fn render_output(
-    repo_root: &Path,
-    event: HookEvent,
-    outcome: &HookOutcome,
-) -> Result<Value> {
+pub fn render_output(repo_root: &Path, event: HookEvent, outcome: &HookOutcome) -> Result<Value> {
     match event {
         HookEvent::PreToolUse => Ok(render_pre_tool_use(outcome)),
         HookEvent::PostToolUse => {
@@ -154,15 +150,12 @@ fn render_inject_steps(messages: &[crate::contract::InboxMessage]) -> Value {
 
 fn render_stop(repo_root: &Path, outcome: &HookOutcome) -> Result<Value> {
     let mut obj = Map::new();
-    let decision = if outcome.block_stop {
-        "continue"
-    } else {
-        "allow"
-    };
+    let decision = if outcome.block_stop { "continue" } else { "allow" };
     obj.insert("decision".to_owned(), Value::String(decision.to_owned()));
 
     if outcome.block_stop {
-        if let Some(reason) = inbox::format_stop_reason(outcome.reason.as_deref(), &outcome.messages)
+        if let Some(reason) =
+            inbox::format_stop_reason(outcome.reason.as_deref(), &outcome.messages)
         {
             obj.insert("reason".to_owned(), Value::String(reason));
         }

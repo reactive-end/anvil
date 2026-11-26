@@ -140,7 +140,10 @@ func _ready() -> void:
         .map(|d| d.line)
         .collect();
     for expected in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19, 20] {
-        assert!(gd3_lines.contains(&expected), "missing godot3 diag at line {expected}: {gd3_lines:?}");
+        assert!(
+            gd3_lines.contains(&expected),
+            "missing godot3 diag at line {expected}: {gd3_lines:?}"
+        );
     }
 
     let valid_gd4 = "\

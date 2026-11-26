@@ -31,11 +31,7 @@ process.stdout.write(JSON.stringify(result));
         .arg(harness)
         .output()
         .expect("node must execute dom_audit.js fixture");
-    assert!(
-        output.status.success(),
-        "node failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "node failed: {}", String::from_utf8_lossy(&output.stderr));
     String::from_utf8(output.stdout).expect("valid utf8 from node")
 }
 
@@ -155,13 +151,8 @@ fn dom_audit_js_and_web_rs_detect_all_five_deliberate_violations() {
         })
         .expect("evaluate clean capture");
 
-    let report = engine.finalize_report(
-        UiPlatform::Web,
-        vec![capture],
-        vec![clean_capture],
-        vec![],
-        vec![],
-    );
+    let report =
+        engine.finalize_report(UiPlatform::Web, vec![capture], vec![clean_capture], vec![], vec![]);
     assert!(report.passed);
     let summary = engine.format_report(&report, ReportBudget::default());
     assert!(summary.contains("QA [PASS] platform=web web_violations=0 (before=5)"));

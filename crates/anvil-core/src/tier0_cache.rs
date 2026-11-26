@@ -61,12 +61,7 @@ impl Tier0Cache {
         let norm = rel.replace('\\', "/");
         self.entries.insert(
             norm,
-            Tier0CacheEntry {
-                mtime_nanos,
-                len,
-                rules_hash: rules_hash.to_owned(),
-                passed: true,
-            },
+            Tier0CacheEntry { mtime_nanos, len, rules_hash: rules_hash.to_owned(), passed: true },
         );
     }
 
@@ -128,10 +123,7 @@ pub fn compute_rules_hash(repo_root: &Path, config: &AnvilConfig) -> String {
 }
 
 fn cache_path(repo_root: &Path) -> PathBuf {
-    repo_root
-        .join(".harness")
-        .join(".state")
-        .join("tier0-cache.json")
+    repo_root.join(".harness").join(".state").join("tier0-cache.json")
 }
 
 fn file_meta_sig(path: &Path) -> Option<(u128, u64)> {

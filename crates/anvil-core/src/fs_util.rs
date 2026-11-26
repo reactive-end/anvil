@@ -20,10 +20,8 @@ use ulid::Ulid;
 
 /// Atomically writes `bytes` to `path` via a unique temp file and rename.
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+    let parent =
+        path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)
         .with_context(|| format!("failed to create directory {}", parent.display()))?;
 
@@ -62,11 +60,7 @@ fn rename_with_replace_fallback(tmp_path: &Path, target: &Path) -> Result<()> {
     }
     let _ = fs::remove_file(tmp_path);
     Err(last_err.unwrap_or_else(|| std::io::Error::other("rename failed"))).with_context(|| {
-        format!(
-            "failed to atomically rename {} -> {}",
-            tmp_path.display(),
-            target.display()
-        )
+        format!("failed to atomically rename {} -> {}", tmp_path.display(), target.display())
     })
 }
 
@@ -123,8 +117,7 @@ pub fn with_file_lock<T, F: FnOnce() -> Result<T>>(
                 attempt = attempt.saturating_add(1);
             }
             Err(TryLockError::Error(err)) => {
-                return Err(err)
-                    .with_context(|| format!("failed to lock {}", lock_path.display()));
+                return Err(err).with_context(|| format!("failed to lock {}", lock_path.display()));
             }
         }
     }

@@ -7,9 +7,9 @@ mod walker;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use anvil_core::config::AnvilConfig;
 use anvil_core::traits::{EdgeRef, Language};
+use anyhow::{Context, Result};
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
@@ -92,8 +92,7 @@ pub fn update_file(
         return Ok(false);
     }
     let stat = walker::file_stat_from_meta(&meta);
-    let bytes =
-        fs::read(&abs).with_context(|| format!("failed to read {}", abs.display()))?;
+    let bytes = fs::read(&abs).with_context(|| format!("failed to read {}", abs.display()))?;
     if bytes.contains(&0) {
         return Ok(false);
     }
@@ -138,12 +137,8 @@ pub fn update_incremental(
 ) -> Result<IncrementalStats> {
     let files = collect_source_files(repo_root);
     let disk_set: FxHashSet<String> = files.iter().map(|(_, rel)| rel.clone()).collect();
-    let removed_files: Vec<String> = graph
-        .file_hashes
-        .keys()
-        .filter(|k| !disk_set.contains(*k))
-        .cloned()
-        .collect();
+    let removed_files: Vec<String> =
+        graph.file_hashes.keys().filter(|k| !disk_set.contains(*k)).cloned().collect();
 
     let scanned: Vec<IncrementalScanResult> = files
         .par_iter()
@@ -189,20 +184,14 @@ fn scan_one_incremental(
     }
     let stat = walker::file_stat_from_meta(&meta);
     let is_new = !graph.file_hashes.contains_key(rel);
-    if !is_new
-        && stat.0 != 0
-        && graph.file_stats.get(rel) == Some(&stat)
-    {
+    if !is_new && stat.0 != 0 && graph.file_stats.get(rel) == Some(&stat) {
         return None;
     }
 
     let bytes = fs::read(abs).ok()?;
     let hash = blake3::hash(&bytes).to_hex().to_string();
     if graph.file_hashes.get(rel) == Some(&hash) {
-        return Some(IncrementalScanResult::StatOnly {
-            rel: rel.to_owned(),
-            stat,
-        });
+        return Some(IncrementalScanResult::StatOnly { rel: rel.to_owned(), stat });
     }
 
     let item = walker::extract_from_bytes(rel, bytes, stat, config).ok().flatten()?;

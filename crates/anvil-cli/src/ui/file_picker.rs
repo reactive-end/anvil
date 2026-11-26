@@ -47,9 +47,7 @@ pub fn pick_json_file(start_dir: &Path, force_tui: bool) -> Result<PromptOutcome
 
 #[cfg(windows)]
 fn pick_windows_dialog(start_dir: &Path) -> Result<PromptOutcome<PathBuf>> {
-    let dir = start_dir
-        .canonicalize()
-        .unwrap_or_else(|_| start_dir.to_path_buf());
+    let dir = start_dir.canonicalize().unwrap_or_else(|_| start_dir.to_path_buf());
     let picked = rfd::FileDialog::new()
         .set_title("Anvil — Select JSON task/feature list")
         .add_filter("JSON files (*.json)", &["json"])
@@ -132,17 +130,11 @@ pub fn browse_file_tui(start_dir: &Path, ext_filter: &str) -> Result<PromptOutco
 
     loop {
         let entries = list_browser_entries(&cur_dir, ext_filter)?;
-        let options: Vec<SelectOption> = entries
-            .iter()
-            .map(|e| SelectOption::new(&e.label, &e.hint))
-            .collect();
+        let options: Vec<SelectOption> =
+            entries.iter().map(|e| SelectOption::new(&e.label, &e.hint)).collect();
         let sub = format!("Folder: {}", cur_dir.display());
-        let outcome = prompt::select_transient(
-            "Select JSON feature/task list",
-            Some(&sub),
-            &options,
-            0,
-        )?;
+        let outcome =
+            prompt::select_transient("Select JSON feature/task list", Some(&sub), &options, 0)?;
         match outcome {
             PromptOutcome::Cancelled => return Ok(PromptOutcome::Cancelled),
             PromptOutcome::Confirmed(idx) => {
@@ -150,7 +142,10 @@ pub fn browse_file_tui(start_dir: &Path, ext_filter: &str) -> Result<PromptOutco
                 if chosen.is_dir {
                     cur_dir = chosen.path.clone();
                 } else {
-                    prompt::emit_collapsed("Selected JSON file", &chosen.path.display().to_string())?;
+                    prompt::emit_collapsed(
+                        "Selected JSON file",
+                        &chosen.path.display().to_string(),
+                    )?;
                     return Ok(PromptOutcome::Confirmed(chosen.path.clone()));
                 }
             }
@@ -188,15 +183,8 @@ pub fn list_browser_entries(dir: &Path, ext_filter: &str) -> Result<Vec<BrowserE
             .and_then(|e| e.to_str())
             .is_some_and(|e| e.eq_ignore_ascii_case(ext_filter))
         {
-            let size_hint = fs::metadata(&path)
-                .map(|m| format_size(m.len()))
-                .unwrap_or_default();
-            files.push(BrowserEntry {
-                path,
-                label: name,
-                hint: size_hint,
-                is_dir: false,
-            });
+            let size_hint = fs::metadata(&path).map(|m| format_size(m.len())).unwrap_or_default();
+            files.push(BrowserEntry { path, label: name, hint: size_hint, is_dir: false });
         }
     }
 
@@ -208,11 +196,7 @@ pub fn list_browser_entries(dir: &Path, ext_filter: &str) -> Result<Vec<BrowserE
 }
 
 fn format_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{bytes} B")
-    } else {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    }
+    if bytes < 1024 { format!("{bytes} B") } else { format!("{:.1} KB", bytes as f64 / 1024.0) }
 }
 
 #[cfg(test)]

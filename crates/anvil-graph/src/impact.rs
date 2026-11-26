@@ -53,10 +53,8 @@ pub fn compute_blast_radius(
     max_depth: usize,
 ) -> BlastRadiusReport {
     let started = Instant::now();
-    let norm_changed: Vec<String> = changed_files
-        .iter()
-        .map(|f| CodeGraph::normalize_rel_path(f))
-        .collect();
+    let norm_changed: Vec<String> =
+        changed_files.iter().map(|f| CodeGraph::normalize_rel_path(f)).collect();
     let changed_set: FxHashSet<&str> = norm_changed.iter().map(String::as_str).collect();
 
     let mut visited_nodes: FxHashMap<NodeId, usize> = FxHashMap::default();
@@ -121,11 +119,7 @@ fn run_reverse_bfs(
             if !edge.is_resolved() {
                 continue;
             }
-            let next_depth = if edge.kind == GraphEdgeKind::Contains {
-                depth
-            } else {
-                depth + 1
-            };
+            let next_depth = if edge.kind == GraphEdgeKind::Contains { depth } else { depth + 1 };
             if next_depth > max_depth {
                 continue;
             }
@@ -177,12 +171,7 @@ fn split_consumers_and_tests(
             tests.push(file);
         } else {
             let is_screen = sibling::is_screen_file(&file);
-            impacted.push(ImpactedItem {
-                file,
-                depth,
-                via_edges,
-                is_screen,
-            });
+            impacted.push(ImpactedItem { file, depth, via_edges, is_screen });
         }
     }
     impacted.sort_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.file.cmp(&b.file)));

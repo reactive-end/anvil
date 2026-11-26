@@ -31,11 +31,7 @@ process.stdout.write(JSON.stringify(result));
         .arg(harness)
         .output()
         .expect("node must execute dom_audit.js fixture");
-    assert!(
-        output.status.success(),
-        "node failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "node failed: {}", String::from_utf8_lossy(&output.stderr));
     String::from_utf8(output.stdout).expect("valid utf8 from node")
 }
 
@@ -200,28 +196,18 @@ fn dom_audit_ignores_modal_vs_background_overlap_but_catches_same_modal_overlap(
 #[test]
 fn playwright_rs_and_generated_script_contain_zero_eval_and_pass_node_check() {
     let playwright_rs = include_str!("../src/web/playwright.rs");
-    assert!(
-        !playwright_rs.contains("eval("),
-        "playwright.rs must not use eval() for CSP safety"
-    );
+    assert!(!playwright_rs.contains("eval("), "playwright.rs must not use eval() for CSP safety");
 
     let dir = tempdir().expect("tempdir");
-    let script = build_playwright_runner_script(
-        "http://127.0.0.1:4173",
-        "before",
-        dir.path(),
-    )
-    .expect("build playwright script");
+    let script = build_playwright_runner_script("http://127.0.0.1:4173", "before", dir.path())
+        .expect("build playwright script");
     assert!(!script.contains("eval("));
     assert!(script.contains("await page.evaluate(runDomAudit)"));
 
     let script_path = PathBuf::from(dir.path()).join("runner.mjs");
     fs::write(&script_path, script).expect("write runner.mjs");
-    let check = Command::new("node")
-        .arg("--check")
-        .arg(&script_path)
-        .output()
-        .expect("node --check");
+    let check =
+        Command::new("node").arg("--check").arg(&script_path).output().expect("node --check");
     assert!(
         check.status.success(),
         "node --check failed on generated playwright script: {}",
@@ -292,11 +278,7 @@ process.stdout.write(JSON.stringify({{ result, styleCalls: globalThis.__getStyle
         .arg(harness)
         .output()
         .expect("node must execute deep hidden tree fixture");
-    assert!(
-        output.status.success(),
-        "node failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "node failed: {}", String::from_utf8_lossy(&output.stderr));
     let parsed: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("valid JSON output");
     assert_eq!(parsed["result"]["passed"], true);
@@ -311,10 +293,7 @@ process.stdout.write(JSON.stringify({{ result, styleCalls: globalThis.__getStyle
 #[test]
 fn web_rs_has_zero_allow_attributes_and_playwright_supports_phases_and_cwd_require() {
     let web_rs = include_str!("../src/web.rs");
-    assert!(
-        !web_rs.contains("#[allow("),
-        "web.rs must not contain any #[allow(...)] attributes"
-    );
+    assert!(!web_rs.contains("#[allow("), "web.rs must not contain any #[allow(...)] attributes");
 
     let dir = tempdir().expect("tempdir");
     for phase in ["before", "after"] {

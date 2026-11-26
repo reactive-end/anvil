@@ -3,13 +3,13 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::{AnvilConfig, StackKind};
 use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::stack_detector::detect_workspace;
 use anvil_core::traits::CompressedOutput;
+use anyhow::Result;
 
 use crate::model::CodeGraph;
 
@@ -132,10 +132,7 @@ fn run_native_stacks_in_dir(
     }
     if (stacks.contains(&StackKind::Php) || stacks.contains(&StackKind::Laravel))
         && (ctx.impacted_files.is_empty()
-            || ctx
-                .impacted_files
-                .iter()
-                .any(|f| f.ends_with(".php") && !f.ends_with(".blade.php")))
+            || ctx.impacted_files.iter().any(|f| f.ends_with(".php") && !f.ends_with(".blade.php")))
     {
         results.push(super::typecheck_php::run_php_typecheck(
             ctx.log_root,
@@ -178,7 +175,9 @@ fn scope_files_to_subrepo(files: &[String], sub_prefix: &str) -> Vec<String> {
     let with_slash = format!("{sub_prefix}/");
     files
         .iter()
-        .filter_map(|f| CodeGraph::normalize_rel_path(f).strip_prefix(&with_slash).map(str::to_owned))
+        .filter_map(|f| {
+            CodeGraph::normalize_rel_path(f).strip_prefix(&with_slash).map(str::to_owned)
+        })
         .collect()
 }
 

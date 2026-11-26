@@ -6,10 +6,10 @@ use std::fs;
 use std::path::Path;
 
 use anvil_core::config::AnvilConfig;
+use anvil_graph::CodeGraphEngine;
 use anvil_graph::impact::filter_typecheck_output;
 use anvil_graph::merge::merge_graphs;
 use anvil_graph::model::GraphEdgeKind;
-use anvil_graph::CodeGraphEngine;
 use tempfile::TempDir;
 
 fn write_repo_file(root: &Path, rel: &str, content: &str) {
@@ -25,21 +25,13 @@ fn rust_mod_use_crate_super_and_workspace_resolution() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path();
 
-    write_repo_file(
-        root,
-        "Cargo.toml",
-        "[workspace]\nmembers = [\"crates/*\"]\n",
-    );
+    write_repo_file(root, "Cargo.toml", "[workspace]\nmembers = [\"crates/*\"]\n");
     write_repo_file(
         root,
         "crates/core-lib/Cargo.toml",
         "[package]\nname = \"core-lib\"\nversion = \"0.1.0\"\n",
     );
-    write_repo_file(
-        root,
-        "crates/core-lib/src/lib.rs",
-        "pub mod config;\n",
-    );
+    write_repo_file(root, "crates/core-lib/src/lib.rs", "pub mod config;\n");
     write_repo_file(
         root,
         "crates/core-lib/src/config.rs",
@@ -50,11 +42,7 @@ fn rust_mod_use_crate_super_and_workspace_resolution() {
         "crates/app-bin/Cargo.toml",
         "[package]\nname = \"app-bin\"\nversion = \"0.1.0\"\n",
     );
-    write_repo_file(
-        root,
-        "crates/app-bin/src/lib.rs",
-        "pub mod handlers;\n",
-    );
+    write_repo_file(root, "crates/app-bin/src/lib.rs", "pub mod handlers;\n");
     write_repo_file(
         root,
         "crates/app-bin/src/handlers.rs",
@@ -97,23 +85,11 @@ fn css_and_scss_import_and_kotlin_gradle_subproject_resolution() {
     // CSS / SCSS
     write_repo_file(root, "styles/_tokens.scss", ".btn { color: red; }\n");
     write_repo_file(root, "styles/base.css", ".card { display: block; }\n");
-    write_repo_file(
-        root,
-        "styles/app.scss",
-        "@import './tokens';\n@import './base.css';\n",
-    );
+    write_repo_file(root, "styles/app.scss", "@import './tokens';\n@import './base.css';\n");
 
     // Gradle Kotlin cross-module
-    write_repo_file(
-        root,
-        "settings.gradle.kts",
-        "include(\":core-ui\", \":feature:home\")\n",
-    );
-    write_repo_file(
-        root,
-        "core-ui/src/main/kotlin/com/demo/ui/Badge.kt",
-        "class Badge {}\n",
-    );
+    write_repo_file(root, "settings.gradle.kts", "include(\":core-ui\", \":feature:home\")\n");
+    write_repo_file(root, "core-ui/src/main/kotlin/com/demo/ui/Badge.kt", "class Badge {}\n");
     write_repo_file(
         root,
         "feature/home/src/main/kotlin/com/demo/home/Screen.kt",
@@ -150,16 +126,8 @@ fn multi_export_barrel_find_origin_matches_requested_symbol() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path();
 
-    write_repo_file(
-        root,
-        "src/core/auth.ts",
-        "export function verifyToken() { return true; }\n",
-    );
-    write_repo_file(
-        root,
-        "src/core/user.ts",
-        "export function loadUser() { return 'u'; }\n",
-    );
+    write_repo_file(root, "src/core/auth.ts", "export function verifyToken() { return true; }\n");
+    write_repo_file(root, "src/core/user.ts", "export function loadUser() { return 'u'; }\n");
     write_repo_file(
         root,
         "src/core/index.ts",
@@ -168,15 +136,13 @@ fn multi_export_barrel_find_origin_matches_requested_symbol() {
 
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("build");
 
-    let origin_user = engine
-        .find_origin("src/core/index.ts::loadUser")
-        .expect("origin for loadUser");
+    let origin_user =
+        engine.find_origin("src/core/index.ts::loadUser").expect("origin for loadUser");
     assert_eq!(origin_user.origin_file, "src/core/user.ts");
     assert_eq!(origin_user.origin_label, "loadUser");
 
-    let origin_auth = engine
-        .find_origin("src/core/index.ts::verifyToken")
-        .expect("origin for verifyToken");
+    let origin_auth =
+        engine.find_origin("src/core/index.ts::verifyToken").expect("origin for verifyToken");
     assert_eq!(origin_auth.origin_file, "src/core/auth.ts");
     assert_eq!(origin_auth.origin_label, "verifyToken");
 }
@@ -194,7 +160,8 @@ fn load_cached_and_mtime_size_incremental_fast_path() {
     built.save().expect("save graph.bin");
 
     // load_cached loads cleanly without re-walking or failing
-    let mut cached = CodeGraphEngine::load_cached(root, AnvilConfig::default()).expect("load_cached");
+    let mut cached =
+        CodeGraphEngine::load_cached(root, AnvilConfig::default()).expect("load_cached");
     assert_eq!(cached.graph.file_hashes.len(), 2);
 
     // No-op incremental update uses (mtime, size) fast-path -> 0 modified, 2 unchanged
@@ -221,20 +188,13 @@ fn merge_skips_common_unresolved_call_names() {
         "src/list.ts",
         "export function render(xs: number[]) { return xs.map((x) => x); }\n",
     );
-    write_repo_file(
-        back_dir.path(),
-        "src/util.ts",
-        "export function map() { return {}; }\n",
-    );
+    write_repo_file(back_dir.path(), "src/util.ts", "export function map() { return {}; }\n");
 
     let front = CodeGraphEngine::build(front_dir.path(), AnvilConfig::default()).expect("front");
     let back = CodeGraphEngine::build(back_dir.path(), AnvilConfig::default()).expect("back");
     let merged = merge_graphs(&[("front", &front.graph), ("back", &back.graph)]);
 
-    let has_spurious_link = merged
-        .edges
-        .iter()
-        .any(|e| e.kind == GraphEdgeKind::SemanticLink);
+    let has_spurious_link = merged.edges.iter().any(|e| e.kind == GraphEdgeKind::SemanticLink);
     assert!(!has_spurious_link, "common method name `map` must not spuriously cross-link");
 }
 

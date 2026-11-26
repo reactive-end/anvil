@@ -3,7 +3,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
 use anvil_adapters::{antigravity, claude_code};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::{AnvilConfig, StackKind, ToolKind};
@@ -13,6 +12,7 @@ use anvil_core::fs_util::{
 use anvil_graph::store;
 use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author;
+use anyhow::Result;
 use rustc_hash::FxHashSet;
 use serde_json::Value;
 
@@ -89,10 +89,7 @@ fn check_adapters(root: &Path, config: &AnvilConfig, failures: &mut usize) {
         ]);
     }
     if config.adapters.includes_cursor() {
-        required.extend([
-            root.join(".cursor/mcp.json"),
-            root.join(".cursor/rules/anvil.mdc"),
-        ]);
+        required.extend([root.join(".cursor/mcp.json"), root.join(".cursor/rules/anvil.mdc")]);
     }
     if config.adapters.includes_windsurf() {
         required.extend([
@@ -168,10 +165,8 @@ fn resolve_tsconfig_strict(
     };
     let cleaned = strip_jsonc(&raw);
     let val: Value = serde_json::from_str(&cleaned).map_err(|_| ())?;
-    if let Some(strict) = val
-        .get("compilerOptions")
-        .and_then(|c| c.get("strict"))
-        .and_then(Value::as_bool)
+    if let Some(strict) =
+        val.get("compilerOptions").and_then(|c| c.get("strict")).and_then(Value::as_bool)
     {
         return Ok(Some(strict));
     }
@@ -327,11 +322,7 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
     if workspace_has_php(config) {
         bins.push("php");
     }
-    for tool in config
-        .tools
-        .iter()
-        .chain(config.subrepos.iter().flat_map(|s| s.tools.iter()))
-    {
+    for tool in config.tools.iter().chain(config.subrepos.iter().flat_map(|s| s.tools.iter())) {
         if let Some(bin) = tool_kind_bin(*tool)
             && !bins.contains(&bin)
         {
@@ -351,9 +342,7 @@ fn check_stack_tools(root: &Path, config: &AnvilConfig) {
             }),
             "php" => resolve_php_bin().is_none(),
             "godot" => resolve_godot_bin().is_none(),
-            other => !search_dirs
-                .iter()
-                .any(|d| resolve_local_or_path_bin(d, other).is_some()),
+            other => !search_dirs.iter().any(|d| resolve_local_or_path_bin(d, other).is_some()),
         })
         .collect();
     if missing.is_empty() {
@@ -404,7 +393,11 @@ fn tool_kind_bin(tool: ToolKind) -> Option<&'static str> {
         ToolKind::Pest => Some("pest"),
         ToolKind::Godot => Some("godot"),
         ToolKind::GdLint => Some("gdlint"),
-        ToolKind::Gradle | ToolKind::Roborazzi | ToolKind::SonarQube | ToolKind::GdUnit4 | ToolKind::Gut => None,
+        ToolKind::Gradle
+        | ToolKind::Roborazzi
+        | ToolKind::SonarQube
+        | ToolKind::GdUnit4
+        | ToolKind::Gut => None,
     }
 }
 
@@ -429,11 +422,7 @@ fn check_sonar_setup(root: &Path, config: &AnvilConfig) {
     let (host, project, token) =
         crate::commands::sonar::resolve_sonar_endpoint(root, config, None, None);
     let token_state = if token.is_some() { "token set" } else { "token unset" };
-    let badge = if project.is_some() {
-        ui::ok_badge()
-    } else {
-        ui::warn_badge()
-    };
+    let badge = if project.is_some() { ui::ok_badge() } else { ui::warn_badge() };
     ui::print_status_row(
         &badge,
         "sonar",
@@ -473,20 +462,13 @@ fn check_godot_project(root: &Path, config: &AnvilConfig) {
 
 fn check_phpstan_config(root: &Path, config: &AnvilConfig) {
     let mut php_dirs = Vec::new();
-    if config
-        .stacks
-        .iter()
-        .any(|s| matches!(s, StackKind::Php | StackKind::Laravel))
+    if config.stacks.iter().any(|s| matches!(s, StackKind::Php | StackKind::Laravel))
         && root.join("composer.json").is_file()
     {
         php_dirs.push(root.to_path_buf());
     }
     for sub in &config.subrepos {
-        if sub
-            .stacks
-            .iter()
-            .any(|s| matches!(s, StackKind::Php | StackKind::Laravel))
-        {
+        if sub.stacks.iter().any(|s| matches!(s, StackKind::Php | StackKind::Laravel)) {
             let dir = root.join(&sub.path);
             if dir.is_dir() && !php_dirs.contains(&dir) {
                 php_dirs.push(dir);
@@ -504,7 +486,11 @@ fn check_phpstan_config(root: &Path, config: &AnvilConfig) {
                 Some(lvl) => ui::print_status_row(
                     &ui::ok_badge(),
                     "phpstan",
-                    &format!("level={}  {}", ui::cyan(&lvl), ui::dim(&format!("({})", path.display()))),
+                    &format!(
+                        "level={}  {}",
+                        ui::cyan(&lvl),
+                        ui::dim(&format!("({})", path.display()))
+                    ),
                 ),
                 None => ui::print_status_row(
                     &ui::warn_badge(),

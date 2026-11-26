@@ -144,9 +144,7 @@ fn should_skip_dir(path: &Path, rel: &str) -> bool {
     {
         return true;
     }
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|name| IGNORED_DIRS.contains(&name))
+    path.file_name().and_then(|n| n.to_str()).is_some_and(|name| IGNORED_DIRS.contains(&name))
 }
 
 fn load_gitignore_patterns(root: &Path) -> Vec<(String, bool)> {

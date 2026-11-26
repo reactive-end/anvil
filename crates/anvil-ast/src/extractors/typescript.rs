@@ -28,8 +28,7 @@ pub fn visit_node(node: Node<'_>, state: &mut ExtractState<'_>) {
 }
 
 fn is_exported(node: Node<'_>) -> bool {
-    node.parent()
-        .is_some_and(|p| p.kind() == "export_statement")
+    node.parent().is_some_and(|p| p.kind() == "export_statement")
 }
 
 fn enclosing_class_node(node: Node<'_>) -> Option<Node<'_>> {
@@ -58,7 +57,9 @@ fn extract_reexport(node: Node<'_>, state: &mut ExtractState<'_>) {
 }
 
 fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let name = state.node_text(name_node).to_owned();
     let is_tsx = matches!(state.language, Language::Tsx | Language::Jsx);
     let kind = if is_tsx && name.starts_with(char::is_uppercase) {
@@ -66,14 +67,30 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
     } else {
         SymbolKind::Function
     };
-    state.push_symbol(name.clone(), name, kind, ExtractState::span_of(node), None, is_exported(node));
+    state.push_symbol(
+        name.clone(),
+        name,
+        kind,
+        ExtractState::span_of(node),
+        None,
+        is_exported(node),
+    );
 }
 
 fn extract_interface(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let name = state.node_text(name_node).to_owned();
     let span = ExtractState::span_of(node);
-    state.push_symbol(name.clone(), name.clone(), SymbolKind::Interface, span, None, is_exported(node));
+    state.push_symbol(
+        name.clone(),
+        name.clone(),
+        SymbolKind::Interface,
+        span,
+        None,
+        is_exported(node),
+    );
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -88,24 +105,44 @@ fn extract_interface(node: Node<'_>, state: &mut ExtractState<'_>) {
 }
 
 fn extract_type_alias(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let name = state.node_text(name_node).to_owned();
-    state.push_symbol(name.clone(), name, SymbolKind::TypeAlias, ExtractState::span_of(node), None, is_exported(node));
+    state.push_symbol(
+        name.clone(),
+        name,
+        SymbolKind::TypeAlias,
+        ExtractState::span_of(node),
+        None,
+        is_exported(node),
+    );
 }
 
 fn extract_class(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let class_name = state.node_text(name_node).to_owned();
     let span = ExtractState::span_of(node);
     let decorators = frameworks::collect_decorators(node);
     let (kind, signature) =
         frameworks::classify_class_decorators(&class_name, &decorators, span, state);
-    state.push_symbol(class_name.clone(), class_name.clone(), kind, span, signature, is_exported(node));
+    state.push_symbol(
+        class_name.clone(),
+        class_name.clone(),
+        kind,
+        span,
+        signature,
+        is_exported(node),
+    );
     frameworks::extract_class_heritage(node, &class_name, span.0, state);
 }
 
 fn extract_method(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let method_name = state.node_text(name_node).to_owned();
     let class_node = enclosing_class_node(node);
     let class_name = class_node

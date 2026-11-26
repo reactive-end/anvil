@@ -123,14 +123,9 @@ pub fn update_circuit_from_output(
     let Some(out) = &input.tool_output else {
         return;
     };
-    let code = out
-        .get("exitCode")
-        .or_else(|| out.get("exit_code"))
-        .and_then(Value::as_i64);
+    let code = out.get("exitCode").or_else(|| out.get("exit_code")).and_then(Value::as_i64);
     let tool = input.tool_name.as_deref().unwrap_or("command");
-    let cmd = extract_command_field(input.tool_input.as_ref())
-        .map(|(_, s)| s)
-        .unwrap_or(tool);
+    let cmd = extract_command_field(input.tool_input.as_ref()).map(|(_, s)| s).unwrap_or(tool);
     let cb = CircuitBreaker::new(root, config.circuit_breaker_limit);
     if let Some(c) = code
         && root.join(".harness").is_dir()
@@ -172,12 +167,7 @@ fn push_circuit_open_msg(messages: &mut Vec<InboxMessage>, failures: u32) {
     let msg = format!(
         "Circuit Breaker tripped OPEN after {failures} identical failures; run `anvil circuit reset`."
     );
-    messages.push(InboxMessage::new(
-        "circuit-breaker",
-        MessageLevel::Error,
-        msg,
-        None,
-    ));
+    messages.push(InboxMessage::new("circuit-breaker", MessageLevel::Error, msg, None));
 }
 
 fn push_diagnostics(

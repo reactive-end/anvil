@@ -75,14 +75,12 @@ fn load_composer_in_dir(dir: &Path, subrepo_prefix: &str, out: &mut Vec<Psr4Mapp
     let Ok(raw) = fs::read_to_string(&path) else {
         return;
     };
-    let Ok(json) = serde_json::from_str::<Value>(raw.strip_prefix('\u{feff}').unwrap_or(&raw)) else {
+    let Ok(json) = serde_json::from_str::<Value>(raw.strip_prefix('\u{feff}').unwrap_or(&raw))
+    else {
         return;
     };
     for section in ["autoload", "autoload-dev"] {
-        let Some(psr4) = json
-            .get(section)
-            .and_then(|v| v.get("psr-4"))
-            .and_then(Value::as_object)
+        let Some(psr4) = json.get(section).and_then(|v| v.get("psr-4")).and_then(Value::as_object)
         else {
             continue;
         };
@@ -124,8 +122,12 @@ pub fn resolve_php_edge(
     psr4: &[Psr4Mapping],
 ) -> Option<NodeId> {
     match edge.kind {
-        EdgeKind::Imports => resolve_psr4_fqn(&edge.target_path_or_symbol, &edge.source_file, graph, psr4),
-        EdgeKind::RendersTemplate => resolve_laravel_template(&edge.target_path_or_symbol, &edge.source_file, graph, psr4),
+        EdgeKind::Imports => {
+            resolve_psr4_fqn(&edge.target_path_or_symbol, &edge.source_file, graph, psr4)
+        }
+        EdgeKind::RendersTemplate => {
+            resolve_laravel_template(&edge.target_path_or_symbol, &edge.source_file, graph, psr4)
+        }
         EdgeKind::Calls
         | EdgeKind::Extends
         | EdgeKind::Implements
@@ -148,7 +150,12 @@ pub fn resolve_blade_edge(
     psr4: &[Psr4Mapping],
 ) -> Option<NodeId> {
     if edge.kind == EdgeKind::RendersTemplate {
-        return resolve_laravel_template(&edge.target_path_or_symbol, &edge.source_file, graph, psr4);
+        return resolve_laravel_template(
+            &edge.target_path_or_symbol,
+            &edge.source_file,
+            graph,
+            psr4,
+        );
     }
     None
 }
@@ -281,7 +288,10 @@ fn resolve_laravel_template(
     if let Some(view_name) = target.strip_prefix("blade:") {
         let bare = view_name.rsplit("::").next().unwrap_or(view_name);
         let rel = bare.replace('.', "/");
-        return file_node_if_present(&join_subrepo(subrepo, &format!("resources/views/{rel}.blade.php")), graph);
+        return file_node_if_present(
+            &join_subrepo(subrepo, &format!("resources/views/{rel}.blade.php")),
+            graph,
+        );
     }
     if let Some(comp) = target.strip_prefix("blade_component:") {
         return resolve_blade_component(subrepo, comp, graph);
@@ -344,11 +354,7 @@ fn file_node_if_present(rel_path: &str, graph: &CodeGraph) -> Option<NodeId> {
 }
 
 fn join_subrepo(subrepo: &str, rel: &str) -> String {
-    if subrepo.is_empty() {
-        rel.to_owned()
-    } else {
-        format!("{subrepo}/{rel}")
-    }
+    if subrepo.is_empty() { rel.to_owned() } else { format!("{subrepo}/{rel}") }
 }
 
 fn to_studly_path(raw: &str) -> String {

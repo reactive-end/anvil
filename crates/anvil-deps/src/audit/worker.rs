@@ -21,10 +21,8 @@ pub(crate) fn fetch_misses_bounded(
         return Vec::new();
     }
 
-    let (cargo_misses, parallel_misses): (Vec<_>, Vec<_>) = misses
-        .iter()
-        .copied()
-        .partition(|(_, spec)| spec.ecosystem == Ecosystem::Cargo);
+    let (cargo_misses, parallel_misses): (Vec<_>, Vec<_>) =
+        misses.iter().copied().partition(|(_, spec)| spec.ecosystem == Ecosystem::Cargo);
 
     let mut out = Vec::with_capacity(misses.len());
     std::thread::scope(|scope| {

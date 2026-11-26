@@ -6,13 +6,12 @@ mod tier2;
 use std::fs;
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_ast::analyze_files_parallel;
 use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, DiffClassification, classify_files};
+use anvil_core::duplication::check_added_duplication;
 use anvil_core::git::{self, AddedLines, DiffScope};
 use anvil_core::orchestrator_mode::scope_allows;
-use anvil_core::duplication::check_added_duplication;
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
 use anvil_core::sonar::check_cognitive_complexity;
 use anvil_core::stats::record_check_outcome;
@@ -20,6 +19,7 @@ use anvil_core::test_tampering::{check_test_tampering_diff, is_test_file};
 use anvil_core::traits::{Diagnostic, Severity, Tier};
 use anvil_graph::builder::collect_source_files;
 use anvil_graph::model::CodeGraph;
+use anyhow::Result;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::commands::ExitCodeError;
@@ -65,7 +65,8 @@ pub fn execute(root: &Path, opts: CheckOptions, scope: &[String]) -> Result<()> 
         classification.skip_logic_tests
     );
 
-    let tier0_errors = run_timed_tier0(root, &config, &changed_paths, opts, run_sonar, &added_lines)?;
+    let tier0_errors =
+        run_timed_tier0(root, &config, &changed_paths, opts, run_sonar, &added_lines)?;
     let mut tier1_failed = false;
 
     if effective_tier >= Tier::Tier1 && (opts.full || !changed_paths.is_empty()) {
@@ -140,12 +141,8 @@ fn classify_repo_diff(
     let status = git::working_tree_status(root).unwrap_or_default();
     let mut unique = FxHashSet::default();
     let mut paths = Vec::new();
-    for p in status
-        .added
-        .iter()
-        .chain(&status.modified)
-        .chain(&status.deleted)
-        .chain(&status.untracked)
+    for p in
+        status.added.iter().chain(&status.modified).chain(&status.deleted).chain(&status.untracked)
     {
         if keep(p) && unique.insert(p.clone()) {
             paths.push(p.clone());
@@ -155,12 +152,7 @@ fn classify_repo_diff(
 
     let mut added_set = FxHashSet::default();
     let mut added_paths = Vec::new();
-    for p in status
-        .added
-        .iter()
-        .chain(&status.untracked)
-        .filter(|p| keep(p))
-    {
+    for p in status.added.iter().chain(&status.untracked).filter(|p| keep(p)) {
         let norm = CodeGraph::normalize_rel_path(p);
         if added_set.insert(norm.clone()) {
             added_paths.push(norm);
@@ -197,7 +189,11 @@ fn classify_staged_diff(
         .collect();
     let classification = classify_files(&changed);
     let added = git::working_tree_status(root).unwrap_or_default().added;
-    let added_paths = added.iter().filter(|p| paths.contains(p)).map(|p| CodeGraph::normalize_rel_path(p)).collect();
+    let added_paths = added
+        .iter()
+        .filter(|p| paths.contains(p))
+        .map(|p| CodeGraph::normalize_rel_path(p))
+        .collect();
     (paths, added_paths, classification)
 }
 
@@ -221,10 +217,7 @@ fn run_tier0(
     added_lines: &AddedLines,
 ) -> Result<usize> {
     let targets: Vec<String> = if full {
-        collect_source_files(root)
-            .into_iter()
-            .map(|(_, rel)| rel)
-            .collect()
+        collect_source_files(root).into_iter().map(|(_, rel)| rel).collect()
     } else if !changed.is_empty() {
         changed.to_vec()
     } else {
@@ -254,8 +247,10 @@ fn run_tier0(
     }
     run_tampering_and_sonar(root, config, changed, staged, run_sonar, &loaded, &mut errors);
     if !added_lines.is_empty() {
-        let repo_files: Vec<String> = collect_source_files(root).into_iter().map(|(_, rel)| rel).collect();
-        let duplicates = check_added_duplication(root, &repo_files, added_lines, config.duplication_window());
+        let repo_files: Vec<String> =
+            collect_source_files(root).into_iter().map(|(_, rel)| rel).collect();
+        let duplicates =
+            check_added_duplication(root, &repo_files, added_lines, config.duplication_window());
         print_diagnostics(&duplicates, &mut errors);
     }
     Ok(errors)
@@ -277,18 +272,13 @@ fn run_tampering_and_sonar(
     }
     if run_sonar {
         for (rel, src) in loaded {
-            let diags =
-                check_cognitive_complexity(rel, src, config.sonar.cognitive_complexity_max);
+            let diags = check_cognitive_complexity(rel, src, config.sonar.cognitive_complexity_max);
             print_diagnostics(&diags, errors);
         }
     }
 }
 
-fn collect_test_diffs(
-    root: &Path,
-    changed: &[String],
-    staged: bool,
-) -> FxHashMap<String, String> {
+fn collect_test_diffs(root: &Path, changed: &[String], staged: bool) -> FxHashMap<String, String> {
     let test_paths: Vec<&String> = changed.iter().filter(|p| is_test_file(p)).collect();
     let mut out = FxHashMap::default();
     if test_paths.is_empty() {

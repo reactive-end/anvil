@@ -4,10 +4,10 @@ mod inspect;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_graph::merge::merge_graphs;
 use anvil_graph::{CodeGraphEngine, store};
+use anyhow::Result;
 
 use crate::cli::subcmds::GraphSubcmd;
 use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
@@ -17,11 +17,9 @@ use crate::daemon::try_request;
 pub fn execute(root: &Path, sub: GraphSubcmd) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
     match sub {
-        GraphSubcmd::Build {
-            json,
-            html,
-            overlay,
-        } => cmd_build(root, config, json, html.as_deref(), overlay.as_deref()),
+        GraphSubcmd::Build { json, html, overlay } => {
+            cmd_build(root, config, json, html.as_deref(), overlay.as_deref())
+        }
         GraphSubcmd::Update => cmd_update(root, config),
         GraphSubcmd::ReadSymbol { symbol, no_imports } => {
             inspect::cmd_read_symbol(root, config, &symbol, !no_imports)
@@ -86,13 +84,7 @@ fn cmd_update(root: &Path, config: AnvilConfig) -> Result<()> {
 }
 
 fn cmd_query(root: &Path, config: AnvilConfig, term: &str, limit: usize) -> Result<()> {
-    let hits = match try_request(
-        root,
-        DaemonRequest::Query {
-            term: term.to_owned(),
-            limit,
-        },
-    ) {
+    let hits = match try_request(root, DaemonRequest::Query { term: term.to_owned(), limit }) {
         Some(DaemonResponse::QueryHits { hits }) => hits,
         _ => {
             let engine = CodeGraphEngine::load_cached(root, config)?;
@@ -167,20 +159,12 @@ fn cmd_merge(
         dirs.iter()
             .map(|d| {
                 let abs = if d.is_absolute() { d.clone() } else { root.join(d) };
-                let name = d
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("repo")
-                    .to_owned();
+                let name = d.file_name().and_then(|n| n.to_str()).unwrap_or("repo").to_owned();
                 (name, abs)
             })
             .collect()
     } else {
-        config
-            .subrepos
-            .iter()
-            .map(|s| (s.name.clone(), root.join(&s.path)))
-            .collect()
+        config.subrepos.iter().map(|s| (s.name.clone(), root.join(&s.path))).collect()
     };
 
     let mut built = Vec::with_capacity(targets.len());
@@ -193,9 +177,7 @@ fn cmd_merge(
     let refs: Vec<(&str, &anvil_graph::model::CodeGraph)> =
         built.iter().map(|(n, g)| (n.as_str(), g)).collect();
     let merged = merge_graphs(&refs);
-    let out_path = out
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| store::default_bin_path(root));
+    let out_path = out.map(Path::to_path_buf).unwrap_or_else(|| store::default_bin_path(root));
     store::save_binary(&merged, &out_path)?;
     println!(
         "merged {} repo(s): {} nodes, {} edges -> {}",

@@ -19,9 +19,7 @@ fn detects_php_and_blade_languages() {
     );
 }
 
-#[test]
-fn extracts_php8_symbols_imports_traits_di_and_calls() {
-    let src = r#"<?php
+const AUTH_CONTROLLER_PHP: &str = r#"<?php
 
 declare(strict_types=1);
 
@@ -55,15 +53,17 @@ final class AuthController extends Controller implements Authenticatable
 }
 "#;
 
-    let facts = analyze_file(Path::new("app/Http/Controllers/Api/AuthController.php"), src, &default_cfg())
-        .expect("analyze php controller");
+#[test]
+fn extracts_php8_symbols_imports_traits_di_and_calls() {
+    let src = AUTH_CONTROLLER_PHP;
+
+    let facts =
+        analyze_file(Path::new("app/Http/Controllers/Api/AuthController.php"), src, &default_cfg())
+            .expect("analyze php controller");
     assert!(facts.diagnostics.is_empty(), "unexpected diags: {:?}", facts.diagnostics);
 
-    let sym_names: Vec<(&str, SymbolKind, bool)> = facts
-        .symbols
-        .iter()
-        .map(|s| (s.qualified_name.as_str(), s.kind, s.exported))
-        .collect();
+    let sym_names: Vec<(&str, SymbolKind, bool)> =
+        facts.symbols.iter().map(|s| (s.qualified_name.as_str(), s.kind, s.exported)).collect();
     for expected in [
         ("AuthController", SymbolKind::Class, true),
         ("AuthController::VERSION", SymbolKind::Constant, true),
@@ -74,7 +74,8 @@ final class AuthController extends Controller implements Authenticatable
         assert!(sym_names.contains(&expected), "missing {expected:?} in {sym_names:?}");
     }
 
-    let login_sym = facts.symbols.iter().find(|s| s.qualified_name == "AuthController::login").expect("login");
+    let login_sym =
+        facts.symbols.iter().find(|s| s.qualified_name == "AuthController::login").expect("login");
     assert!(login_sym.end_line > login_sym.line);
 
     for expected_edge in [
@@ -91,7 +92,10 @@ final class AuthController extends Controller implements Authenticatable
         (EdgeKind::Calls, "SessionDto"),
     ] {
         assert!(
-            facts.edges.iter().any(|e| e.kind == expected_edge.0 && e.target_path_or_symbol == expected_edge.1),
+            facts
+                .edges
+                .iter()
+                .any(|e| e.kind == expected_edge.0 && e.target_path_or_symbol == expected_edge.1),
             "missing edge {expected_edge:?}"
         );
     }
@@ -117,8 +121,9 @@ Route::middleware('jwt')->group(function (): void {
 });
 "#;
 
-    let facts = analyze_file(Path::new("backend/routes/api/billing.php"), routes_src, &default_cfg())
-        .expect("analyze laravel routes");
+    let facts =
+        analyze_file(Path::new("backend/routes/api/billing.php"), routes_src, &default_cfg())
+            .expect("analyze laravel routes");
     assert!(facts.diagnostics.is_empty(), "unexpected diags: {:?}", facts.diagnostics);
 
     let routes: Vec<&str> = facts
@@ -137,8 +142,15 @@ Route::middleware('jwt')->group(function (): void {
     ] {
         assert!(routes.contains(&expected), "missing {expected} in {routes:?}");
     }
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "ChargeController::void"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate && e.target_path_or_symbol == "inertia:Dashboard/Home"));
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Calls
+                && e.target_path_or_symbol == "ChargeController::void")
+    );
+    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate
+        && e.target_path_or_symbol == "inertia:Dashboard/Home"));
 }
 
 #[test]
@@ -159,11 +171,24 @@ final class PageController
     }
 }
 "#;
-    let facts = analyze_file(Path::new("app/Http/Controllers/PageController.php"), ctrl_src, &default_cfg())
-        .expect("analyze page controller");
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate && e.target_path_or_symbol == "blade:admin.users.index"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate && e.target_path_or_symbol == "inertia:Users/Index"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Provides && e.target_path_or_symbol == "EloquentUserRepo"));
+    let facts = analyze_file(
+        Path::new("app/Http/Controllers/PageController.php"),
+        ctrl_src,
+        &default_cfg(),
+    )
+    .expect("analyze page controller");
+    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate
+        && e.target_path_or_symbol == "blade:admin.users.index"));
+    assert!(
+        facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate
+            && e.target_path_or_symbol == "inertia:Users/Index")
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Provides && e.target_path_or_symbol == "EloquentUserRepo")
+    );
 }
 
 #[test]
@@ -183,7 +208,11 @@ fn extracts_blade_directives_and_components() {
         &default_cfg(),
     )
     .expect("analyze blade");
-    assert!(facts.diagnostics.is_empty(), "blade should not require strict_types: {:?}", facts.diagnostics);
+    assert!(
+        facts.diagnostics.is_empty(),
+        "blade should not require strict_types: {:?}",
+        facts.diagnostics
+    );
 
     let templates: Vec<&str> = facts
         .edges
@@ -204,10 +233,15 @@ fn tier0_enforces_strict_types_and_escape_hatches() {
 
     let missing_strict = "<?php\nfinal class Foo {}\n";
     let res = analyze_file(Path::new("app/Foo.php"), missing_strict, &cfg).expect("missing strict");
-    assert!(res.diagnostics.iter().any(|d| d.rule == "require-strict-types" && d.severity == Severity::Error));
+    assert!(
+        res.diagnostics
+            .iter()
+            .any(|d| d.rule == "require-strict-types" && d.severity == Severity::Error)
+    );
 
     let allowed_strict = "<?php\n// anvil-allow(require-strict-types): legacy framework entrypoint [PLAT-1]\nfinal class Foo {}\n";
-    let ok = analyze_file(Path::new("public/index.php"), allowed_strict, &cfg).expect("allowed strict");
+    let ok =
+        analyze_file(Path::new("public/index.php"), allowed_strict, &cfg).expect("allowed strict");
     assert!(ok.diagnostics.is_empty(), "unexpected: {:?}", ok.diagnostics);
 
     let escapes = "<?php\n\ndeclare(strict_types=1);\n\nfinal class Bad {\n  public function run(): void {\n    // @phpstan-ignore-next-line\n    $a = 1;\n    /** @psalm-suppress MixedAssignment */\n    $b = $a;\n    // phpcs:ignore Generic.Files.LineLength\n    $c = @file_get_contents('x');\n  }\n}\n";
@@ -220,11 +254,14 @@ fn tier0_enforces_strict_types_and_escape_hatches() {
 fn tier0_enforces_php_debug_helpers_and_env_outside_config() {
     let cfg = default_cfg();
     let hygiene = "<?php\n\ndeclare(strict_types=1);\n\nfinal class Service {\n  public function debug(): void {\n    dd('boom');\n    $key = env('APP_KEY');\n  }\n}\n";
-    let hyg_res = analyze_file(Path::new("app/Services/Service.php"), hygiene, &cfg).expect("hygiene");
+    let hyg_res =
+        analyze_file(Path::new("app/Services/Service.php"), hygiene, &cfg).expect("hygiene");
     assert!(hyg_res.diagnostics.iter().any(|d| d.rule == "no-debug-helpers"));
     assert!(hyg_res.diagnostics.iter().any(|d| d.rule == "no-env-outside-config"));
 
-    let config_php = "<?php\n\ndeclare(strict_types=1);\n\nreturn ['name' => env('APP_NAME', 'Laravel')];\n";
-    let cfg_ok = analyze_file(Path::new("backend/config/app.php"), config_php, &cfg).expect("config env");
+    let config_php =
+        "<?php\n\ndeclare(strict_types=1);\n\nreturn ['name' => env('APP_NAME', 'Laravel')];\n";
+    let cfg_ok =
+        analyze_file(Path::new("backend/config/app.php"), config_php, &cfg).expect("config env");
     assert!(cfg_ok.diagnostics.is_empty(), "unexpected: {:?}", cfg_ok.diagnostics);
 }

@@ -144,12 +144,7 @@ fn eval_multiline_rule(
         if line_idx < lines.len() && is_suppressed(lines, line_idx, &rule.id, &rule.rule_name) {
             continue;
         }
-        diagnostics.push(build_diagnostic(
-            rule,
-            norm_path,
-            (line_idx + 1) as u32,
-            col,
-        ));
+        diagnostics.push(build_diagnostic(rule, norm_path, (line_idx + 1) as u32, col));
     }
 }
 
@@ -187,10 +182,7 @@ fn build_diagnostic(rule: &CompiledRule, norm_path: &str, line: u32, column: u32
         line,
         column,
         message: rule.description.clone(),
-        suggestion: Some(format!(
-            "Remove or suppress with `anvil-allow({}): <reason>`",
-            rule.id
-        )),
+        suggestion: Some(format!("Remove or suppress with `anvil-allow({}): <reason>`", rule.id)),
     }
 }
 

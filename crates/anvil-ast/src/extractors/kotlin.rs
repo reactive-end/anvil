@@ -37,9 +37,7 @@ fn enclosing_class(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
     let mut cur = node.parent();
     while let Some(parent) = cur {
         if matches!(parent.kind(), "class_declaration" | "object_declaration") {
-            return parent
-                .child_by_field_name("name")
-                .map(|n| state.node_text(n).to_owned());
+            return parent.child_by_field_name("name").map(|n| state.node_text(n).to_owned());
         }
         cur = parent.parent();
     }
@@ -96,24 +94,17 @@ fn extract_delegations(node: Node<'_>, class_name: &str, line: u32, state: &mut 
             };
             let is_ctor = inner.kind() == "constructor_invocation";
             let raw = state.node_text(inner);
-            let target = raw
-                .split('(')
-                .next()
-                .unwrap_or(raw)
-                .trim()
-                .to_owned();
-            let edge_kind = if is_ctor {
-                EdgeKind::Extends
-            } else {
-                EdgeKind::Implements
-            };
+            let target = raw.split('(').next().unwrap_or(raw).trim().to_owned();
+            let edge_kind = if is_ctor { EdgeKind::Extends } else { EdgeKind::Implements };
             state.push_edge(Some(class_name.to_owned()), target, edge_kind, line);
         }
     }
 }
 
 fn extract_object(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let Some(name_node) = node.child_by_field_name("name") else { return };
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
     let name = state.node_text(name_node).to_owned();
     let mods = modifiers_text(node, state);
     state.push_symbol(
@@ -167,7 +158,9 @@ fn extract_retrofit_routes(fn_node: Node<'_>, qualified_fn: &str, state: &mut Ex
 }
 
 fn emit_kotlin_annotation_route(ann: Node<'_>, qualified_fn: &str, state: &mut ExtractState<'_>) {
-    let Some(ctor) = ann.named_child(0) else { return };
+    let Some(ctor) = ann.named_child(0) else {
+        return;
+    };
     if ctor.kind() != "constructor_invocation" {
         return;
     }
@@ -184,16 +177,8 @@ fn emit_kotlin_annotation_route(ann: Node<'_>, qualified_fn: &str, state: &mut E
     let (Some(ut), Some(vargs)) = (user_type, value_args) else {
         return;
     };
-    let method = state
-        .node_text(ut)
-        .trim()
-        .rsplit('.')
-        .next()
-        .unwrap_or("");
-    if !matches!(
-        method,
-        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-    ) {
+    let method = state.node_text(ut).trim().rsplit('.').next().unwrap_or("");
+    if !matches!(method, "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS") {
         return;
     }
     let Some(path) = extract_kotlin_first_string_arg(vargs, state) else {
@@ -211,9 +196,7 @@ fn emit_kotlin_annotation_route(ann: Node<'_>, qualified_fn: &str, state: &mut E
 
 fn extract_kotlin_first_string_arg(vargs: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
     let mut cursor = vargs.walk();
-    let first = vargs
-        .named_children(&mut cursor)
-        .find(|c| c.kind() == "value_argument")?;
+    let first = vargs.named_children(&mut cursor).find(|c| c.kind() == "value_argument")?;
     let mut a_cursor = first.walk();
     for child in first.named_children(&mut a_cursor) {
         if child.kind() == "string_literal" {
@@ -229,7 +212,14 @@ fn extract_type_alias(node: Node<'_>, state: &mut ExtractState<'_>) {
     for child in node.named_children(&mut cursor) {
         if child.kind() == "identifier" {
             let name = state.node_text(child).to_owned();
-            state.push_symbol(name.clone(), name, SymbolKind::TypeAlias, ExtractState::span_of(node), None, true);
+            state.push_symbol(
+                name.clone(),
+                name,
+                SymbolKind::TypeAlias,
+                ExtractState::span_of(node),
+                None,
+                true,
+            );
             return;
         }
     }

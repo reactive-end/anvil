@@ -3,8 +3,8 @@
 use std::fmt;
 use std::str::FromStr;
 
-use anyhow::{Result, bail};
 use anvil_core::traits::FreshnessState;
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 /// Allowed semantic categories for persistent memory observations.

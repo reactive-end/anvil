@@ -111,9 +111,7 @@ pub struct ViewportCapture {
 impl ViewportCapture {
     /// Returns true if no DOM violations or runtime errors were recorded.
     pub fn passed(&self) -> bool {
-        self.violations.is_empty()
-            && self.console_errors.is_empty()
-            && self.page_errors.is_empty()
+        self.violations.is_empty() && self.console_errors.is_empty() && self.page_errors.is_empty()
     }
 
     /// Total violation count including console and page errors without double-counting.
@@ -122,22 +120,13 @@ impl ViewportCapture {
             .violations
             .iter()
             .filter(|v| {
-                !matches!(
-                    v.kind,
-                    QaViolationKind::ConsoleError | QaViolationKind::PageError
-                )
+                !matches!(v.kind, QaViolationKind::ConsoleError | QaViolationKind::PageError)
             })
             .count();
-        let console_in_v = self
-            .violations
-            .iter()
-            .filter(|v| v.kind == QaViolationKind::ConsoleError)
-            .count();
-        let page_in_v = self
-            .violations
-            .iter()
-            .filter(|v| v.kind == QaViolationKind::PageError)
-            .count();
+        let console_in_v =
+            self.violations.iter().filter(|v| v.kind == QaViolationKind::ConsoleError).count();
+        let page_in_v =
+            self.violations.iter().filter(|v| v.kind == QaViolationKind::PageError).count();
         dom_count
             + console_in_v.max(self.console_errors.len())
             + page_in_v.max(self.page_errors.len())

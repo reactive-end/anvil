@@ -4,21 +4,11 @@ use std::path::Path;
 
 use crate::model::{QaViolation, QaViolationKind, RunnerCommand};
 
-const SCENE_3D_TYPES: &[&str] = &[
-    "Node3D",
-    "CharacterBody3D",
-    "RigidBody3D",
-    "StaticBody3D",
-    "MeshInstance3D",
-    "Camera3D",
-];
+const SCENE_3D_TYPES: &[&str] =
+    &["Node3D", "CharacterBody3D", "RigidBody3D", "StaticBody3D", "MeshInstance3D", "Camera3D"];
 
-const LIGHTING_3D_TYPES: &[&str] = &[
-    "DirectionalLight3D",
-    "OmniLight3D",
-    "SpotLight3D",
-    "WorldEnvironment",
-];
+const LIGHTING_3D_TYPES: &[&str] =
+    &["DirectionalLight3D", "OmniLight3D", "SpotLight3D", "WorldEnvironment"];
 
 const PHYSICS_BODY_TYPES: &[&str] = &[
     "CharacterBody2D",
@@ -31,12 +21,8 @@ const PHYSICS_BODY_TYPES: &[&str] = &[
     "Area3D",
 ];
 
-const COLLISION_SHAPE_TYPES: &[&str] = &[
-    "CollisionShape2D",
-    "CollisionShape3D",
-    "CollisionPolygon2D",
-    "CollisionPolygon3D",
-];
+const COLLISION_SHAPE_TYPES: &[&str] =
+    &["CollisionShape2D", "CollisionShape3D", "CollisionPolygon2D", "CollisionPolygon3D"];
 
 #[derive(Debug, Clone)]
 struct SceneNode {
@@ -79,23 +65,14 @@ pub fn audit_godot_scene_tree(tscn_source: &str, file: &str) -> Vec<QaViolation>
     violations
 }
 
-fn check_3d_scene_requirements(
-    nodes: &[SceneNode],
-    file: &str,
-    violations: &mut Vec<QaViolation>,
-) {
-    let is_3d = nodes.iter().any(|n| {
-        n.node_type
-            .as_deref()
-            .is_some_and(|ty| SCENE_3D_TYPES.contains(&ty))
-    });
+fn check_3d_scene_requirements(nodes: &[SceneNode], file: &str, violations: &mut Vec<QaViolation>) {
+    let is_3d =
+        nodes.iter().any(|n| n.node_type.as_deref().is_some_and(|ty| SCENE_3D_TYPES.contains(&ty)));
     if !is_3d {
         return;
     }
 
-    let has_camera = nodes
-        .iter()
-        .any(|n| n.node_type.as_deref() == Some("Camera3D"));
+    let has_camera = nodes.iter().any(|n| n.node_type.as_deref() == Some("Camera3D"));
     if !has_camera {
         violations.push(QaViolation {
             kind: QaViolationKind::Godot3dMissingCamera,
@@ -106,11 +83,9 @@ fn check_3d_scene_requirements(
         });
     }
 
-    let has_lighting = nodes.iter().any(|n| {
-        n.node_type
-            .as_deref()
-            .is_some_and(|ty| LIGHTING_3D_TYPES.contains(&ty))
-    });
+    let has_lighting = nodes
+        .iter()
+        .any(|n| n.node_type.as_deref().is_some_and(|ty| LIGHTING_3D_TYPES.contains(&ty)));
     if !has_lighting {
         violations.push(QaViolation {
             kind: QaViolationKind::Godot3dMissingLighting,
@@ -122,11 +97,7 @@ fn check_3d_scene_requirements(
     }
 }
 
-fn check_physics_collisions(
-    nodes: &[SceneNode],
-    file: &str,
-    violations: &mut Vec<QaViolation>,
-) {
+fn check_physics_collisions(nodes: &[SceneNode], file: &str, violations: &mut Vec<QaViolation>) {
     for body in nodes {
         let Some(body_type) = body.node_type.as_deref() else {
             continue;
@@ -136,10 +107,7 @@ fn check_physics_collisions(
         }
         let has_shape = nodes.iter().any(|child| {
             child.parent.as_deref() == Some(body.path.as_str())
-                && child
-                    .node_type
-                    .as_deref()
-                    .is_some_and(|ty| COLLISION_SHAPE_TYPES.contains(&ty))
+                && child.node_type.as_deref().is_some_and(|ty| COLLISION_SHAPE_TYPES.contains(&ty))
         });
         if !has_shape {
             violations.push(QaViolation {
@@ -182,28 +150,18 @@ fn parse_node_header(attrs_raw: &str) -> Option<SceneNode> {
     if name.is_empty() {
         return None;
     }
-    let node_type = find_attr(&attrs, "type")
-        .filter(|v| !v.is_empty())
-        .map(str::to_owned);
+    let node_type = find_attr(&attrs, "type").filter(|v| !v.is_empty()).map(str::to_owned);
     let parent = find_attr(&attrs, "parent").map(str::to_owned);
     let path = match parent.as_deref() {
         None => ".".to_owned(),
         Some(".") => name.clone(),
         Some(p) => format!("{p}/{name}"),
     };
-    Some(SceneNode {
-        name,
-        node_type,
-        parent,
-        path,
-    })
+    Some(SceneNode { name, node_type, parent, path })
 }
 
 fn find_attr<'a>(attrs: &'a [(String, String)], key: &str) -> Option<&'a str> {
-    attrs
-        .iter()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.as_str())
+    attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
 }
 
 fn parse_attrs(raw: &str) -> Vec<(String, String)> {

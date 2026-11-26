@@ -1,12 +1,12 @@
 //! Manifest and registry-payload parsing tests for all 4 ecosystems.
 
+use anvil_deps::Ecosystem;
 use anvil_deps::maven::{
     parse_build_gradle_kts, parse_libs_versions_toml, parse_maven_search_json,
 };
 use anvil_deps::npm::{parse_npm_registry_json, parse_package_json};
 use anvil_deps::pubdev::{parse_pubdev_registry_json, parse_pubspec_yaml};
 use anvil_deps::pypi::{parse_pypi_registry_json, parse_pyproject_toml};
-use anvil_deps::Ecosystem;
 
 #[test]
 fn parses_npm_package_json_and_registry_payload() {
@@ -28,10 +28,7 @@ fn parses_npm_package_json_and_registry_payload() {
     let info = parse_npm_registry_json("tslint", registry).expect("npm registry");
     assert!(info.deprecated);
     assert_eq!(info.latest_version.as_deref(), Some("6.1.3"));
-    assert_eq!(
-        info.deprecation_message.as_deref(),
-        Some("TSLint has been deprecated")
-    );
+    assert_eq!(info.deprecation_message.as_deref(), Some("TSLint has been deprecated"));
 }
 
 #[test]
@@ -99,10 +96,7 @@ dev_dependencies:
     let info = parse_pubdev_registry_json("old_http", registry).expect("pubdev registry");
     assert!(info.deprecated);
     assert!(info.archived);
-    assert_eq!(
-        info.deprecation_message.as_deref(),
-        Some("discontinued; replaced by dio")
-    );
+    assert_eq!(info.deprecation_message.as_deref(), Some("discontinued; replaced by dio"));
 }
 
 #[test]
@@ -118,11 +112,7 @@ dependencies {
     let gradle_names: Vec<&str> = gradle_specs.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(
         gradle_names,
-        vec![
-            "androidx.compose:compose-bom",
-            "com.squareup.okhttp3:okhttp",
-            "junit:junit"
-        ]
+        vec!["androidx.compose:compose-bom", "com.squareup.okhttp3:okhttp", "junit:junit"]
     );
 
     let catalog = r#"
@@ -135,13 +125,7 @@ gson = { group = "com.google.code.gson", name = "gson", version = "2.11.0" }
 "#;
     let cat_specs = parse_libs_versions_toml("gradle/libs.versions.toml", catalog).expect("toml");
     let cat_names: Vec<&str> = cat_specs.iter().map(|s| s.name.as_str()).collect();
-    assert_eq!(
-        cat_names,
-        vec![
-            "com.google.code.gson:gson",
-            "com.squareup.retrofit2:retrofit"
-        ]
-    );
+    assert_eq!(cat_names, vec!["com.google.code.gson:gson", "com.squareup.retrofit2:retrofit"]);
 
     let solr = r#"{
       "response": {

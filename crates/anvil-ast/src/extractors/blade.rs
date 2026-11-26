@@ -24,8 +24,10 @@ fn extract_blade_references(state: &mut ExtractState<'_>) {
     static LIVEWIRE_TAG_RE: OnceLock<Regex> = OnceLock::new();
 
     let view_re = VIEW_DIRECTIVE_RE.get_or_init(|| {
-        Regex::new(r"@(?:extends|include|includeIf|each|component)\s*\(\s*['\x22]([^'\x22]+)['\x22]")
-            .expect("valid blade view directive regex")
+        Regex::new(
+            r"@(?:extends|include|includeIf|each|component)\s*\(\s*['\x22]([^'\x22]+)['\x22]",
+        )
+        .expect("valid blade view directive regex")
     });
     let cond_re = INCLUDE_COND_RE.get_or_init(|| {
         Regex::new(r"@(?:includeWhen|includeUnless)\s*\([^,]+,\s*['\x22]([^'\x22]+)['\x22]")

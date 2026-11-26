@@ -3,13 +3,22 @@
 use std::path::Path;
 
 const HOME_PREFIXES: &[&str] = &[
-    "~", "$home", "${home}", "%userprofile%", "%homepath%", "$env:userprofile", "$env:home",
-    "%systemroot%", "$env:systemroot", "%systemdrive%", "$env:systemdrive", "%programfiles%",
+    "~",
+    "$home",
+    "${home}",
+    "%userprofile%",
+    "%homepath%",
+    "$env:userprofile",
+    "$env:home",
+    "%systemroot%",
+    "$env:systemroot",
+    "%systemdrive%",
+    "$env:systemdrive",
+    "%programfiles%",
     "$env:programfiles",
 ];
-const TEMP_PREFIXES: &[&str] = &[
-    "/tmp/", "/var/tmp/", "/private/tmp/", "/var/folders/", "/dev/shm/",
-];
+const TEMP_PREFIXES: &[&str] =
+    &["/tmp/", "/var/tmp/", "/private/tmp/", "/var/folders/", "/dev/shm/"];
 
 /// Returns `true` when recursively deleting `raw` would reach the filesystem root, a home
 /// directory, the whole working directory, `.git`, or anything outside `root` and temp dirs.
@@ -32,10 +41,7 @@ pub fn is_dangerous(root: &Path, raw: &str) -> bool {
     if is_temp_path(&path) {
         return false;
     }
-    let repo = format!(
-        "/{}",
-        collapse(&unify(&root.to_string_lossy())).1.join("/")
-    );
+    let repo = format!("/{}", collapse(&unify(&root.to_string_lossy())).1.join("/"));
     !path.starts_with(&format!("{}/", repo.trim_end_matches('/')))
 }
 
@@ -73,8 +79,7 @@ fn is_drive_segment(rest: &str) -> bool {
 }
 
 fn has_path_prefix(text: &str, prefix: &str) -> bool {
-    text.strip_prefix(prefix)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    text.strip_prefix(prefix).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 fn strip_contents_glob(text: &str) -> &str {
@@ -111,19 +116,13 @@ fn collapse(text: &str) -> (bool, Vec<String>) {
 }
 
 fn is_temp_path(path: &str) -> bool {
-    let system_temp = format!(
-        "/{}/",
-        collapse(&unify(&std::env::temp_dir().to_string_lossy()))
-            .1
-            .join("/")
-    );
+    let system_temp =
+        format!("/{}/", collapse(&unify(&std::env::temp_dir().to_string_lossy())).1.join("/"));
     let under_system_temp =
         system_temp.len() > 2 && path.len() > system_temp.len() && path.starts_with(&system_temp);
     under_system_temp
         || path.contains("/appdata/local/temp/")
-        || TEMP_PREFIXES
-            .iter()
-            .any(|p| path.len() > p.len() && path.starts_with(p))
+        || TEMP_PREFIXES.iter().any(|p| path.len() > p.len() && path.starts_with(p))
 }
 
 #[cfg(test)]
@@ -136,15 +135,45 @@ mod tests {
     fn classifies_deletion_targets() {
         let root = Path::new("/home/ada/repo");
         for bad in [
-            "/", "/*", "/.", "~", "~/x", "$HOME", "${HOME}/a", ".", "./", "./*", "*", "..", "../x",
-            "a/../..", "/etc", "/home/ada", "/home/ada/repo", "/home/ada/repository", "C:\\",
-            "C:\\Users", ".git", "sub/.git", "/tmp", "$env:USERPROFILE\\x", "a/..",
+            "/",
+            "/*",
+            "/.",
+            "~",
+            "~/x",
+            "$HOME",
+            "${HOME}/a",
+            ".",
+            "./",
+            "./*",
+            "*",
+            "..",
+            "../x",
+            "a/../..",
+            "/etc",
+            "/home/ada",
+            "/home/ada/repo",
+            "/home/ada/repository",
+            "C:\\",
+            "C:\\Users",
+            ".git",
+            "sub/.git",
+            "/tmp",
+            "$env:USERPROFILE\\x",
+            "a/..",
         ] {
             assert!(is_dangerous(root, bad), "{bad} should be dangerous");
         }
         for ok in [
-            "src", "./target", "node_modules", "dist/*", "/home/ada/repo/target", "/tmp/build",
-            "a/../b", "/home/ada/repo/sub/*", "", "$BUILD_DIR",
+            "src",
+            "./target",
+            "node_modules",
+            "dist/*",
+            "/home/ada/repo/target",
+            "/tmp/build",
+            "a/../b",
+            "/home/ada/repo/sub/*",
+            "",
+            "$BUILD_DIR",
         ] {
             assert!(!is_dangerous(root, ok), "{ok} should be routine");
         }

@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use anvil_core::stats::estimate_tokens;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{CodeGraph, GraphNode, NodeKind};
@@ -53,11 +53,7 @@ pub fn read_symbol(
 
     let start_line = node.line.max(1);
     let raw_end = node.end_line.max(start_line);
-    let end_line = if total_file_lines == 0 {
-        start_line
-    } else {
-        raw_end.min(total_file_lines)
-    };
+    let end_line = if total_file_lines == 0 { start_line } else { raw_end.min(total_file_lines) };
     let capped_end = end_line.min(start_line.saturating_add(MAX_SYMBOL_LINES - 1));
 
     let body = slice_body(&lines, start_line, capped_end, end_line);
@@ -135,7 +131,8 @@ fn find_symbol_node<'a>(graph: &'a CodeGraph, target: &str) -> Option<&'a GraphN
         return Some(node);
     }
 
-    if let Some((raw_file, sym_part)) = target.strip_prefix("sym:").unwrap_or(target).split_once("::")
+    if let Some((raw_file, sym_part)) =
+        target.strip_prefix("sym:").unwrap_or(target).split_once("::")
     {
         let norm_file = CodeGraph::normalize_rel_path(raw_file);
         let canonical = CodeGraph::symbol_node_id(&norm_file, sym_part);

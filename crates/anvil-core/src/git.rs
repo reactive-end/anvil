@@ -36,9 +36,7 @@ pub fn repo_root(start_dir: &Path) -> Result<PathBuf> {
     let abs = if start_dir.is_absolute() {
         start_dir.to_path_buf()
     } else {
-        std::env::current_dir()
-            .context("failed to read current working directory")?
-            .join(start_dir)
+        std::env::current_dir().context("failed to read current working directory")?.join(start_dir)
     };
     let normalized = normalize_lexical(&abs);
     let start = if normalized.is_file() {
@@ -160,10 +158,8 @@ pub fn changed_files(repo_root: &Path, scope: DiffScope) -> Result<Vec<String>> 
         DiffScope::Head => {
             let diff = run_git_unquoted(repo_root, &["diff", "--name-only", "-z", "HEAD"])?;
             collect_nul_paths(&diff, &mut unique);
-            let untracked = run_git_unquoted(
-                repo_root,
-                &["ls-files", "--others", "--exclude-standard", "-z"],
-            )?;
+            let untracked =
+                run_git_unquoted(repo_root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
             collect_nul_paths(&untracked, &mut unique);
         }
         DiffScope::WorkingTree => {}

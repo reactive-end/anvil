@@ -42,11 +42,8 @@ pub fn detect_communities(graph: &mut CodeGraph) -> Vec<CommunitySummary> {
         .collect();
     files.sort();
 
-    let file_to_idx: FxHashMap<&str, usize> = files
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (f.as_str(), i))
-        .collect();
+    let file_to_idx: FxHashMap<&str, usize> =
+        files.iter().enumerate().map(|(i, f)| (f.as_str(), i)).collect();
 
     let mut node_to_file_idx = vec![usize::MAX; graph.nodes.len()];
     for (nid, node) in graph.nodes.iter().enumerate() {
@@ -133,11 +130,7 @@ fn summarize_communities(
             members.sort();
             let node_count = members.len();
             members.truncate(5);
-            CommunitySummary {
-                id,
-                node_count,
-                sample_files: members,
-            }
+            CommunitySummary { id, node_count, sample_files: members }
         })
         .collect();
     summaries.sort_by(|a, b| b.node_count.cmp(&a.node_count).then_with(|| a.id.cmp(&b.id)));
@@ -166,11 +159,7 @@ pub fn find_god_nodes(graph: &CodeGraph, top_n: usize) -> Vec<GodNode> {
         })
         .collect();
 
-    ranked.sort_by(|a, b| {
-        b.total_degree
-            .cmp(&a.total_degree)
-            .then_with(|| a.id.cmp(&b.id))
-    });
+    ranked.sort_by(|a, b| b.total_degree.cmp(&a.total_degree).then_with(|| a.id.cmp(&b.id)));
     ranked.truncate(top_n);
     ranked
 }
@@ -195,21 +184,12 @@ pub fn generate_report(graph: &mut CodeGraph) -> String {
     let god_nodes = find_god_nodes(graph, 10);
     let cycles = detect_cycles(graph, 10);
 
-    let file_count = graph
-        .nodes
-        .iter()
-        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::File)
-        .count();
-    let sym_count = graph
-        .nodes
-        .iter()
-        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::Symbol)
-        .count();
-    let sem_count = graph
-        .nodes
-        .iter()
-        .filter(|n| !n.is_tombstone() && n.kind == NodeKind::Semantic)
-        .count();
+    let file_count =
+        graph.nodes.iter().filter(|n| !n.is_tombstone() && n.kind == NodeKind::File).count();
+    let sym_count =
+        graph.nodes.iter().filter(|n| !n.is_tombstone() && n.kind == NodeKind::Symbol).count();
+    let sem_count =
+        graph.nodes.iter().filter(|n| !n.is_tombstone() && n.kind == NodeKind::Semantic).count();
     let total_edges = graph.edges.iter().filter(|e| !e.is_tombstone()).count();
     let resolved_edges = graph.edges.iter().filter(|e| e.is_resolved()).count();
 

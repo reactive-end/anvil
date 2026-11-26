@@ -25,10 +25,7 @@ pub struct Script {
 
 /// Parses `cmd` without executing or expanding anything.
 pub fn parse(cmd: &str) -> Script {
-    let mut lexer = Lexer {
-        chars: cmd.chars().collect(),
-        ..Lexer::default()
-    };
+    let mut lexer = Lexer { chars: cmd.chars().collect(), ..Lexer::default() };
     lexer.run();
     lexer.out
 }
@@ -115,10 +112,7 @@ impl Lexer {
             return;
         }
         self.seg.captured_out |= pipes_into_next;
-        let next = Segment {
-            piped_in: pipes_into_next,
-            ..Segment::default()
-        };
+        let next = Segment { piped_in: pipes_into_next, ..Segment::default() };
         self.out.segments.push(std::mem::replace(&mut self.seg, next));
     }
 
@@ -319,10 +313,7 @@ impl Lexer {
         }
         let mut delimiter = String::new();
         let mut expands = true;
-        while let Some(c) = self
-            .peek(0)
-            .filter(|c| !c.is_whitespace() && !";|&<>()".contains(*c))
-        {
+        while let Some(c) = self.peek(0).filter(|c| !c.is_whitespace() && !";|&<>()".contains(*c)) {
             if matches!(c, '\'' | '"' | '\\') {
                 expands = false;
             } else {
@@ -332,11 +323,7 @@ impl Lexer {
         }
         if !delimiter.is_empty() {
             let segment = self.out.segments.len();
-            self.heredocs.push(Heredoc {
-                delimiter,
-                expands,
-                segment,
-            });
+            self.heredocs.push(Heredoc { delimiter, expands, segment });
         }
     }
 
@@ -437,10 +424,7 @@ mod tests {
         assert!(piped.segments[1].piped_in && !piped.segments[0].piped_in);
         assert!(piped.segments[0].captured_out && !piped.segments[1].captured_out);
         assert!(!parse("cat a 2>/dev/null").segments[0].captured_out);
-        assert_eq!(
-            args("rm -rf {a,b} ${HOME}/x"),
-            vec![vec!["rm", "-rf", "{a,b}", "${HOME}/x"]]
-        );
+        assert_eq!(args("rm -rf {a,b} ${HOME}/x"), vec![vec!["rm", "-rf", "{a,b}", "${HOME}/x"]]);
     }
 
     #[test]
@@ -448,20 +432,14 @@ mod tests {
         let quoted = parse("git commit -F - <<'EOF'\ndon't `git reset --hard`\nEOF\nls");
         assert_eq!(quoted.segments.len(), 2);
         assert!(quoted.nested.is_empty());
-        assert_eq!(
-            parse("cat <<EOF\n$(git clean -f)\nEOF").nested,
-            vec!["git clean -f"]
-        );
+        assert_eq!(parse("cat <<EOF\n$(git clean -f)\nEOF").nested, vec!["git clean -f"]);
         let ps = args("git commit -m @'\nit's rm -rf /\n'@");
         assert_eq!(ps, vec![vec!["git", "commit", "-m", "\nit's rm -rf /"]]);
     }
 
     #[test]
     fn collects_nested_substitutions() {
-        assert_eq!(
-            parse("echo \"$(git reset --hard)\"").nested,
-            vec!["git reset --hard"]
-        );
+        assert_eq!(parse("echo \"$(git reset --hard)\"").nested, vec!["git reset --hard"]);
         assert_eq!(parse("echo `rm -rf /`").nested, vec!["rm -rf /"]);
         assert_eq!(parse("cat <(rm -rf ~)").nested, vec!["rm -rf ~"]);
         assert!(parse("echo '$(rm -rf /)'").nested.is_empty());

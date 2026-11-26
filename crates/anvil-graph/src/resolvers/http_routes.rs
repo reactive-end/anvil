@@ -99,9 +99,10 @@ fn ensure_route_node(graph: &mut CodeGraph, route_key: &str) -> NodeId {
 }
 
 fn has_provider_edge(graph: &CodeGraph, route_nid: NodeId, file_nid: NodeId) -> bool {
-    graph.outgoing_edges(route_nid).into_iter().any(|e| {
-        e.kind == GraphEdgeKind::ExposesRoute && e.is_resolved() && e.target == file_nid
-    })
+    graph
+        .outgoing_edges(route_nid)
+        .into_iter()
+        .any(|e| e.kind == GraphEdgeKind::ExposesRoute && e.is_resolved() && e.target == file_nid)
 }
 
 /// Resolves a `CallsRoute` key (`"route:<METHOD> <path>"` or `"route:ANY <path>"`) to matching nodes.

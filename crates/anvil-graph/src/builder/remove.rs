@@ -28,7 +28,12 @@ pub(crate) fn remove_file_incremental(
             if node.kind == NodeKind::Semantic {
                 graph.semantic_index.remove(&node.id);
             }
-            remove_from_symbol_index(&mut graph.symbol_index, &mut graph.angular_selectors, nid, node);
+            remove_from_symbol_index(
+                &mut graph.symbol_index,
+                &mut graph.angular_selectors,
+                nid,
+                node,
+            );
             let old_id = std::mem::take(&mut node.id);
             node.file.clear();
             node.label.clear();

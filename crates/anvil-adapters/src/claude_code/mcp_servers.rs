@@ -47,10 +47,7 @@ impl ClaudeHome {
         }
         let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
         let home = PathBuf::from(home);
-        Some(Self {
-            dir: home.join(".claude"),
-            state: home.join(".claude.json"),
-        })
+        Some(Self { dir: home.join(".claude"), state: home.join(".claude.json") })
     }
 }
 
@@ -62,24 +59,18 @@ pub fn discover(repo_root: &Path, home: &ClaudeHome) -> Vec<McpServer> {
     let mut add = |names: Vec<String>, source: &str| {
         for name in names {
             if !found.iter().any(|s: &McpServer| s.name == name) {
-                found.push(McpServer {
-                    name,
-                    source: source.to_owned(),
-                });
+                found.push(McpServer { name, source: source.to_owned() });
             }
         }
     };
     add(server_names(&read_object(&repo_root.join(".mcp.json"))), "project");
     let state = read_object(&home.state);
-    let local = state
-        .get("projects")
-        .and_then(Value::as_object)
-        .and_then(|projects| {
-            projects
-                .iter()
-                .find(|(path, _)| same_path(path, repo_root))
-                .and_then(|(_, project)| project.as_object())
-        });
+    let local = state.get("projects").and_then(Value::as_object).and_then(|projects| {
+        projects
+            .iter()
+            .find(|(path, _)| same_path(path, repo_root))
+            .and_then(|(_, project)| project.as_object())
+    });
     add(local.map(server_names).unwrap_or_default(), "local");
     add(server_names(&state), "user");
     for (plugin, dir) in enabled_plugins(repo_root, home) {
@@ -184,10 +175,8 @@ mod tests {
     fn reads_every_source_once_with_tool_names() {
         let tmp = tempfile::tempdir().expect("tmp");
         let repo = tmp.path().join("repo");
-        let home = ClaudeHome {
-            dir: tmp.path().join(".claude"),
-            state: tmp.path().join(".claude.json"),
-        };
+        let home =
+            ClaudeHome { dir: tmp.path().join(".claude"), state: tmp.path().join(".claude.json") };
         let plugin_dir = tmp.path().join("plugins").join("monet");
         write(&repo.join(".mcp.json"), r#"{"mcpServers":{"anvil":{},"postgres":{}}}"#);
         let repo_key = repo.to_string_lossy().replace('\\', "/");
@@ -213,10 +202,8 @@ mod tests {
         );
         write(&plugin_dir.join(".mcp.json"), r#"{"chrome-devtools":{}}"#);
 
-        let found: Vec<(String, String)> = discover(&repo, &home)
-            .into_iter()
-            .map(|s| (s.name, s.source))
-            .collect();
+        let found: Vec<(String, String)> =
+            discover(&repo, &home).into_iter().map(|s| (s.name, s.source)).collect();
         let expected = [
             ("anvil", "project"),
             ("postgres", "project"),
@@ -232,10 +219,7 @@ mod tests {
     #[test]
     fn missing_files_find_nothing() {
         let tmp = tempfile::tempdir().expect("tmp");
-        let home = ClaudeHome {
-            dir: tmp.path().join("none"),
-            state: tmp.path().join("none.json"),
-        };
+        let home = ClaudeHome { dir: tmp.path().join("none"), state: tmp.path().join("none.json") };
         assert!(discover(tmp.path(), &home).is_empty());
     }
 }

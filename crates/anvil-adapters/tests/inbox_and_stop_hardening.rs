@@ -43,11 +43,8 @@ fn locked_inbox_preserves_all_concurrent_pushes_and_drains_cleanly() {
     assert_eq!(drained.len(), workers * per_worker);
     assert!(inbox::load_inbox(&root).expect("load after drain").is_empty());
 
-    inbox::push_messages(
-        &root,
-        &[InboxMessage::new("test", MessageLevel::Info, "msg", None)],
-    )
-    .expect("re-push");
+    inbox::push_messages(&root, &[InboxMessage::new("test", MessageLevel::Info, "msg", None)])
+        .expect("re-push");
     inbox::clear_inbox(&root).expect("locked clear");
     assert!(inbox::load_inbox(&root).expect("load after clear").is_empty());
 }
@@ -68,8 +65,8 @@ fn antigravity_render_stop_preserves_messages_on_block_and_allow() {
         )],
         ..HookOutcome::allow()
     };
-    let out_block = antigravity::render_output(root, HookEvent::Stop, &blocking)
-        .expect("render blocking stop");
+    let out_block =
+        antigravity::render_output(root, HookEvent::Stop, &blocking).expect("render blocking stop");
     assert_eq!(out_block["decision"], "continue");
     let reason = out_block["reason"].as_str().expect("blocking reason");
     assert!(reason.contains("Tier 1 failed"));

@@ -19,16 +19,8 @@ const NOISE_EXACT_NAMES: [&str; 10] = [
     "graph.bin",
 ];
 
-const NOISE_DIR_SEGMENTS: [&str; 8] = [
-    "dist",
-    "build",
-    "node_modules",
-    "target",
-    ".next",
-    ".godot",
-    "vendor",
-    "storage",
-];
+const NOISE_DIR_SEGMENTS: [&str; 8] =
+    ["dist", "build", "node_modules", "target", ".next", ".godot", "vendor", "storage"];
 
 /// Returns true for lockfiles, minified/sourcemap files, generated/vendor dirs, and graph artifacts.
 pub fn is_noise_file(rel_path: &str) -> bool {
@@ -50,16 +42,11 @@ pub fn is_noise_file(rel_path: &str) -> bool {
         return false;
     }
 
-    let dir_count = if trailing_slash {
-        segments.len()
-    } else {
-        segments.len().saturating_sub(1)
-    };
-    if segments[..dir_count].iter().any(|seg| {
-        NOISE_DIR_SEGMENTS
-            .iter()
-            .any(|noise| seg.eq_ignore_ascii_case(noise))
-    }) {
+    let dir_count = if trailing_slash { segments.len() } else { segments.len().saturating_sub(1) };
+    if segments[..dir_count]
+        .iter()
+        .any(|seg| NOISE_DIR_SEGMENTS.iter().any(|noise| seg.eq_ignore_ascii_case(noise)))
+    {
         return true;
     }
 
@@ -68,10 +55,7 @@ pub fn is_noise_file(rel_path: &str) -> bool {
     }
 
     let file_name = segments[segments.len() - 1];
-    if NOISE_EXACT_NAMES
-        .iter()
-        .any(|noise| file_name.eq_ignore_ascii_case(noise))
-    {
+    if NOISE_EXACT_NAMES.iter().any(|noise| file_name.eq_ignore_ascii_case(noise)) {
         return true;
     }
 
@@ -86,9 +70,5 @@ pub fn is_noise_file(rel_path: &str) -> bool {
 
 pub(crate) fn normalize_slashed(raw: &str) -> String {
     let replaced = raw.trim().replace('\\', "/");
-    replaced
-        .strip_prefix("./")
-        .unwrap_or(&replaced)
-        .trim_start_matches('/')
-        .to_owned()
+    replaced.strip_prefix("./").unwrap_or(&replaced).trim_start_matches('/').to_owned()
 }

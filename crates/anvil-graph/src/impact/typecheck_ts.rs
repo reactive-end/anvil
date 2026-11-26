@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
+use anyhow::Result;
 
 use super::typecheck_filter::filter_typecheck_output;
 
@@ -22,11 +22,8 @@ pub fn build_vue_or_ts_typecheck_command(
     impacted_files: &[String],
 ) -> Option<(PathBuf, Vec<String>, &'static str)> {
     let vue_applies = impacted_files.iter().any(|f| f.ends_with(".vue"))
-        || fs::read_to_string(work_dir.join("package.json"))
-            .is_ok_and(|s| s.contains("\"vue\""));
-    if vue_applies
-        && let Some(vue_tsc) = resolve_local_or_path_bin(work_dir, "vue-tsc")
-    {
+        || fs::read_to_string(work_dir.join("package.json")).is_ok_and(|s| s.contains("\"vue\""));
+    if vue_applies && let Some(vue_tsc) = resolve_local_or_path_bin(work_dir, "vue-tsc") {
         return Some((vue_tsc, vec!["--noEmit".to_owned()], "vue-tsc"));
     }
     build_ts_typecheck_command(log_root, work_dir)

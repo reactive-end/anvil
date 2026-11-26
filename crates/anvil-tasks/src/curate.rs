@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
 use anvil_core::fs_util::with_file_lock;
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -30,9 +30,7 @@ struct UntrackedEdits {
 
 /// Returns `.harness/.state/untracked-edits.json` (gitignored).
 pub fn untracked_edits_path(repo: &Path) -> PathBuf {
-    repo.join(".harness")
-        .join(".state")
-        .join("untracked-edits.json")
+    repo.join(".harness").join(".state").join("untracked-edits.json")
 }
 
 /// Returns `true` ONLY for structurally non-task inputs (empty strings or CLI/chat `/` commands).
@@ -105,9 +103,7 @@ pub fn load_untracked_edits(repo: &Path) -> Vec<String> {
     if !path.is_file() {
         return Vec::new();
     }
-    read_json_file::<UntrackedEdits>(&path)
-        .map(|u| u.files)
-        .unwrap_or_default()
+    read_json_file::<UntrackedEdits>(&path).map(|u| u.files).unwrap_or_default()
 }
 
 /// Returns when the oldest untracked session edit happened, if any.
@@ -207,11 +203,7 @@ pub fn record_curated_task_with_id(
         summary,
         status,
         files,
-        TaskTarget {
-            author,
-            group: None,
-            task_id: explicit_id,
-        },
+        TaskTarget { author, group: None, task_id: explicit_id },
     )
 }
 

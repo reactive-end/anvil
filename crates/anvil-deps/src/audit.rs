@@ -5,8 +5,8 @@ mod worker;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
 use anvil_core::config::AnvilConfig;
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
@@ -78,10 +78,7 @@ impl AuditOptions {
     /// Loads `deps_max_age_months` from `.harness/config.json` (falling back to 24 months).
     pub fn from_repo(repo_root: &Path) -> Result<Self> {
         let cfg = AnvilConfig::load_or_default(repo_root)?;
-        Ok(Self {
-            max_age_months: cfg.deps_max_age_months,
-            ..Self::default()
-        })
+        Ok(Self { max_age_months: cfg.deps_max_age_months, ..Self::default() })
     }
 }
 
@@ -93,35 +90,25 @@ fn is_requirements_txt_name(name: &str) -> bool {
 
 /// Returns true when `path` is a supported dependency manifest filename.
 pub fn is_supported_manifest(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|name| {
-            matches!(
-                name,
-                "package.json"
-                    | "pyproject.toml"
-                    | "pubspec.yaml"
-                    | "build.gradle.kts"
-                    | "build.gradle"
-                    | "libs.versions.toml"
-                    | "Cargo.toml"
-                    | "composer.json"
-            ) || is_requirements_txt_name(name)
-        })
+    path.file_name().and_then(|n| n.to_str()).is_some_and(|name| {
+        matches!(
+            name,
+            "package.json"
+                | "pyproject.toml"
+                | "pubspec.yaml"
+                | "build.gradle.kts"
+                | "build.gradle"
+                | "libs.versions.toml"
+                | "Cargo.toml"
+                | "composer.json"
+        ) || is_requirements_txt_name(name)
+    })
 }
 
 /// Parses a single manifest file into ecosystem dependency specs.
 pub fn parse_manifest(repo_root: &Path, path: &Path) -> Result<Vec<DependencySpec>> {
-    let abs = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        repo_root.join(path)
-    };
-    let rel = abs
-        .strip_prefix(repo_root)
-        .unwrap_or(&abs)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let abs = if path.is_absolute() { path.to_path_buf() } else { repo_root.join(path) };
+    let rel = abs.strip_prefix(repo_root).unwrap_or(&abs).to_string_lossy().replace('\\', "/");
     let content = fs::read_to_string(&abs)
         .with_context(|| format!("failed to read manifest {}", abs.display()))?;
 
@@ -146,11 +133,8 @@ pub fn audit_changed_files(
     fetcher: &dyn RegistryFetcher,
     options: &AuditOptions,
 ) -> Result<DepsAuditReport> {
-    let manifests: Vec<PathBuf> = changed_paths
-        .iter()
-        .filter(|p| is_supported_manifest(p))
-        .cloned()
-        .collect();
+    let manifests: Vec<PathBuf> =
+        changed_paths.iter().filter(|p| is_supported_manifest(p)).cloned().collect();
     audit_manifests(repo_root, &manifests, fetcher, options)
 }
 
@@ -187,15 +171,7 @@ pub fn audit_manifests(
         }
     }
 
-    apply_fetched_misses(
-        &specs,
-        &misses,
-        fetcher,
-        now,
-        &mut cache,
-        &mut resolved,
-        &mut report,
-    );
+    apply_fetched_misses(&specs, &misses, fetcher, now, &mut cache, &mut resolved, &mut report);
 
     if options.check_osv {
         merge_osv_vulnerabilities(&specs, &mut resolved, fetcher);
@@ -247,9 +223,7 @@ fn apply_fetched_misses(
                 }
             }
             Err(err) => {
-                report
-                    .errors
-                    .push(format!("{}:{}: {err:#}", spec.ecosystem, spec.name));
+                report.errors.push(format!("{}:{}: {err:#}", spec.ecosystem, spec.name));
             }
         }
     }

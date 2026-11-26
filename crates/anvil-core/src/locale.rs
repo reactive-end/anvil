@@ -19,7 +19,8 @@ impl Lang {
         if lower.is_empty() || lower == "c" || lower == "posix" {
             return None;
         }
-        let es = (lower.starts_with("es") && lower[2..].chars().next().is_none_or(|c| !c.is_ascii_alphabetic()))
+        let es = (lower.starts_with("es")
+            && lower[2..].chars().next().is_none_or(|c| !c.is_ascii_alphabetic()))
             || lower.starts_with("spanish")
             || lower.starts_with("español")
             || lower.starts_with("espanol")
@@ -27,7 +28,8 @@ impl Lang {
         if es {
             return Some(Self::Es);
         }
-        let en = (lower.starts_with("en") && lower[2..].chars().next().is_none_or(|c| !c.is_ascii_alphabetic()))
+        let en = (lower.starts_with("en")
+            && lower[2..].chars().next().is_none_or(|c| !c.is_ascii_alphabetic()))
             || lower.starts_with("english");
         en.then_some(Self::En)
     }

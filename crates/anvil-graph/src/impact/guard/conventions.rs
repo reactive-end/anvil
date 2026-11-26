@@ -10,23 +10,66 @@ use crate::impact::sibling::is_test_file;
 use crate::model::GraphNode;
 
 const SAFE_DECORATORS: [&str; 11] = [
-    "override", "immutable", "dataclass", "property", "staticmethod", "classmethod", "abstractmethod",
-    "deprecated", "final", "visibleForTesting", "protected",
+    "override",
+    "immutable",
+    "dataclass",
+    "property",
+    "staticmethod",
+    "classmethod",
+    "abstractmethod",
+    "deprecated",
+    "final",
+    "visibleForTesting",
+    "protected",
 ];
 const SAFE_RUST_ATTRIBUTES: [&str; 5] = ["doc", "allow", "must_use", "inline", "deprecated"];
 const STD_DERIVES: [&str; 9] =
     ["Debug", "Clone", "Copy", "PartialEq", "Eq", "Hash", "PartialOrd", "Ord", "Default"];
 const JS_ENTRY_STEMS: [&str; 18] = [
-    "main", "server", "app", "worker", "entry", "cli", "bin", "preload", "polyfills", "setup", "setupTests",
-    "global", "vite-env", "middleware", "instrumentation", "page", "layout", "route",
+    "main",
+    "server",
+    "app",
+    "worker",
+    "entry",
+    "cli",
+    "bin",
+    "preload",
+    "polyfills",
+    "setup",
+    "setupTests",
+    "global",
+    "vite-env",
+    "middleware",
+    "instrumentation",
+    "page",
+    "layout",
+    "route",
 ];
 const PYTHON_ENTRIES: [&str; 11] = [
-    "__main__.py", "__init__.py", "conftest.py", "setup.py", "manage.py", "wsgi.py", "asgi.py", "settings.py",
-    "urls.py", "admin.py", "apps.py",
+    "__main__.py",
+    "__init__.py",
+    "conftest.py",
+    "setup.py",
+    "manage.py",
+    "wsgi.py",
+    "asgi.py",
+    "settings.py",
+    "urls.py",
+    "admin.py",
+    "apps.py",
 ];
 const IGNORED_SEGMENTS: [&str; 11] = [
-    "node_modules", "dist", "build", "target", "vendor", "docs", "scripts", "migrations", "generated",
-    ".storybook", "public",
+    "node_modules",
+    "dist",
+    "build",
+    "target",
+    "vendor",
+    "docs",
+    "scripts",
+    "migrations",
+    "generated",
+    ".storybook",
+    "public",
 ];
 
 /// Languages whose references the resolver follows; Kotlin, PHP, and Godot depend on package, autoload,
@@ -72,7 +115,10 @@ pub(super) fn is_test_like(path: &str) -> bool {
     is_test_file(path)
         || stem(file_name(path)) == "tests"
         || file_name(path) == "conftest.py"
-        || has_segment(path, &["test", "tests", "__tests__", "__mocks__", "fixtures", "testdata", "e2e", "spec"])
+        || has_segment(
+            path,
+            &["test", "tests", "__tests__", "__mocks__", "fixtures", "testdata", "e2e", "spec"],
+        )
 }
 
 /// Generated, vendored, build, or documentation paths.
@@ -82,7 +128,9 @@ pub(super) fn is_ignored_path(path: &str) -> bool {
         || path.starts_with(".agents/")
         || path.starts_with(".claude/")
         || name.ends_with(".d.ts")
-        || [".min.", ".generated.", ".g.dart", ".freezed.", "_pb2."].iter().any(|m| name.contains(m))
+        || [".min.", ".generated.", ".g.dart", ".freezed.", "_pb2."]
+            .iter()
+            .any(|m| name.contains(m))
         || has_segment(path, &IGNORED_SEGMENTS)
 }
 
@@ -90,7 +138,9 @@ pub(super) fn is_ignored_path(path: &str) -> bool {
 pub(super) fn is_entry_point(root: &Path, file: &str, language: Language) -> bool {
     match language {
         Language::Rust => is_rust_entry(file),
-        Language::Python => PYTHON_ENTRIES.contains(&file_name(file)) || has_segment(file, &["bin"]),
+        Language::Python => {
+            PYTHON_ENTRIES.contains(&file_name(file)) || has_segment(file, &["bin"])
+        }
         Language::Dart => is_dart_entry(file),
         _ => is_js_entry(root, file),
     }
@@ -166,9 +216,9 @@ pub(super) fn is_framework_managed(language: Language, source: &str) -> bool {
         Language::Rust => false,
         Language::Python if source.contains("__main__") => true,
         _ => source.lines().any(|line| {
-            line.trim_start()
-                .strip_prefix('@')
-                .is_some_and(|rest| rest.starts_with(char::is_alphabetic) && !is_safe_decorator(rest))
+            line.trim_start().strip_prefix('@').is_some_and(|rest| {
+                rest.starts_with(char::is_alphabetic) && !is_safe_decorator(rest)
+            })
         }),
     }
 }
@@ -190,7 +240,9 @@ pub(super) fn is_macro_reached(language: Language, source: &str, node: &GraphNod
         .iter()
         .rev()
         .map(|l| l.trim())
-        .take_while(|l| l.starts_with("#[") || l.starts_with("//") || l.ends_with(")]") || *l == "]")
+        .take_while(|l| {
+            l.starts_with("#[") || l.starts_with("//") || l.ends_with(")]") || *l == "]"
+        })
         .any(|l| !l.starts_with("//") && !is_safe_rust_attribute(l))
 }
 
@@ -217,7 +269,13 @@ mod tests {
 
     #[test]
     fn rust_entry_points_are_recognised() {
-        for entry in ["src/main.rs", "crates/a/src/lib.rs", "build.rs", "src/bin/tool.rs", "examples/demo.rs"] {
+        for entry in [
+            "src/main.rs",
+            "crates/a/src/lib.rs",
+            "build.rs",
+            "src/bin/tool.rs",
+            "examples/demo.rs",
+        ] {
             assert!(is_rust_entry(entry), "{entry}");
         }
         assert!(!is_rust_entry("src/commands/plugin.rs"));

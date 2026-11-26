@@ -11,10 +11,7 @@ pub fn resolve_nestjs_edge(
     file_imports: &[String],
     graph: &CodeGraph,
 ) -> Option<NodeId> {
-    if !matches!(
-        edge.kind,
-        EdgeKind::Provides | EdgeKind::Injects | EdgeKind::Imports
-    ) {
+    if !matches!(edge.kind, EdgeKind::Provides | EdgeKind::Injects | EdgeKind::Imports) {
         return None;
     }
 

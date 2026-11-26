@@ -91,7 +91,5 @@ fn is_anvil_claude_entry(entry: &Value) -> bool {
 }
 
 fn is_anvil_hook_item(item: &Value) -> bool {
-    item.get("command")
-        .and_then(Value::as_str)
-        .is_some_and(|cmd| cmd.starts_with("anvil hook "))
+    item.get("command").and_then(Value::as_str).is_some_and(|cmd| cmd.starts_with("anvil hook "))
 }

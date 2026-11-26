@@ -9,8 +9,8 @@ pub mod web;
 
 use std::path::PathBuf;
 
-use anyhow::Result;
 use anvil_core::config::{AnvilConfig, MobileQaDriver, WebQaDriver};
+use anyhow::Result;
 
 use crate::model::{OnboardingPrompt, QaReport, QaViolation, UiPlatform, ViewportCapture};
 use crate::report::ReportBudget;
@@ -25,9 +25,7 @@ pub struct QaEngine {
 impl QaEngine {
     /// Creates a new [`QaEngine`] bound to `repo_root`.
     pub fn new(repo_root: impl Into<PathBuf>) -> Self {
-        Self {
-            repo_root: repo_root.into(),
-        }
+        Self { repo_root: repo_root.into() }
     }
 
     /// Detects active UI platforms from [`AnvilConfig`].

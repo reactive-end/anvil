@@ -34,7 +34,8 @@ pub fn check_shell_token_guard(
             }
             let path_input = serde_json::json!({ "file_path": abs.to_string_lossy() });
             let rel = extract_rel_file(root, Some(&path_input))?;
-            let limit = if is_noise_file(&rel) { tg.max_noise_read_lines } else { tg.max_text_lines };
+            let limit =
+                if is_noise_file(&rel) { tg.max_noise_read_lines } else { tg.max_text_lines };
             let Some(lines) = count_lines_if_heavy(&abs, limit) else {
                 continue;
             };
@@ -52,8 +53,5 @@ pub fn check_shell_token_guard(
 fn dumps_whole_files(inv: &Invocation) -> bool {
     DUMPERS.contains(&inv.name.as_str())
         && !inv.captured_out
-        && !inv
-            .args
-            .iter()
-            .any(|a| BOUNDING_FLAGS.contains(&a.to_ascii_lowercase().as_str()))
+        && !inv.args.iter().any(|a| BOUNDING_FLAGS.contains(&a.to_ascii_lowercase().as_str()))
 }

@@ -2,20 +2,55 @@
 
 use crate::test_tampering::is_test_file;
 
-const CODE_EXTENSIONS: [&str; 14] = [
-    "rs", "ts", "tsx", "js", "jsx", "mjs", "php", "py", "kt", "java", "dart", "gd", "go", "cs",
-];
+const CODE_EXTENSIONS: [&str; 14] =
+    ["rs", "ts", "tsx", "js", "jsx", "mjs", "php", "py", "kt", "java", "dart", "gd", "go", "cs"];
 const IGNORED_SEGMENTS: [&str; 11] = [
-    "node_modules", "target", "dist", "build", "vendor", "generated", "fixtures", "testdata", "migrations",
-    ".harness", "__snapshots__",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    "vendor",
+    "generated",
+    "fixtures",
+    "testdata",
+    "migrations",
+    ".harness",
+    "__snapshots__",
 ];
 const IMPORT_PREFIXES: [&str; 14] = [
-    "use ", "pub use ", "import ", "from ", "export {", "export *", "mod ", "pub mod ", "extern crate",
-    "#include", "using ", "package ", "namespace ", "@",
+    "use ",
+    "pub use ",
+    "import ",
+    "from ",
+    "export {",
+    "export *",
+    "mod ",
+    "pub mod ",
+    "extern crate",
+    "#include",
+    "using ",
+    "package ",
+    "namespace ",
+    "@",
 ];
 const SINGLE_TOKENS: [&str; 17] = [
-    "Ok(())", "return", "return;", "break", "break;", "continue;", "None", "None,", "true", "false", "else",
-    "else {", "try {", "finally {", "pass", "end", "default:",
+    "Ok(())",
+    "return",
+    "return;",
+    "break",
+    "break;",
+    "continue;",
+    "None",
+    "None,",
+    "true",
+    "false",
+    "else",
+    "else {",
+    "try {",
+    "finally {",
+    "pass",
+    "end",
+    "default:",
 ];
 
 /// A normalized, non-blank, non-comment source line with its 0-based index in the file.
@@ -88,7 +123,8 @@ pub(super) fn is_checked_path(path: &str) -> bool {
     let generated = [".min.", ".generated.", ".g.dart", ".freezed.", "_pb2.", ".d.ts"]
         .iter()
         .any(|marker| lower.contains(marker));
-    let ignored_dir = path.split('/').rev().skip(1).any(|segment| IGNORED_SEGMENTS.contains(&segment));
+    let ignored_dir =
+        path.split('/').rev().skip(1).any(|segment| IGNORED_SEGMENTS.contains(&segment));
     code && !generated && !ignored_dir && !is_test_file(path)
 }
 
@@ -142,7 +178,15 @@ mod tests {
 
     #[test]
     fn trivial_lines_are_imports_single_tokens_and_punctuation() {
-        for trivial in ["use std::fs;", "import x from 'y';", "Ok(())", "return;", "@Component({", "}),", "else"] {
+        for trivial in [
+            "use std::fs;",
+            "import x from 'y';",
+            "Ok(())",
+            "return;",
+            "@Component({",
+            "}),",
+            "else",
+        ] {
             assert!(is_trivial(trivial), "{trivial}");
         }
         assert!(!is_trivial("let total = items.iter().map(|i| i.cost).sum::<u32>();"));
@@ -150,7 +194,14 @@ mod tests {
 
     #[test]
     fn paths_that_are_tests_generated_or_not_code_are_not_checked() {
-        for skipped in ["src/a.test.ts", "tests/x.rs", "node_modules/p/i.js", "src/api.generated.ts", "README.md", "types/a.d.ts"] {
+        for skipped in [
+            "src/a.test.ts",
+            "tests/x.rs",
+            "node_modules/p/i.js",
+            "src/api.generated.ts",
+            "README.md",
+            "types/a.d.ts",
+        ] {
             assert!(!is_checked_path(skipped), "{skipped}");
         }
         assert!(is_checked_path("src/commands/plugin.rs"));

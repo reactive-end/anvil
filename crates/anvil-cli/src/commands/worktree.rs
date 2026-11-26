@@ -32,20 +32,12 @@ fn add_worktree(root: &Path, raw_name: &str, branch: Option<&str>) -> Result<()>
         fs::write(&wt_ignore, "*\n")?;
     }
 
-    let branch_name = branch
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("anvil-wt/{name}"));
+    let branch_name = branch.map(str::to_owned).unwrap_or_else(|| format!("anvil-wt/{name}"));
     let mut cmd = Command::new("git");
     cmd.arg("worktree").arg("add").arg("-b").arg(&branch_name).arg(&wt_dir);
-    let out = cmd
-        .current_dir(root)
-        .output()
-        .context("failed to invoke git worktree add")?;
+    let out = cmd.current_dir(root).output().context("failed to invoke git worktree add")?;
     if !out.status.success() {
-        bail!(
-            "git worktree add failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        bail!("git worktree add failed: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
 
     copy_if_present(&root.join(".harness/config.json"), &wt_dir.join(".harness/config.json"))?;
@@ -67,10 +59,7 @@ fn list_worktrees(root: &Path) -> Result<()> {
         .output()
         .context("failed to run git worktree list")?;
     if !out.status.success() {
-        bail!(
-            "git worktree list failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        bail!("git worktree list failed: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
     print!("{}", String::from_utf8_lossy(&out.stdout));
     Ok(())
@@ -90,10 +79,7 @@ fn remove_worktree(root: &Path, raw_name: &str, force: bool) -> Result<()> {
         .output()
         .context("failed to run git worktree remove")?;
     if !out.status.success() {
-        bail!(
-            "git worktree remove failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        bail!("git worktree remove failed: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
     cleanup_worktree_branch(root, &name, force);
     println!("removed worktree {}", ui::cyan(&name));
@@ -112,10 +98,8 @@ fn cleanup_worktree_branch(root: &Path, name: &str, force: bool) {
         return;
     }
     let flag = if force { "-D" } else { "-d" };
-    if let Ok(del) = Command::new("git")
-        .args(["branch", flag, &branch_name])
-        .current_dir(root)
-        .output()
+    if let Ok(del) =
+        Command::new("git").args(["branch", flag, &branch_name]).current_dir(root).output()
         && !del.status.success()
     {
         eprintln!(
@@ -128,9 +112,7 @@ fn cleanup_worktree_branch(root: &Path, name: &str, force: bool) {
 fn validate_name(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty()
-        || !trimmed
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         bail!("worktree name must contain only [a-zA-Z0-9_-]");
     }
@@ -173,11 +155,8 @@ mod tests {
         fs::write(root.join("README.md"), "hello\n").unwrap();
         let add_out = Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
         assert!(add_out.status.success());
-        let ci_out = Command::new("git")
-            .args(["commit", "-m", "init"])
-            .current_dir(root)
-            .output()
-            .unwrap();
+        let ci_out =
+            Command::new("git").args(["commit", "-m", "init"]).current_dir(root).output().unwrap();
         assert!(ci_out.status.success());
 
         add_worktree(root, "agent-readd", None).expect("first add");

@@ -17,11 +17,7 @@ impl OutputParser for GenericParser {
     fn parse(&self, command: &str, exit_code: i32, raw_output: &str) -> CompressedOutput {
         let cmd_name = command.split_whitespace().next().unwrap_or("cmd");
         if exit_code == 0 {
-            return pass_output(
-                self.name(),
-                exit_code,
-                format!("PASS ({cmd_name}): exit 0"),
-            );
+            return pass_output(self.name(), exit_code, format!("PASS ({cmd_name}): exit 0"));
         }
 
         let mut lines: Vec<String> = raw_output

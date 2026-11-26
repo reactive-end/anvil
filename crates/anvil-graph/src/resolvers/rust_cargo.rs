@@ -43,11 +43,7 @@ fn register_member_crate(repo_root: &Path, rel_dir: &str, map: &mut FxHashMap<St
         return;
     };
     if let Some(pkg) = parse_package_name(&content) {
-        let src_dir = if rel_dir == "." {
-            "src".to_owned()
-        } else {
-            format!("{rel_dir}/src")
-        };
+        let src_dir = if rel_dir == "." { "src".to_owned() } else { format!("{rel_dir}/src") };
         map.insert(pkg.replace('-', "_"), src_dir);
     }
 }

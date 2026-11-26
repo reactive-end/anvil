@@ -52,11 +52,7 @@ pub fn shortest_path(graph: &CodeGraph, from: &str, to: &str) -> Option<PathResu
     let goal_id = resolve_target_node(graph, to)?;
     if start_id == goal_id {
         let id_str = graph.get_node(start_id)?.id.clone();
-        return Some(PathResult {
-            from: id_str.clone(),
-            to: id_str,
-            steps: Vec::new(),
-        });
+        return Some(PathResult { from: id_str.clone(), to: id_str, steps: Vec::new() });
     }
 
     let mut queue = VecDeque::new();
@@ -102,12 +98,7 @@ fn reconstruct_path(
         };
         let from_str = graph.get_node(prev).map_or_else(String::new, |n| n.id.clone());
         let to_str = graph.get_node(cur).map_or_else(String::new, |n| n.id.clone());
-        steps.push(PathStep {
-            from: from_str,
-            to: to_str,
-            kind,
-            line,
-        });
+        steps.push(PathStep { from: from_str, to: to_str, kind, line });
         cur = prev;
     }
     steps.reverse();
@@ -156,22 +147,11 @@ pub fn explain(graph: &CodeGraph, symbol_or_file: &str) -> Option<ExplainResult>
                 let ext = graph.external_str(e.target)?;
                 (format!("ext:{ext}"), String::new())
             };
-            Some(NeighborEdge {
-                node_id,
-                file,
-                kind: e.kind,
-                line: e.line,
-            })
+            Some(NeighborEdge { node_id, file, kind: e.kind, line: e.line })
         })
         .collect();
 
     let is_god_node = non_contain_in + non_contain_out >= GOD_NODE_DEGREE_THRESHOLD;
 
-    Some(ExplainResult {
-        community: node.community,
-        node,
-        incoming,
-        outgoing,
-        is_god_node,
-    })
+    Some(ExplainResult { community: node.community, node, incoming, outgoing, is_god_node })
 }

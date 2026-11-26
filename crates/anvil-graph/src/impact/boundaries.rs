@@ -35,7 +35,8 @@ pub fn check_boundaries(
 fn build_import_adj(graph: &CodeGraph) -> FxHashMap<String, Vec<String>> {
     let mut adj: FxHashMap<String, Vec<String>> = FxHashMap::default();
     for edge in &graph.edges {
-        if !edge.is_resolved() || !matches!(edge.kind, GraphEdgeKind::Imports | GraphEdgeKind::ReExports)
+        if !edge.is_resolved()
+            || !matches!(edge.kind, GraphEdgeKind::Imports | GraphEdgeKind::ReExports)
         {
             continue;
         }
@@ -66,10 +67,7 @@ fn normalize_scope(scope_files: &[String], adj: &FxHashMap<String, Vec<String>>)
     let mut files: Vec<String> = if scope_files.is_empty() {
         adj.keys().cloned().collect()
     } else {
-        scope_files
-            .iter()
-            .map(|f| CodeGraph::normalize_rel_path(f))
-            .collect()
+        scope_files.iter().map(|f| CodeGraph::normalize_rel_path(f)).collect()
     };
     files.sort();
     files.dedup();
@@ -186,11 +184,7 @@ fn record_cycle(
     if slice.is_empty() {
         return;
     }
-    let min_idx = slice
-        .iter()
-        .enumerate()
-        .min_by(|a, b| a.1.cmp(b.1))
-        .map_or(0, |(idx, _)| idx);
+    let min_idx = slice.iter().enumerate().min_by(|a, b| a.1.cmp(b.1)).map_or(0, |(idx, _)| idx);
     let mut canonical: Vec<&str> = Vec::with_capacity(slice.len() + 1);
     canonical.extend_from_slice(&slice[min_idx..]);
     canonical.extend_from_slice(&slice[..min_idx]);

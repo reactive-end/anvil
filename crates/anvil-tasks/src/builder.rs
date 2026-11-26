@@ -120,10 +120,7 @@ fn read_entries_dir(entries_dir: &Path) -> Result<Vec<TaskEntry>> {
         .map(|e| e.path())
         .filter(|p| {
             let is_json = p.extension().and_then(|e| e.to_str()) == Some("json");
-            let is_tmp = p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with('.'));
+            let is_tmp = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with('.'));
             is_json && !is_tmp
         })
         .collect();
@@ -144,11 +141,7 @@ fn dedup_and_sort_entries(raw: Vec<TaskEntry>) -> Vec<TaskEntry> {
             unique.push(entry);
         }
     }
-    unique.sort_by(|a, b| {
-        a.timestamp
-            .cmp(&b.timestamp)
-            .then_with(|| a.entry_id.cmp(&b.entry_id))
-    });
+    unique.sort_by(|a, b| a.timestamp.cmp(&b.timestamp).then_with(|| a.entry_id.cmp(&b.entry_id)));
     unique
 }
 
@@ -213,11 +206,7 @@ fn build_concise_summary(entries: &[TaskEntry], fallback_request: &str) -> Strin
 
     let parts: Vec<String> = author_order
         .into_iter()
-        .filter_map(|author| {
-            latest_by_author
-                .get(author)
-                .map(|msg| format!("{author}: {msg}"))
-        })
+        .filter_map(|author| latest_by_author.get(author).map(|msg| format!("{author}: {msg}")))
         .collect();
     clamp_chars(&parts.join(" | "), MAX_SUMMARY_CHARS)
 }
@@ -225,9 +214,5 @@ fn build_concise_summary(entries: &[TaskEntry], fallback_request: &str) -> Strin
 fn clamp_chars(text: &str, max_chars: usize) -> String {
     let mut chars = text.chars();
     let prefix: String = chars.by_ref().take(max_chars).collect();
-    if chars.next().is_some() {
-        format!("{prefix}...")
-    } else {
-        prefix
-    }
+    if chars.next().is_some() { format!("{prefix}...") } else { prefix }
 }

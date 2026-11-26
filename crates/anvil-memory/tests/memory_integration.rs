@@ -35,10 +35,7 @@ impl SymbolFreshnessProvider for MockFreshnessProvider {
                 });
             }
         }
-        Ok(FreshnessReport {
-            state: FreshnessState::Fresh,
-            reason: None,
-        })
+        Ok(FreshnessReport { state: FreshnessState::Fresh, reason: None })
     }
 }
 
@@ -73,24 +70,16 @@ fn fts5_bm25_progressive_disclosure_under_5ms() {
         } else {
             format!("Routine configuration record number {idx} for build cache")
         };
-        engine
-            .save(sample_input(MemoryKind::Decision, &topic, &title, &what))
-            .expect("save obs");
+        engine.save(sample_input(MemoryKind::Decision, &topic, &title, &what)).expect("save obs");
     }
 
     let start = Instant::now();
-    let hits = engine
-        .search("rusqlite FTS5 BM25", Some(MemoryKind::Decision), 5)
-        .expect("search");
+    let hits = engine.search("rusqlite FTS5 BM25", Some(MemoryKind::Decision), 5).expect("search");
     let elapsed = start.elapsed();
 
     assert!(!hits.is_empty(), "expected BM25 search hits");
     assert_eq!(hits[0].topic_key, "topic-27");
-    assert!(
-        elapsed.as_millis() < 5,
-        "FTS5 search took {:?}, expected < 5ms",
-        elapsed
-    );
+    assert!(elapsed.as_millis() < 5, "FTS5 search took {:?}, expected < 5ms", elapsed);
 
     let full = engine.get(&hits[0].id).expect("get").expect("obs exists");
     assert!(full.learned.contains("triggers"));
@@ -212,10 +201,9 @@ fn multi_author_chunk_sync_is_conflict_free_and_idempotent() {
     let merged_chunks = merged_repo.path().join(".harness/memory/chunks");
     fs::create_dir_all(&merged_chunks).expect("mkdir chunks");
 
-    for dir in [
-        repo_a.path().join(".harness/memory/chunks"),
-        repo_b.path().join(".harness/memory/chunks"),
-    ] {
+    for dir in
+        [repo_a.path().join(".harness/memory/chunks"), repo_b.path().join(".harness/memory/chunks")]
+    {
         for entry in fs::read_dir(dir).expect("read dir") {
             let src = entry.expect("entry").path();
             let dst = merged_chunks.join(src.file_name().expect("filename"));
@@ -278,9 +266,8 @@ fn staleness_provider_and_changed_files_mark_linked_observations() {
     obs_fast.related_files = vec!["./src/api/client.ts".to_owned()];
     let saved_fast = engine.save(obs_fast).expect("save fast");
 
-    let changed = engine
-        .mark_files_changed(&["src\\api\\client.ts".to_owned()])
-        .expect("mark files changed");
+    let changed =
+        engine.mark_files_changed(&["src\\api\\client.ts".to_owned()]).expect("mark files changed");
     assert_eq!(changed, 1);
     let reloaded_fast = engine.get(&saved_fast.id).expect("get").expect("exists");
     assert_eq!(reloaded_fast.freshness, FreshnessState::NeedsVerification);
@@ -320,9 +307,7 @@ fn session_ttl_cleanup_removes_only_expired_sessions() {
     let d1 = engine.save(permanent_decision).expect("save decision");
 
     let future_ms = s1.updated_at + 60_000;
-    let removed = engine
-        .cleanup_expired_sessions_at(future_ms)
-        .expect("cleanup ttl");
+    let removed = engine.cleanup_expired_sessions_at(future_ms).expect("cleanup ttl");
     assert_eq!(removed, 1);
 
     assert!(engine.get(&s1.id).expect("get s1").is_none());
@@ -376,10 +361,7 @@ fn chunk_sync_reingests_when_appended_or_modified_then_noops() {
     assert_eq!(resync.files_scanned, 1);
     assert_eq!(resync.files_ingested, 1);
     assert_eq!(resync.records_applied, 2);
-    let reloaded = engine
-        .get_by_topic("sync/appended-topic")
-        .expect("get")
-        .expect("exists");
+    let reloaded = engine.get_by_topic("sync/appended-topic").expect("get").expect("exists");
     assert_eq!(reloaded.title, "Updated Chunk Title");
     assert_eq!(reloaded.what, "Appended observation update");
 
@@ -391,7 +373,8 @@ fn chunk_sync_reingests_when_appended_or_modified_then_noops() {
 
 #[test]
 fn redactor_redacts_pem_keys_userless_uris_stripe_slack_and_app_key() {
-    let rsa_pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA123456\n-----END RSA PRIVATE KEY-----";
+    let rsa_pem =
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA123456\n-----END RSA PRIVATE KEY-----";
     let openssh_pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjE=\n-----END OPENSSH PRIVATE KEY-----";
     let ec_pem = "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEI123456\n-----END EC PRIVATE KEY-----";
 

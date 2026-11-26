@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::fs_util::atomic_write;
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
@@ -31,11 +31,7 @@ pub fn install_git_merge_driver(repo: &Path) -> Result<()> {
 /// Installs `.gitattributes` and Git's `merge.anvil-tasks.driver` with a custom command.
 pub fn install_git_merge_driver_with_cmd(repo: &Path, driver_cmd: &str) -> Result<()> {
     ensure_gitattributes(repo)?;
-    run_git_config(
-        repo,
-        "merge.anvil-tasks.name",
-        "Anvil deterministic tasks.json merge driver",
-    )?;
+    run_git_config(repo, "merge.anvil-tasks.name", "Anvil deterministic tasks.json merge driver")?;
     run_git_config(repo, "merge.anvil-tasks.driver", driver_cmd)?;
     Ok(())
 }
@@ -155,8 +151,7 @@ fn collect_deleted_task_ids(
 }
 
 fn task_id_set(file: Option<&TasksIndexFile>) -> FxHashSet<String> {
-    file.map(|f| f.tasks.iter().map(|t| t.task_id.clone()).collect())
-        .unwrap_or_default()
+    file.map(|f| f.tasks.iter().map(|t| t.task_id.clone()).collect()).unwrap_or_default()
 }
 
 fn merge_task_entry(
@@ -170,12 +165,7 @@ fn merge_task_entry(
     let seed = *candidates.first()?;
     let (created_by, created_at, request, project) = pick_origin_meta(&candidates);
     let (status, summary, evidence, updated_at) = pick_latest_state(&candidates, &seed.summary);
-    let contributors = union_unique(
-        candidates
-            .iter()
-            .map(|t| t.contributors.as_slice())
-            .collect(),
-    );
+    let contributors = union_unique(candidates.iter().map(|t| t.contributors.as_slice()).collect());
     let branches = union_unique(candidates.iter().map(|t| t.branches.as_slice()).collect());
     let entry_count = merge_counts(
         base.map_or(0, |t| t.entry_count),
@@ -214,18 +204,14 @@ fn pick_origin_meta(
     let mut best = candidates[0];
     for &cand in &candidates[1..] {
         let cand_better = cand.created_at > DateTime::<Utc>::UNIX_EPOCH
-            && (best.created_at == DateTime::<Utc>::UNIX_EPOCH || cand.created_at < best.created_at);
+            && (best.created_at == DateTime::<Utc>::UNIX_EPOCH
+                || cand.created_at < best.created_at);
         if cand_better {
             best = cand;
         }
     }
     let project = candidates.iter().find_map(|c| c.project.clone());
-    (
-        best.created_by.clone(),
-        best.created_at,
-        best.request.clone(),
-        project,
-    )
+    (best.created_by.clone(), best.created_at, best.request.clone(), project)
 }
 
 fn pick_latest_state(
@@ -240,13 +226,10 @@ fn pick_latest_state(
             best = cand;
         }
     }
-    let evidence = best.evidence.clone().or_else(|| {
-        candidates
-            .iter()
-            .filter_map(|c| c.evidence.as_ref())
-            .next()
-            .cloned()
-    });
+    let evidence = best
+        .evidence
+        .clone()
+        .or_else(|| candidates.iter().filter_map(|c| c.evidence.as_ref()).next().cloned());
     let summary = if best.summary.trim().is_empty() {
         fallback_summary.to_owned()
     } else {
@@ -296,8 +279,7 @@ fn read_optional_index(path: &Path) -> Option<TasksIndexFile> {
 fn ensure_gitattributes(repo: &Path) -> Result<()> {
     let path = repo.join(".gitattributes");
     let existing = if path.exists() {
-        fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}", path.display()))?
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?
     } else {
         String::new()
     };

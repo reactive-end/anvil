@@ -104,18 +104,15 @@ fn upsert_anvil_hook_entry(entries: &mut Vec<Value>, command: &str) {
 }
 
 fn is_anvil_hook_entry(entry: &Value) -> bool {
-    entry
-        .get("command")
-        .and_then(Value::as_str)
-        .is_some_and(|cmd| cmd.starts_with("anvil hook "))
+    entry.get("command").and_then(Value::as_str).is_some_and(|cmd| cmd.starts_with("anvil hook "))
 }
 
 pub(crate) fn read_json_object(path: &Path) -> Result<Map<String, Value>> {
     if !path.exists() {
         return Ok(Map::new());
     }
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     if raw.trim().is_empty() {
         return Ok(Map::new());
     }

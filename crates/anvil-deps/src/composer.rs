@@ -102,10 +102,9 @@ pub fn parse_packagist_json(package: &str, body: &str) -> Result<PackageHealthIn
 
 fn parse_abandoned_field(val: Option<&Value>) -> (bool, Option<String>) {
     match val {
-        Some(Value::Bool(true)) => (
-            true,
-            Some("Package is marked abandoned on Packagist".to_owned()),
-        ),
+        Some(Value::Bool(true)) => {
+            (true, Some("Package is marked abandoned on Packagist".to_owned()))
+        }
         Some(Value::String(replacement)) if !replacement.trim().is_empty() => (
             true,
             Some(format!(
@@ -126,15 +125,8 @@ fn extract_latest_release(versions: Option<&Value>) -> (Option<String>, Option<D
     let mut best_any: Option<(DateTime<Utc>, String)> = None;
 
     for (ver_key, entry) in map {
-        let ver = entry
-            .get("version")
-            .and_then(Value::as_str)
-            .unwrap_or(ver_key.as_str());
-        let Some(ts) = entry
-            .get("time")
-            .and_then(Value::as_str)
-            .and_then(parse_rfc3339_utc)
-        else {
+        let ver = entry.get("version").and_then(Value::as_str).unwrap_or(ver_key.as_str());
+        let Some(ts) = entry.get("time").and_then(Value::as_str).and_then(parse_rfc3339_utc) else {
             continue;
         };
         let is_dev = is_dev_version(ver);

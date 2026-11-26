@@ -60,9 +60,5 @@ pub(crate) fn estimate_hit_tokens(hit: &SearchHit) -> usize {
 fn truncate_chars(text: &str, max_chars: usize) -> String {
     let mut iter = text.chars();
     let taken: String = iter.by_ref().take(max_chars).collect();
-    if iter.next().is_some() {
-        format!("{taken}...")
-    } else {
-        taken
-    }
+    if iter.next().is_some() { format!("{taken}...") } else { taken }
 }

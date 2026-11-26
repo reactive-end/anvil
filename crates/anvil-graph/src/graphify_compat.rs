@@ -151,10 +151,8 @@ fn ingest_semantic_links(
 
 fn is_semantic_node(node: &RawGraphifyNode) -> bool {
     let ft = node.file_type.to_ascii_lowercase();
-    matches!(
-        ft.as_str(),
-        "semantic" | "concept" | "rationale" | "document" | "doc"
-    ) || node.origin.eq_ignore_ascii_case("llm")
+    matches!(ft.as_str(), "semantic" | "concept" | "rationale" | "document" | "doc")
+        || node.origin.eq_ignore_ascii_case("llm")
 }
 
 pub(crate) fn find_matching_file_node(graph: &CodeGraph, norm_file: &str) -> Option<NodeId> {

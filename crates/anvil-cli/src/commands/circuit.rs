@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
+use anyhow::Result;
 
 use crate::cli::subcmds::CircuitSubcmd;
 

@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use anvil_core::fs_util::atomic_write;
+use anyhow::{Context, Result};
 
 const HOOK_START: &str = "# anvil:pre-commit:start";
 const HOOK_END: &str = "# anvil:pre-commit:end";

@@ -14,8 +14,8 @@ pub mod progress;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use anvil_core::fs_util::atomic_write;
+use anyhow::{Context, Result};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -47,8 +47,8 @@ pub use ledger::{
 };
 pub use merge_driver::{install_git_merge_driver, resolve_merge};
 pub use model::{
-    ConsolidatedTask, ConsolidatedTasksFile, TASKS_INDEX_SCHEMA_VERSION, TaskEntry,
-    TaskIndexEntry, TaskMeta, TaskStatus, TasksIndexFile,
+    ConsolidatedTask, ConsolidatedTasksFile, TASKS_INDEX_SCHEMA_VERSION, TaskEntry, TaskIndexEntry,
+    TaskMeta, TaskStatus, TasksIndexFile,
 };
 pub use progress::{
     ProgressUpdate, TaskResumeBrief, begin_existing_task, build_resume_brief, record_task_progress,
@@ -64,7 +64,8 @@ pub(crate) fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> Result<
 
 /// Reads and deserializes a JSON file from `path`.
 pub(crate) fn read_json_file<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    serde_json::from_str(&raw).with_context(|| format!("failed to parse JSON at {}", path.display()))
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse JSON at {}", path.display()))
 }

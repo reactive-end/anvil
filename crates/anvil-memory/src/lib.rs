@@ -10,8 +10,8 @@ pub mod store;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
 use anvil_core::traits::SymbolFreshnessProvider;
+use anyhow::Result;
 use chrono::Utc;
 use rusqlite::TransactionBehavior;
 
@@ -130,9 +130,7 @@ impl MemoryEngine {
             _ => now_ms,
         };
         let created_at = existing.as_ref().map_or(updated_at, |p| p.created_at);
-        let id = existing
-            .as_ref()
-            .map_or_else(|| ulid::Ulid::new().to_string(), |p| p.id.clone());
+        let id = existing.as_ref().map_or_else(|| ulid::Ulid::new().to_string(), |p| p.id.clone());
 
         let ttl_secs = match (clean.kind, clean.ttl_seconds) {
             (_, Some(secs)) => Some(secs),

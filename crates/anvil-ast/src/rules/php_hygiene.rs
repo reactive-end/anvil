@@ -15,11 +15,8 @@ pub fn check_node(node: Node<'_>, state: &mut RuleState<'_>) {
     let Some(func) = node.child_by_field_name("function") else {
         return;
     };
-    let raw_name = func
-        .utf8_text(state.source.as_bytes())
-        .unwrap_or("")
-        .trim()
-        .trim_start_matches('\\');
+    let raw_name =
+        func.utf8_text(state.source.as_bytes()).unwrap_or("").trim().trim_start_matches('\\');
     let lower = raw_name.to_ascii_lowercase();
     let line = node.start_position().row as u32 + 1;
     let col = node.start_position().column as u32 + 1;

@@ -2,11 +2,11 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::query::{RepoOutline, SymbolSlice};
+use anyhow::Result;
 
 use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
 use crate::daemon::try_request;
@@ -20,10 +20,7 @@ pub fn cmd_read_symbol(
 ) -> Result<()> {
     let slice = match try_request(
         root,
-        DaemonRequest::ReadSymbol {
-            symbol: symbol.to_owned(),
-            include_imports,
-        },
+        DaemonRequest::ReadSymbol { symbol: symbol.to_owned(), include_imports },
     ) {
         Some(DaemonResponse::SymbolSliceResult { slice }) => slice,
         _ => {
@@ -40,9 +37,7 @@ pub fn cmd_read_symbol(
     if slice.estimated_tokens_saved > 0 {
         let _ = record_event(
             root,
-            StatsEvent::SymbolReadSaved {
-                tokens_saved: slice.estimated_tokens_saved,
-            },
+            StatsEvent::SymbolReadSaved { tokens_saved: slice.estimated_tokens_saved },
         );
     }
     print_symbol_slice(&slice);
@@ -58,10 +53,7 @@ pub fn cmd_outline(
 ) -> Result<()> {
     let outline = match try_request(
         root,
-        DaemonRequest::Outline {
-            target: target.map(str::to_owned),
-            max_tokens,
-        },
+        DaemonRequest::Outline { target: target.map(str::to_owned), max_tokens },
     ) {
         Some(DaemonResponse::OutlineResult { outline }) => outline,
         _ => {
@@ -73,9 +65,7 @@ pub fn cmd_outline(
     if outline.estimated_tokens_saved > 0 {
         let _ = record_event(
             root,
-            StatsEvent::OutlineSaved {
-                tokens_saved: outline.estimated_tokens_saved,
-            },
+            StatsEvent::OutlineSaved { tokens_saved: outline.estimated_tokens_saved },
         );
     }
     print_outline(&outline);

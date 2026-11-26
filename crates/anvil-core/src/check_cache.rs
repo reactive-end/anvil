@@ -89,11 +89,7 @@ pub fn compute_scope_key_with_subrepos(
 }
 
 fn normalize_set(paths: &[String]) -> BTreeSet<String> {
-    paths
-        .iter()
-        .map(|raw| normalize_rel_path(raw))
-        .filter(|norm| !norm.is_empty())
-        .collect()
+    paths.iter().map(|raw| normalize_rel_path(raw)).filter(|norm| !norm.is_empty()).collect()
 }
 
 fn normalize_subrepos(subrepo_paths: &[String]) -> BTreeSet<String> {
@@ -142,11 +138,7 @@ pub fn store(repo_root: &Path, entry: CachedTier1) -> Result<()> {
     let path = cache_path(repo_root);
     let lock_path = path.with_extension("json.lock");
     with_file_lock(&lock_path, LOCK_TIMEOUT_MS, || {
-        let mut store = if path.exists() {
-            load_store(&path)?
-        } else {
-            CheckCacheStore::default()
-        };
+        let mut store = if path.exists() { load_store(&path)? } else { CheckCacheStore::default() };
 
         store.entries.retain(|existing| existing.key != entry.key);
         store.entries.push(entry);
@@ -161,25 +153,18 @@ pub fn store(repo_root: &Path, entry: CachedTier1) -> Result<()> {
 }
 
 fn cache_path(repo_root: &Path) -> PathBuf {
-    repo_root
-        .join(".harness")
-        .join(".state")
-        .join("check-cache.json")
+    repo_root.join(".harness").join(".state").join("check-cache.json")
 }
 
 fn load_store(path: &Path) -> Result<CheckCacheStore> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     serde_json::from_str(&raw).with_context(|| format!("failed to parse {}", path.display()))
 }
 
 fn normalize_rel_path(raw: &str) -> String {
     let replaced = raw.trim().replace('\\', "/");
-    replaced
-        .strip_prefix("./")
-        .unwrap_or(&replaced)
-        .trim_start_matches('/')
-        .to_owned()
+    replaced.strip_prefix("./").unwrap_or(&replaced).trim_start_matches('/').to_owned()
 }
 
 fn hash_named_file(

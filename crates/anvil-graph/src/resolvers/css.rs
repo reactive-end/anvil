@@ -34,11 +34,8 @@ pub fn resolve_css_import(edge: &EdgeRef, graph: &CodeGraph) -> Option<NodeId> {
         format!("{joined}/_index.scss"),
     ];
     if !fname.starts_with('_') {
-        let partial_base = if dir.is_empty() {
-            format!("_{fname}")
-        } else {
-            format!("{dir}/_{fname}")
-        };
+        let partial_base =
+            if dir.is_empty() { format!("_{fname}") } else { format!("{dir}/_{fname}") };
         candidates.push(partial_base.clone());
         candidates.push(format!("{partial_base}.scss"));
         candidates.push(format!("{partial_base}.sass"));

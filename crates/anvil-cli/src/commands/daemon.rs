@@ -5,8 +5,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail};
 use anvil_core::fs_util::with_file_lock;
+use anyhow::{Context, Result, bail};
 
 use crate::cli::subcmds::DaemonSubcmd;
 use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
@@ -18,10 +18,7 @@ const STOP_TIMEOUT_MS: u64 = 500;
 /// Executes `anvil daemon <start|stop|status>`.
 pub fn execute(root: &Path, sub: DaemonSubcmd) -> Result<()> {
     match sub {
-        DaemonSubcmd::Start {
-            background: _,
-            foreground,
-        } => {
+        DaemonSubcmd::Start { background: _, foreground } => {
             if foreground {
                 server::run_foreground(root)
             } else {
@@ -46,7 +43,12 @@ pub fn ensure_daemon_running_async(root: &Path) {
     }
     let lock_path = root.join(".harness/.state/daemon-start.lock");
     if lock_path.parent().is_some_and(Path::is_dir)
-        && let Ok(lock_file) = std::fs::OpenOptions::new().create(true).read(true).write(true).truncate(false).open(&lock_path)
+        && let Ok(lock_file) = std::fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .open(&lock_path)
         && lock_file.try_lock().is_err()
     {
         return;
@@ -61,11 +63,7 @@ pub fn ensure_daemon_running_async(root: &Path) {
 fn normalize_ps_root(root: &Path) -> String {
     let raw = root.to_string_lossy();
     let trimmed = raw.trim_end_matches('\\');
-    if trimmed.ends_with(':') {
-        format!("{trimmed}\\\\")
-    } else {
-        trimmed.to_owned()
-    }
+    if trimmed.ends_with(':') { format!("{trimmed}\\\\") } else { trimmed.to_owned() }
 }
 
 #[cfg(windows)]

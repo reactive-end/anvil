@@ -89,6 +89,9 @@ mod tests {
     fn task_text_names_the_task_in_both_languages() {
         assert!(task_in_progress(Lang::Es, "T-7").starts_with("La tarea T-7 sigue en curso"));
         assert!(task_in_progress(Lang::En, "T-7").starts_with("Task T-7 is still in progress"));
-        assert!(gate_failed(Lang::Es, Some("api"), &["a".to_owned()]).contains("(`api`), 1 error(es): a"));
+        assert!(
+            gate_failed(Lang::Es, Some("api"), &["a".to_owned()])
+                .contains("(`api`), 1 error(es): a")
+        );
     }
 }

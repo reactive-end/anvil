@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
 use anvil_core::fs_util::atomic_write;
 use anvil_core::git::{self, DiffScope};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::active::{load_active_task, update_active_task_progress};
@@ -111,10 +111,7 @@ pub fn record_task_progress(
         bail!("progress summary must not be empty");
     }
     let valid_id = validate_task_id_path(task_id)?;
-    let normalized = ProgressUpdate {
-        summary: clean_summary,
-        ..update
-    };
+    let normalized = ProgressUpdate { summary: clean_summary, ..update };
     let entry = append_entry_with_details(repo, &valid_id, author, &normalized)?;
     let _ = build_root_tasks_json(repo)?;
     let task = read_single_task(repo, &valid_id)?;

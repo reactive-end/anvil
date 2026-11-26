@@ -63,7 +63,10 @@ pub(super) fn build_wire_nodes(
     (nodes, live_nodes)
 }
 
-pub(super) fn unpack_wire_nodes(wire_nodes: Vec<WireNode>, file_paths: &[String]) -> Vec<GraphNode> {
+pub(super) fn unpack_wire_nodes(
+    wire_nodes: Vec<WireNode>,
+    file_paths: &[String],
+) -> Vec<GraphNode> {
     wire_nodes
         .into_iter()
         .map(|wn| {

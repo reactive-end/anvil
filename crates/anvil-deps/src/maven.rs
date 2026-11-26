@@ -18,10 +18,7 @@ use crate::maven::google::fetch_google_maven;
 use crate::model::{DependencySpec, Ecosystem, PackageHealthInfo};
 
 /// Parses Maven coordinates (`group:artifact`) from Gradle's `libs.versions.toml`.
-pub fn parse_libs_versions_toml(
-    manifest_path: &str,
-    content: &str,
-) -> Result<Vec<DependencySpec>> {
+pub fn parse_libs_versions_toml(manifest_path: &str, content: &str) -> Result<Vec<DependencySpec>> {
     let root: TomlValue = toml::from_str(content)
         .with_context(|| format!("failed to parse TOML in {manifest_path}"))?;
 
@@ -104,7 +101,8 @@ pub fn fetch_maven(package: &str) -> Result<PackageHealthInfo> {
         "https://search.maven.org/solrsearch/select?q=g:%22{g_enc}%22+AND+a:%22{a_enc}%22&rows=1&wt=json"
     );
 
-    let central_res = fetch_json_text(&url).and_then(|body| parse_maven_search_json(package, &body));
+    let central_res =
+        fetch_json_text(&url).and_then(|body| parse_maven_search_json(package, &body));
     match central_res {
         Ok(info) if info.latest_version.is_some() => Ok(info),
         fallback_trigger => {
@@ -128,10 +126,8 @@ pub fn parse_maven_search_json(package: &str, body: &str) -> Result<PackageHealt
         .and_then(JsonValue::as_array)
         .and_then(|docs| docs.first());
 
-    let latest_version = doc
-        .and_then(|d| d.get("latestVersion"))
-        .and_then(JsonValue::as_str)
-        .map(str::to_owned);
+    let latest_version =
+        doc.and_then(|d| d.get("latestVersion")).and_then(JsonValue::as_str).map(str::to_owned);
 
     let last_publish = doc
         .and_then(|d| d.get("timestamp"))
@@ -186,10 +182,9 @@ fn extract_catalog_library(
 
     let version = match table.get("version") {
         Some(TomlValue::String(s)) => Some(s.clone()),
-        Some(TomlValue::Table(vt)) => vt
-            .get("ref")
-            .and_then(TomlValue::as_str)
-            .and_then(|r| versions.get(r).cloned()),
+        Some(TomlValue::Table(vt)) => {
+            vt.get("ref").and_then(TomlValue::as_str).and_then(|r| versions.get(r).cloned())
+        }
         _ => None,
     };
     Some((coord, version))

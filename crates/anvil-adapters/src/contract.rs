@@ -120,13 +120,7 @@ impl InboxMessage {
         content: impl Into<String>,
         file: Option<String>,
     ) -> Self {
-        Self {
-            source: source.into(),
-            level,
-            content: content.into(),
-            file,
-            created_at: Utc::now(),
-        }
+        Self { source: source.into(), level, content: content.into(), file, created_at: Utc::now() }
     }
 }
 
@@ -170,20 +164,12 @@ impl HookOutcome {
 
     /// Denies a `PreToolUse` invocation with a structured reason.
     pub fn deny(reason: impl Into<String>) -> Self {
-        Self {
-            action: PermissionAction::Deny,
-            reason: Some(reason.into()),
-            ..Self::allow()
-        }
+        Self { action: PermissionAction::Deny, reason: Some(reason.into()), ..Self::allow() }
     }
 
     /// Prompts the user for confirmation on a `PreToolUse` invocation.
     pub fn ask(reason: impl Into<String>) -> Self {
-        Self {
-            action: PermissionAction::Ask,
-            reason: Some(reason.into()),
-            ..Self::allow()
-        }
+        Self { action: PermissionAction::Ask, reason: Some(reason.into()), ..Self::allow() }
     }
 
     /// Overwrites the `PreToolUse` tool input (for example wrapping a command with `anvil run`).
@@ -198,18 +184,11 @@ impl HookOutcome {
 
     /// Blocks a `Stop` hook so the agent resolves failing gates first.
     pub fn block_stop(reason: impl Into<String>) -> Self {
-        Self {
-            block_stop: true,
-            reason: Some(reason.into()),
-            ..Self::allow()
-        }
+        Self { block_stop: true, reason: Some(reason.into()), ..Self::allow() }
     }
 
     /// Returns an `Allow` outcome carrying findings/context messages.
     pub fn with_messages(messages: Vec<InboxMessage>) -> Self {
-        Self {
-            messages,
-            ..Self::allow()
-        }
+        Self { messages, ..Self::allow() }
     }
 }

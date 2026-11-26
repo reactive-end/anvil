@@ -25,9 +25,7 @@ pub fn analyze_godot(
 ) -> FileAstFacts {
     let mut facts = match language {
         Language::GdScript => gdscript::analyze(normalized_file, source, blake3_hash, config),
-        Language::GodotScene => {
-            scene::analyze(path, normalized_file, source, blake3_hash, config)
-        }
+        Language::GodotScene => scene::analyze(path, normalized_file, source, blake3_hash, config),
         Language::GdShader => FileAstFacts {
             path: normalized_file.to_owned(),
             blake3_hash,
@@ -63,11 +61,7 @@ pub(crate) fn has_godot_allow(
     rule_id: &str,
     config: &AnvilConfig,
 ) -> bool {
-    if !config
-        .allowed_escapes
-        .iter()
-        .any(|item| item == "anvil-allow")
-    {
+    if !config.allowed_escapes.iter().any(|item| item == "anvil-allow") {
         return false;
     }
 
@@ -109,10 +103,8 @@ fn rule_matches(allowed_raw: &str, expected_raw: &str) -> bool {
     {
         return true;
     }
-    matches!(
-        expected.as_str(),
-        "no-todo-comments" | "no-narrative-comments"
-    ) && allowed == "comments"
+    matches!(expected.as_str(), "no-todo-comments" | "no-narrative-comments")
+        && allowed == "comments"
 }
 
 pub(crate) fn push_diag(

@@ -6,18 +6,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
 use anvil_adapters::claude_code::plugin::{self, MARKETPLACE, PLUGIN_ID};
 use anvil_core::fs_util::path::bin_in_path;
 use anvil_core::proc_util::run_command_with_timeout;
+use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use crate::cli::subcmds::PluginSubcmd;
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 const CHANGE_TIMEOUT: Duration = Duration::from_secs(180);
-const MISSING_CLAUDE: &str =
-    "the `claude` CLI was not found on PATH; install Claude Code (https://claude.com/claude-code) and retry";
+const MISSING_CLAUDE: &str = "the `claude` CLI was not found on PATH; install Claude Code (https://claude.com/claude-code) and retry";
 
 /// Executes `anvil plugin <subcommand>`.
 pub fn execute(sub: PluginSubcmd) -> Result<()> {
@@ -59,7 +58,8 @@ impl Claude {
 
     fn list(&self, args: &[&str]) -> Result<Vec<Value>> {
         let stdout = self.call(args, QUERY_TIMEOUT)?;
-        let parsed: Value = serde_json::from_str(stdout.trim()).context("`claude` printed invalid JSON")?;
+        let parsed: Value =
+            serde_json::from_str(stdout.trim()).context("`claude` printed invalid JSON")?;
         Ok(parsed.as_array().cloned().unwrap_or_default())
     }
 
@@ -83,7 +83,8 @@ impl Claude {
 }
 
 fn failure_line(stdout: &str, stderr: &str) -> String {
-    let text = [stderr, stdout].into_iter().map(str::trim).find(|t| !t.is_empty()).unwrap_or("no output");
+    let text =
+        [stderr, stdout].into_iter().map(str::trim).find(|t| !t.is_empty()).unwrap_or("no output");
     let message = serde_json::from_str::<Value>(text.lines().last().unwrap_or(text))
         .ok()
         .and_then(|v| v["error"].as_str().or(v["message"].as_str()).map(str::to_owned));
@@ -113,7 +114,8 @@ impl Source {
 
     /// The argument that registers this source again, when `claude plugin marketplace add` accepts it.
     fn restore_arg(&self) -> Option<OsString> {
-        matches!(self.kind.as_str(), "directory" | "github" | "git").then(|| OsString::from(&self.location))
+        matches!(self.kind.as_str(), "directory" | "github" | "git")
+            .then(|| OsString::from(&self.location))
     }
 
     fn describe(&self) -> String {
@@ -156,13 +158,18 @@ fn cmd_install() -> Result<()> {
 
     let displaced = previous.filter(|source| !source.is_folder(&dir));
     if let Some(old) = &displaced {
-        println!("marketplace `{MARKETPLACE}` points at {}; repointing it to {}", old.describe(), dir.display());
+        println!(
+            "marketplace `{MARKETPLACE}` points at {}; repointing it to {}",
+            old.describe(),
+            dir.display()
+        );
     }
     claude.add_marketplace(dir.as_os_str())?;
     if let Err(err) = apply_plugin(&claude) {
         return Err(restore(&claude, displaced.as_ref(), err));
     }
-    let installed = claude.installed_version()?.context("the plugin is not listed after installing it")?;
+    let installed =
+        claude.installed_version()?.context("the plugin is not listed after installing it")?;
     println!("installed {PLUGIN_ID} {installed} (user scope)");
     if installed != embedded {
         println!("warning: this binary embeds {embedded}; Claude Code reports {installed}");
@@ -182,8 +189,11 @@ fn restore(claude: &Claude, previous: Option<&Source>, cause: anyhow::Error) -> 
     };
     let restored = old.restore_arg().map(|arg| claude.add_marketplace(&arg));
     match restored {
-        Some(Ok(())) => cause.context(format!("restored the previous marketplace ({})", old.describe())),
-        _ => cause.context(format!("could not restore the previous marketplace ({})", old.describe())),
+        Some(Ok(())) => {
+            cause.context(format!("restored the previous marketplace ({})", old.describe()))
+        }
+        _ => cause
+            .context(format!("could not restore the previous marketplace ({})", old.describe())),
     }
 }
 
@@ -196,11 +206,17 @@ fn cmd_uninstall() -> Result<()> {
     }
     match claude.marketplace()? {
         Some(source) if source.is_folder(&dir) => {
-            claude.call(&["plugin", "marketplace", "remove", MARKETPLACE, "--scope", "user"], CHANGE_TIMEOUT)?;
+            claude.call(
+                &["plugin", "marketplace", "remove", MARKETPLACE, "--scope", "user"],
+                CHANGE_TIMEOUT,
+            )?;
             println!("removed marketplace `{MARKETPLACE}`");
         }
         Some(source) => {
-            println!("marketplace `{MARKETPLACE}` points at {}, not Anvil's folder; left in place", source.describe());
+            println!(
+                "marketplace `{MARKETPLACE}` points at {}, not Anvil's folder; left in place",
+                source.describe()
+            );
         }
         None => {}
     }
@@ -217,11 +233,13 @@ fn cmd_status(as_json: bool) -> Result<()> {
     let installed = claude.as_ref().map(Claude::installed_version).transpose()?.flatten();
     let source = claude.as_ref().map(Claude::marketplace).transpose()?.flatten();
     if as_json {
-        let marketplace = source.as_ref().map(|s| json!({
-            "source": s.kind,
-            "location": s.location,
-            "anvilFolder": s.is_folder(&dir),
-        }));
+        let marketplace = source.as_ref().map(|s| {
+            json!({
+                "source": s.kind,
+                "location": s.location,
+                "anvilFolder": s.is_folder(&dir),
+            })
+        });
         let report = json!({
             "claude": claude.is_some(),
             "embeddedVersion": embedded,
@@ -235,7 +253,10 @@ fn cmd_status(as_json: bool) -> Result<()> {
     println!("embedded version: {embedded}");
     println!("claude CLI:       {}", if claude.is_some() { "found" } else { "not found" });
     println!("installed:        {}", installed.as_deref().unwrap_or("no"));
-    println!("marketplace:      {}", source.as_ref().map_or_else(|| "none".to_owned(), Source::describe));
+    println!(
+        "marketplace:      {}",
+        source.as_ref().map_or_else(|| "none".to_owned(), Source::describe)
+    );
     println!("anvil folder:     {}", dir.display());
     Ok(())
 }

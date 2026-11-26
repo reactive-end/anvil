@@ -149,7 +149,9 @@ pub fn print_banner_if_tty(subtitle: &str) {
 /// Prints a structured section divider on interactive terminals.
 pub fn print_section(title: &str) {
     if colors_enabled() {
-        println!("\n\x1b[1;38;5;214m▸\x1b[0m \x1b[1;97m{title}\x1b[0m \x1b[90m──────────────────────────────────────────\x1b[0m");
+        println!(
+            "\n\x1b[1;38;5;214m▸\x1b[0m \x1b[1;97m{title}\x1b[0m \x1b[90m──────────────────────────────────────────\x1b[0m"
+        );
     }
 }
 
@@ -201,43 +203,23 @@ pub fn red(text: &str) -> String {
 }
 
 pub fn ok_badge() -> String {
-    if colors_enabled() {
-        "\x1b[1;32m[OK]  \x1b[0m".to_owned()
-    } else {
-        "[OK]  ".to_owned()
-    }
+    if colors_enabled() { "\x1b[1;32m[OK]  \x1b[0m".to_owned() } else { "[OK]  ".to_owned() }
 }
 
 pub fn warn_badge() -> String {
-    if colors_enabled() {
-        "\x1b[1;33m[WARN]\x1b[0m".to_owned()
-    } else {
-        "[WARN]".to_owned()
-    }
+    if colors_enabled() { "\x1b[1;33m[WARN]\x1b[0m".to_owned() } else { "[WARN]".to_owned() }
 }
 
 pub fn fail_badge() -> String {
-    if colors_enabled() {
-        "\x1b[1;31m[FAIL]\x1b[0m".to_owned()
-    } else {
-        "[FAIL]".to_owned()
-    }
+    if colors_enabled() { "\x1b[1;31m[FAIL]\x1b[0m".to_owned() } else { "[FAIL]".to_owned() }
 }
 
 pub fn error_badge() -> String {
-    if colors_enabled() {
-        "\x1b[1;31m[ERROR]\x1b[0m".to_owned()
-    } else {
-        "[ERROR]".to_owned()
-    }
+    if colors_enabled() { "\x1b[1;31m[ERROR]\x1b[0m".to_owned() } else { "[ERROR]".to_owned() }
 }
 
 pub fn info_badge() -> String {
-    if colors_enabled() {
-        "\x1b[1;36m[INFO]\x1b[0m".to_owned()
-    } else {
-        "[INFO]".to_owned()
-    }
+    if colors_enabled() { "\x1b[1;36m[INFO]\x1b[0m".to_owned() } else { "[INFO]".to_owned() }
 }
 
 /// Renders a visual progress bar for rule-hit telemetry on TTYs.
@@ -248,11 +230,7 @@ pub fn bar(value: u64, max: u64, width: usize) -> String {
     let filled = ((value as f64 / max as f64) * width as f64).round() as usize;
     let filled = filled.clamp(1, width);
     let empty = width.saturating_sub(filled);
-    format!(
-        " \x1b[38;5;214m{}\x1b[90m{}\x1b[0m",
-        "█".repeat(filled),
-        "░".repeat(empty)
-    )
+    format!(" \x1b[38;5;214m{}\x1b[90m{}\x1b[0m", "█".repeat(filled), "░".repeat(empty))
 }
 
 /// Formats a stderr error prefix with red color when stderr is a TTY.
@@ -265,9 +243,5 @@ pub fn stderr_error(msg: &str) -> String {
 }
 
 fn paint(text: &str, code: &str) -> String {
-    if colors_enabled() {
-        format!("\x1b[{code}m{text}\x1b[0m")
-    } else {
-        text.to_owned()
-    }
+    if colors_enabled() { format!("\x1b[{code}m{text}\x1b[0m") } else { text.to_owned() }
 }

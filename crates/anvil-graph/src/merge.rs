@@ -8,15 +8,90 @@ use crate::model::{
 use crate::resolvers::http_routes;
 
 const COMMON_UNRESOLVED_CALLS: &[&str] = &[
-    "map", "get", "set", "push", "pop", "filter", "reduce", "forEach", "find", "some", "every",
-    "len", "is_empty", "new", "from", "into", "clone", "default", "to_string", "toString",
-    "valueOf", "trim", "split", "join", "slice", "includes", "contains", "keys", "values",
-    "entries", "parse", "stringify", "resolve", "reject", "then", "catch", "finally", "next",
-    "iter", "collect", "unwrap", "expect", "ok", "err", "run", "init", "build", "load", "save",
-    "read", "write", "open", "close", "log", "warn", "error", "debug", "info", "format", "print",
-    "println", "assert", "add", "remove", "insert", "delete", "clear", "update", "create",
-    "start", "stop", "handle", "apply", "call", "bind", "subscribe", "pipe", "emit", "send",
-    "fetch", "post", "put", "patch", "head",
+    "map",
+    "get",
+    "set",
+    "push",
+    "pop",
+    "filter",
+    "reduce",
+    "forEach",
+    "find",
+    "some",
+    "every",
+    "len",
+    "is_empty",
+    "new",
+    "from",
+    "into",
+    "clone",
+    "default",
+    "to_string",
+    "toString",
+    "valueOf",
+    "trim",
+    "split",
+    "join",
+    "slice",
+    "includes",
+    "contains",
+    "keys",
+    "values",
+    "entries",
+    "parse",
+    "stringify",
+    "resolve",
+    "reject",
+    "then",
+    "catch",
+    "finally",
+    "next",
+    "iter",
+    "collect",
+    "unwrap",
+    "expect",
+    "ok",
+    "err",
+    "run",
+    "init",
+    "build",
+    "load",
+    "save",
+    "read",
+    "write",
+    "open",
+    "close",
+    "log",
+    "warn",
+    "error",
+    "debug",
+    "info",
+    "format",
+    "print",
+    "println",
+    "assert",
+    "add",
+    "remove",
+    "insert",
+    "delete",
+    "clear",
+    "update",
+    "create",
+    "start",
+    "stop",
+    "handle",
+    "apply",
+    "call",
+    "bind",
+    "subscribe",
+    "pipe",
+    "emit",
+    "send",
+    "fetch",
+    "post",
+    "put",
+    "patch",
+    "head",
 ];
 
 /// Merges multiple named repository graphs into a single prefix-namespaced `CodeGraph`.
@@ -61,11 +136,8 @@ fn merge_subrepo(
             id_map[old_idx] = existing;
             continue;
         }
-        let new_file = if node.file.is_empty() {
-            String::new()
-        } else {
-            format!("{prefix}/{}", node.file)
-        };
+        let new_file =
+            if node.file.is_empty() { String::new() } else { format!("{prefix}/{}", node.file) };
         let new_nid = merged.nodes.len() as u32;
         if node.kind == NodeKind::Semantic && new_id.starts_with("route:") {
             shared_routes.insert(new_id.clone(), new_nid);
@@ -116,18 +188,17 @@ fn remap_subrepo_edge(
         let ext = sub.external_str(edge.target)?;
         merged.intern_external(ext)
     };
-    Some(CompactEdge {
-        source: new_src,
-        target: new_tgt,
-        kind: edge.kind,
-        line: edge.line,
-    })
+    Some(CompactEdge { source: new_src, target: new_tgt, kind: edge.kind, line: edge.line })
 }
 
 fn prefix_node_id(prefix: &str, old_id: &str, kind: NodeKind) -> String {
     match kind {
-        NodeKind::File => format!("file:{prefix}/{}", old_id.strip_prefix("file:").unwrap_or(old_id)),
-        NodeKind::Symbol => format!("sym:{prefix}/{}", old_id.strip_prefix("sym:").unwrap_or(old_id)),
+        NodeKind::File => {
+            format!("file:{prefix}/{}", old_id.strip_prefix("file:").unwrap_or(old_id))
+        }
+        NodeKind::Symbol => {
+            format!("sym:{prefix}/{}", old_id.strip_prefix("sym:").unwrap_or(old_id))
+        }
         NodeKind::Semantic => {
             if old_id.starts_with("route:") {
                 old_id.to_owned()
@@ -179,17 +250,10 @@ fn link_cross_repo_symbols(merged: &mut CodeGraph) {
 
 fn is_linkable_cross_symbol(raw: &str) -> bool {
     let t = raw.trim();
-    t.len() >= 4
-        && !t.contains('.')
-        && !t.contains('/')
-        && !COMMON_UNRESOLVED_CALLS.contains(&t)
+    t.len() >= 4 && !t.contains('.') && !t.contains('/') && !COMMON_UNRESOLVED_CALLS.contains(&t)
 }
 
-fn find_cross_repo_target(
-    merged: &CodeGraph,
-    raw_target: &str,
-    src_repo: &str,
-) -> Option<NodeId> {
+fn find_cross_repo_target(merged: &CodeGraph, raw_target: &str, src_repo: &str) -> Option<NodeId> {
     let candidates = merged.symbol_index.get(raw_target)?;
     let matches: Vec<NodeId> = candidates
         .iter()

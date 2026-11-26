@@ -4,13 +4,13 @@ use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
 use anvil_adapters::sync::{self, UmbrellaSubrepo};
 use anvil_core::config::{AdapterTarget, AnvilConfig, SonarConfig};
 use anvil_core::sonar::parse_sonar_properties;
 use anvil_core::stack_detector::{self, DetectedRepo};
 use anvil_graph::CodeGraphEngine;
 use anvil_tasks::{build_root_tasks_json, install_git_merge_driver};
+use anyhow::{Context, Result, bail};
 
 use crate::commands::ExitCodeError;
 use crate::ui;
@@ -62,7 +62,9 @@ impl LayoutMode {
             "auto" => Ok(Self::Auto),
             "monorepo" | "mono" | "1" => Ok(Self::Monorepo),
             "multi-repo" | "multirepo" | "independent" | "2" => Ok(Self::MultiRepo),
-            other => bail!("invalid `--layout` mode `{other}`; expected `auto`, `monorepo`, or `multi-repo`"),
+            other => bail!(
+                "invalid `--layout` mode `{other}`; expected `auto`, `monorepo`, or `multi-repo`"
+            ),
         }
     }
 }
@@ -77,8 +79,9 @@ pub fn execute(root: &Path, opts: InitOptions<'_>) -> Result<()> {
     let sonar_mode = SonarInitMode::parse(opts.sonar)?;
     let layout_mode = LayoutMode::parse(opts.layout)?;
     let use_tui = prompt::is_interactive_tui();
-    let interactive =
-        use_tui || io::stdin().is_terminal() || std::env::var_os("ANVIL_INIT_FORCE_PROMPT").is_some();
+    let interactive = use_tui
+        || io::stdin().is_terminal()
+        || std::env::var_os("ANVIL_INIT_FORCE_PROMPT").is_some();
     let stdin = io::stdin();
     let mut reader = stdin.lock();
 
@@ -94,11 +97,24 @@ pub fn execute(root: &Path, opts: InitOptions<'_>) -> Result<()> {
         } else {
             prompt_sonar_for_repo_opt("root project", root, sonar_mode, &mut reader, interactive)?
         };
-        let _ = init_single_repo(root, explicit_adapter, opts.git_hooks, root_sonar, "anvil initialized at")?;
+        let _ = init_single_repo(
+            root,
+            explicit_adapter,
+            opts.git_hooks,
+            root_sonar,
+            "anvil initialized at",
+        )?;
         return Ok(());
     }
 
-    let layout = resolve_workspace_layout(root, &child_repos, layout_mode, &mut reader, interactive, use_tui)?;
+    let layout = resolve_workspace_layout(
+        root,
+        &child_repos,
+        layout_mode,
+        &mut reader,
+        interactive,
+        use_tui,
+    )?;
     let ctx = MultiInitCtx {
         root,
         child_repos: &child_repos,
@@ -138,7 +154,8 @@ fn resolve_workspace_layout(
         LayoutMode::Auto => {}
     }
     let root_has_git = root.join(".git").exists();
-    let any_child_has_git = child_repos.iter().any(|r| root.join(&r.rel_path).join(".git").exists());
+    let any_child_has_git =
+        child_repos.iter().any(|r| root.join(&r.rel_path).join(".git").exists());
     let default_layout = if root_has_git && !any_child_has_git {
         WorkspaceLayout::Monorepo
     } else {
@@ -154,7 +171,11 @@ fn resolve_workspace_layout(
     resolve_layout_text(&names, default_layout, reader)
 }
 
-fn resolve_layout_tui(count: usize, names: &str, default_layout: WorkspaceLayout) -> Result<WorkspaceLayout> {
+fn resolve_layout_tui(
+    count: usize,
+    names: &str,
+    default_layout: WorkspaceLayout,
+) -> Result<WorkspaceLayout> {
     let options = [
         SelectOption::new(
             "Independent repos in one folder",
@@ -199,37 +220,46 @@ fn resolve_layout_text(
 }
 
 fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Result<()> {
-    let mut sonar_configs: Vec<Option<SonarConfig>> = if ctx.sonar_mode == SonarInitMode::Auto && ctx.use_tui {
-        let mut targets = Vec::with_capacity(1 + ctx.child_repos.len());
-        targets.push(("monorepo root".to_owned(), ctx.root.to_path_buf(), "root workspace".to_owned()));
-        for r in ctx.child_repos {
-            targets.push((r.rel_path.clone(), ctx.root.join(&r.rel_path), format_debug_list(&r.stacks)));
-        }
-        let cfgs = resolve_multi_sonar_tui(&targets)?;
-        println!();
-        cfgs.into_iter().map(Some).collect()
-    } else {
-        let mut cfgs = Vec::with_capacity(1 + ctx.child_repos.len());
-        cfgs.push(prompt_sonar_for_repo_opt(
-            "monorepo root",
-            ctx.root,
-            ctx.sonar_mode,
-            reader,
-            ctx.interactive,
-        )?);
-        for r in ctx.child_repos {
-            let sub_dir = ctx.root.join(&r.rel_path);
-            let label = format!("subproject `{}`", r.rel_path);
+    let mut sonar_configs: Vec<Option<SonarConfig>> =
+        if ctx.sonar_mode == SonarInitMode::Auto && ctx.use_tui {
+            let mut targets = Vec::with_capacity(1 + ctx.child_repos.len());
+            targets.push((
+                "monorepo root".to_owned(),
+                ctx.root.to_path_buf(),
+                "root workspace".to_owned(),
+            ));
+            for r in ctx.child_repos {
+                targets.push((
+                    r.rel_path.clone(),
+                    ctx.root.join(&r.rel_path),
+                    format_debug_list(&r.stacks),
+                ));
+            }
+            let cfgs = resolve_multi_sonar_tui(&targets)?;
+            println!();
+            cfgs.into_iter().map(Some).collect()
+        } else {
+            let mut cfgs = Vec::with_capacity(1 + ctx.child_repos.len());
             cfgs.push(prompt_sonar_for_repo_opt(
-                &label,
-                &sub_dir,
+                "monorepo root",
+                ctx.root,
                 ctx.sonar_mode,
                 reader,
                 ctx.interactive,
             )?);
-        }
-        cfgs
-    };
+            for r in ctx.child_repos {
+                let sub_dir = ctx.root.join(&r.rel_path);
+                let label = format!("subproject `{}`", r.rel_path);
+                cfgs.push(prompt_sonar_for_repo_opt(
+                    &label,
+                    &sub_dir,
+                    ctx.sonar_mode,
+                    reader,
+                    ctx.interactive,
+                )?);
+            }
+            cfgs
+        };
     let root_sonar = sonar_configs.drain(..1).next().flatten();
     let mut root_config = init_single_repo(
         ctx.root,
@@ -240,7 +270,8 @@ fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
     )?;
     for (repo, sub_sonar) in ctx.child_repos.iter().zip(sonar_configs) {
         if let Some(sub_s) = sub_sonar
-            && let Some(sub_entry) = root_config.subrepos.iter_mut().find(|s| s.path == repo.rel_path)
+            && let Some(sub_entry) =
+                root_config.subrepos.iter_mut().find(|s| s.path == repo.rel_path)
         {
             sub_entry.sonar_enabled = sub_s.enabled;
         }
@@ -270,7 +301,13 @@ fn resolve_umbrella_sonar_configs(
             continue;
         }
         let label = format!("subproject `{}`", repo.rel_path);
-        cfgs.push(prompt_sonar_for_repo_opt(&label, &sub_dir, ctx.sonar_mode, reader, ctx.interactive)?);
+        cfgs.push(prompt_sonar_for_repo_opt(
+            &label,
+            &sub_dir,
+            ctx.sonar_mode,
+            reader,
+            ctx.interactive,
+        )?);
     }
     Ok(cfgs)
 }
@@ -287,7 +324,8 @@ fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
             stacks: r.stacks.clone(),
         })
         .collect();
-    let (adapter_target, report) = sync::init_umbrella_root(ctx.root, ctx.explicit_adapter, &umbrella_list)?;
+    let (adapter_target, report) =
+        sync::init_umbrella_root(ctx.root, ctx.explicit_adapter, &umbrella_list)?;
     println!(
         "{} {} {}",
         ui::green("✓"),
@@ -295,7 +333,10 @@ fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
         ui::bold(&ctx.root.display().to_string())
     );
     ui::print_kv("layout", "multi-repo (thin root: no duplicate .harness/ or tasks.json)");
-    ui::print_kv("adapters", &format!("{adapter_target:?} (files_written={})", report.written_files.len()));
+    ui::print_kv(
+        "adapters",
+        &format!("{adapter_target:?} (files_written={})", report.written_files.len()),
+    );
     if ui::colors_enabled() {
         println!();
     }
@@ -333,13 +374,17 @@ fn resolve_single_sonar_tui(dir: &Path) -> Result<SonarConfig> {
         PromptOutcome::Cancelled => Err(ExitCodeError::silent(130).into()),
         PromptOutcome::Confirmed(0) => Ok(SonarConfig::default()),
         PromptOutcome::Confirmed(_) => {
-            let host_override = prompt_host_tui_if_missing(props.as_ref().and_then(|p| p.host_url.as_ref()).is_none())?;
+            let host_override = prompt_host_tui_if_missing(
+                props.as_ref().and_then(|p| p.host_url.as_ref()).is_none(),
+            )?;
             Ok(hydrate_sonar_config(dir, props.as_ref(), host_override))
         }
     }
 }
 
-fn resolve_multi_sonar_tui(targets: &[(String, std::path::PathBuf, String)]) -> Result<Vec<SonarConfig>> {
+fn resolve_multi_sonar_tui(
+    targets: &[(String, std::path::PathBuf, String)],
+) -> Result<Vec<SonarConfig>> {
     let parsed: Vec<_> = targets.iter().map(|(_, dir, _)| parse_sonar_properties(dir)).collect();
     let options: Vec<SelectOption> = targets
         .iter()
@@ -387,7 +432,8 @@ fn prompt_host_tui_if_missing(needs_host: bool) -> Result<Option<String>> {
     if !needs_host {
         return Ok(None);
     }
-    match prompt::text_input("Local SonarQube host URL", "SonarQube host", "http://localhost:9000")? {
+    match prompt::text_input("Local SonarQube host URL", "SonarQube host", "http://localhost:9000")?
+    {
         PromptOutcome::Confirmed(url) => Ok(Some(url.trim_end_matches('/').to_owned())),
         PromptOutcome::Cancelled => Err(ExitCodeError::silent(130).into()),
     }
@@ -433,10 +479,7 @@ fn hydrate_sonar_config(
     props: Option<&anvil_core::sonar::SonarProperties>,
     host_override: Option<String>,
 ) -> SonarConfig {
-    let fallback_key = dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(str::to_owned);
+    let fallback_key = dir.file_name().and_then(|n| n.to_str()).map(str::to_owned);
     SonarConfig {
         enabled: true,
         host_url: host_override
@@ -448,10 +491,7 @@ fn hydrate_sonar_config(
 }
 
 fn is_affirmative(raw: &str) -> bool {
-    matches!(
-        raw.trim().to_ascii_lowercase().as_str(),
-        "y" | "yes" | "s" | "si" | "sí"
-    )
+    matches!(raw.trim().to_ascii_lowercase().as_str(), "y" | "yes" | "s" | "si" | "sí")
 }
 
 fn init_single_repo(
@@ -521,7 +561,12 @@ fn print_init_summary(s: InitSummary<'_>) {
     let stacks_str = format_debug_list(&s.config.stacks);
     let tools_str = format_debug_list(&s.config.tools);
     let prefix = if ui::colors_enabled() { "✓ " } else { "" };
-    println!("{}{} {}", ui::green(prefix), ui::green(s.banner), ui::bold(&s.dir.display().to_string()));
+    println!(
+        "{}{} {}",
+        ui::green(prefix),
+        ui::green(s.banner),
+        ui::bold(&s.dir.display().to_string())
+    );
     ui::print_kv("stacks", &ui::cyan(&stacks_str));
     ui::print_kv("tools", &ui::cyan(&tools_str));
     ui::print_kv("adapters", &format!("{:?}", s.config.adapters));
@@ -530,7 +575,10 @@ fn print_init_summary(s: InitSummary<'_>) {
         ui::print_kv("pre_commit_hook", s.pre_commit_status);
     }
     let sonar_label = if s.config.sonar.enabled {
-        format!("enabled (host={})", s.config.sonar.host_url.as_deref().unwrap_or("http://localhost:9000"))
+        format!(
+            "enabled (host={})",
+            s.config.sonar.host_url.as_deref().unwrap_or("http://localhost:9000")
+        )
     } else {
         "disabled".to_owned()
     };
@@ -554,9 +602,5 @@ fn format_debug_list<T: std::fmt::Debug>(items: &[T]) -> String {
     if items.is_empty() {
         return "none".to_owned();
     }
-    items
-        .iter()
-        .map(|item| format!("{item:?}"))
-        .collect::<Vec<_>>()
-        .join(", ")
+    items.iter().map(|item| format!("{item:?}")).collect::<Vec<_>>().join(", ")
 }

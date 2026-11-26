@@ -27,10 +27,7 @@ pub fn check_root_hygiene(
         return None;
     }
 
-    let allowed = config
-        .root_allowlist
-        .iter()
-        .any(|entry| matches_allowlist(entry, first));
+    let allowed = config.root_allowlist.iter().any(|entry| matches_allowlist(entry, first));
 
     if allowed {
         return None;
@@ -42,7 +39,9 @@ pub fn check_root_hygiene(
         file: normalized_file.to_owned(),
         line: 1,
         column: 1,
-        message: format!("Root-level file `{first}` is not in `.harness/config.json` root_allowlist"),
+        message: format!(
+            "Root-level file `{first}` is not in `.harness/config.json` root_allowlist"
+        ),
         suggestion: Some(
             "Move the file into an appropriate subdirectory or add it to `root_allowlist`"
                 .to_owned(),

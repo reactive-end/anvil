@@ -41,10 +41,8 @@ pub fn init_umbrella_root(
 ) -> Result<(AdapterTarget, SyncReport)> {
     let target = explicit_adapter.unwrap_or_else(|| infer_default_adapters(root));
     let mut report = SyncReport::default();
-    let mcp_entries: Vec<(String, PathBuf)> = subrepos
-        .iter()
-        .map(|s| (sanitize_subrepo_slug(&s.rel_path), s.abs_path.clone()))
-        .collect();
+    let mcp_entries: Vec<(String, PathBuf)> =
+        subrepos.iter().map(|s| (sanitize_subrepo_slug(&s.rel_path), s.abs_path.clone())).collect();
 
     if target.includes_antigravity() {
         record_write(
@@ -131,12 +129,7 @@ pub fn discover_umbrella_subrepos(root: &Path) -> Vec<UmbrellaSubrepo> {
     found
 }
 
-fn collect_umbrella_depth(
-    root: &Path,
-    dir: &Path,
-    depth: usize,
-    out: &mut Vec<UmbrellaSubrepo>,
-) {
+fn collect_umbrella_depth(root: &Path, dir: &Path, depth: usize, out: &mut Vec<UmbrellaSubrepo>) {
     if depth >= 2 {
         return;
     }
@@ -153,10 +146,7 @@ fn collect_umbrella_depth(
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         if name_str.starts_with('.')
-            || matches!(
-                name_str.as_ref(),
-                "node_modules" | "target" | "dist" | "build" | "vendor"
-            )
+            || matches!(name_str.as_ref(), "node_modules" | "target" | "dist" | "build" | "vendor")
         {
             continue;
         }
@@ -164,11 +154,7 @@ fn collect_umbrella_depth(
         if sub_dir.join(".harness").join("config.json").is_file() {
             let rel = anvil_core::fs_util::relativize_path(root, &sub_dir);
             let stacks = AnvilConfig::load(&sub_dir).map(|c| c.stacks).unwrap_or_default();
-            out.push(UmbrellaSubrepo {
-                rel_path: rel,
-                abs_path: sub_dir,
-                stacks,
-            });
+            out.push(UmbrellaSubrepo { rel_path: rel, abs_path: sub_dir, stacks });
             continue;
         }
         collect_umbrella_depth(root, &sub_dir, depth + 1, out);
@@ -283,8 +269,8 @@ fn infer_default_adapters(repo_root: &Path) -> AdapterTarget {
     let has_codex = repo_root.join(".codex").exists();
     let has_secondary =
         has_codex || repo_root.join(".cursor").exists() || repo_root.join(".windsurf").exists();
-    let has_agy =
-        repo_root.join(".agents").exists() || (repo_root.join("AGENTS.md").exists() && !has_secondary);
+    let has_agy = repo_root.join(".agents").exists()
+        || (repo_root.join("AGENTS.md").exists() && !has_secondary);
     let has_claude = repo_root.join(".claude").exists()
         || repo_root.join("CLAUDE.md").exists()
         || repo_root.join(".mcp.json").exists();
@@ -321,11 +307,25 @@ fn should_sync_codex(repo_root: &Path, target: AdapterTarget) -> bool {
     target.includes_codex() || (target == AdapterTarget::All && repo_root.join(".codex").exists())
 }
 
-fn sync_into(
-    repo_root: &Path,
-    target: AdapterTarget,
-    report: &mut SyncReport,
-) -> Result<()> {
+fn sync_claude(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
+    record_write(
+        claude_code::config::settings_config_path(repo_root),
+        claude_code::config::merge_settings_config(repo_root)?,
+        report,
+    );
+    record_write(
+        claude_code::config::mcp_config_path(repo_root),
+        claude_code::config::merge_mcp_config(repo_root)?,
+        report,
+    );
+    sync_managed_doc(&repo_root.join("CLAUDE.md"), templates::CLAUDE_MD, report)?;
+    if let Some(pair) = AnvilConfig::load_or_default(repo_root)?.orchestrator {
+        report.written_files.extend(claude_code::agents::sync_agents(repo_root, &pair)?);
+    }
+    Ok(())
+}
+
+fn sync_into(repo_root: &Path, target: AdapterTarget, report: &mut SyncReport) -> Result<()> {
     let sync_cursor = should_sync_cursor(repo_root, target);
     let sync_windsurf = should_sync_windsurf(repo_root, target);
     let sync_codex = should_sync_codex(repo_root, target);
@@ -333,25 +333,34 @@ fn sync_into(
     sync_skills_targets(repo_root, target, sync_cursor, report)?;
 
     if target.includes_antigravity() {
-        record_write(antigravity::config::hooks_config_path(repo_root), antigravity::config::merge_hooks_config(repo_root)?, report);
-        record_write(antigravity::config::mcp_config_path(repo_root), antigravity::config::merge_mcp_config(repo_root)?, report);
+        record_write(
+            antigravity::config::hooks_config_path(repo_root),
+            antigravity::config::merge_hooks_config(repo_root)?,
+            report,
+        );
+        record_write(
+            antigravity::config::mcp_config_path(repo_root),
+            antigravity::config::merge_mcp_config(repo_root)?,
+            report,
+        );
     }
     if target.includes_claude() {
-        record_write(claude_code::config::settings_config_path(repo_root), claude_code::config::merge_settings_config(repo_root)?, report);
-        record_write(claude_code::config::mcp_config_path(repo_root), claude_code::config::merge_mcp_config(repo_root)?, report);
-        sync_managed_doc(&repo_root.join("CLAUDE.md"), templates::CLAUDE_MD, report)?;
-        if let Some(pair) = AnvilConfig::load_or_default(repo_root)?.orchestrator {
-            report
-                .written_files
-                .extend(claude_code::agents::sync_agents(repo_root, &pair)?);
-        }
+        sync_claude(repo_root, report)?;
     }
     if sync_cursor {
-        record_write(cursor::mcp_config_path(repo_root), cursor::merge_mcp_config(repo_root)?, report);
+        record_write(
+            cursor::mcp_config_path(repo_root),
+            cursor::merge_mcp_config(repo_root)?,
+            report,
+        );
         record_write(cursor::rules_path(repo_root), cursor::sync_rules(repo_root)?, report);
     }
     if sync_windsurf {
-        record_write(windsurf::mcp_config_path(repo_root), windsurf::merge_mcp_config(repo_root)?, report);
+        record_write(
+            windsurf::mcp_config_path(repo_root),
+            windsurf::merge_mcp_config(repo_root)?,
+            report,
+        );
         record_write(windsurf::rules_path(repo_root), windsurf::sync_rules(repo_root)?, report);
     }
     if sync_codex {
@@ -360,11 +369,7 @@ fn sync_into(
     if target.includes_antigravity() {
         sync_managed_doc(&repo_root.join("AGENTS.md"), templates::AGENTS_MD, report)?;
     } else if sync_codex {
-        sync_managed_doc(
-            &repo_root.join("AGENTS.md"),
-            templates::CODEX_AGENTS_MD,
-            report,
-        )?;
+        sync_managed_doc(&repo_root.join("AGENTS.md"), templates::CODEX_AGENTS_MD, report)?;
     }
 
     sync_gitignore(repo_root, report)?;
@@ -409,10 +414,8 @@ fn sync_skills_targets(
 ) -> Result<()> {
     let custom_root = repo_root.join(".harness").join("skills");
     let custom_names = list_subdir_names(&custom_root)?;
-    let builtin_names: BTreeSet<String> = templates::EMBEDDED_SKILLS
-        .iter()
-        .map(|s| s.name.to_owned())
-        .collect();
+    let builtin_names: BTreeSet<String> =
+        templates::EMBEDDED_SKILLS.iter().map(|s| s.name.to_owned()).collect();
 
     let mut targets = Vec::new();
     if target.includes_antigravity() {
@@ -478,11 +481,7 @@ fn list_subdir_names(dir: &Path) -> Result<BTreeSet<String>> {
     Ok(names)
 }
 
-fn copy_dir_non_destructively(
-    src: &Path,
-    dst: &Path,
-    report: &mut SyncReport,
-) -> Result<()> {
+fn copy_dir_non_destructively(src: &Path, dst: &Path, report: &mut SyncReport) -> Result<()> {
     ensure_dir(dst)?;
     for entry in fs::read_dir(src).with_context(|| format!("failed to read {}", src.display()))? {
         let entry = entry?;
@@ -513,10 +512,7 @@ fn sync_gitignore(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
 
     let has_line = |target: &str| {
         let trimmed = target.trim_end_matches('/');
-        existing
-            .lines()
-            .map(str::trim)
-            .any(|line| line == target || line == trimmed)
+        existing.lines().map(str::trim).any(|line| line == target || line == trimmed)
     };
     let need_state = !has_line(".harness/.state/");
     let need_worktrees = !has_line(".harness/.worktrees/");
@@ -544,9 +540,7 @@ pub(crate) fn read_optional_string(path: &Path) -> Result<Option<String>> {
     if !path.exists() {
         return Ok(None);
     }
-    fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))
-        .map(Some)
+    fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display())).map(Some)
 }
 
 pub(crate) fn sync_managed_file(path: &Path, template: &str) -> Result<bool> {

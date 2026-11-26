@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use anvil_core::stats::{NewFinding, list_reviews, load_stats, log_review, record_check_outcome, scope_key};
+use anvil_core::stats::{
+    NewFinding, list_reviews, load_stats, log_review, record_check_outcome, scope_key,
+};
 use tempfile::TempDir;
 
 fn finding(category: &str) -> NewFinding {
@@ -32,7 +34,9 @@ fn check_outcomes_are_counted_for_passes_and_failures() {
 #[test]
 fn a_finding_after_a_green_check_is_after_green_and_after_a_red_one_is_not() {
     let repo = TempDir::new().expect("tempdir");
-    assert!(!log_review(repo.path(), finding("dead-code")).expect("no check yet").entry.after_green);
+    assert!(
+        !log_review(repo.path(), finding("dead-code")).expect("no check yet").entry.after_green
+    );
     check(repo.path(), true);
     assert!(log_review(repo.path(), finding("dead-code")).expect("after green").entry.after_green);
     check(repo.path(), false);
@@ -90,7 +94,8 @@ fn old_stats_files_and_jsonl_lines_still_load() {
     let repo = TempDir::new().expect("tempdir");
     let state = repo.path().join(".harness/.state");
     fs::create_dir_all(&state).expect("mkdir");
-    fs::write(state.join("stats.json"), r#"{"hook_calls": 4, "check_cache_hits": 2}"#).expect("stats.json");
+    fs::write(state.join("stats.json"), r#"{"hook_calls": 4, "check_cache_hits": 2}"#)
+        .expect("stats.json");
     let lines = [
         r#"{"HookCall":{"elapsed_ms":7}}"#,
         r#""CheckCacheHit""#,

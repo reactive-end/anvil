@@ -7,12 +7,8 @@ use serde_json::Value;
 use crate::http::{fetch_text_with_accept, parse_rfc3339_utc, percent_encode_component};
 use crate::model::{DependencySpec, Ecosystem, PackageHealthInfo};
 
-const DEP_SECTIONS: &[&str] = &[
-    "dependencies",
-    "devDependencies",
-    "peerDependencies",
-    "optionalDependencies",
-];
+const DEP_SECTIONS: &[&str] =
+    &["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 const NPM_ABBREVIATED_ACCEPT: &str = "application/vnd.npm.install-v1+json";
 const NON_REGISTRY_SPECIFIERS: &[&str] = &[
     "workspace:",
@@ -29,9 +25,7 @@ const NON_REGISTRY_SPECIFIERS: &[&str] = &[
 
 fn is_non_registry_specifier(spec: &str) -> bool {
     let normalized = spec.trim().to_ascii_lowercase();
-    NON_REGISTRY_SPECIFIERS
-        .iter()
-        .any(|prefix| normalized.starts_with(prefix))
+    NON_REGISTRY_SPECIFIERS.iter().any(|prefix| normalized.starts_with(prefix))
 }
 
 /// Parses dependency entries from a `package.json` file.
@@ -108,9 +102,8 @@ pub fn parse_npm_registry_json(package: &str, body: &str) -> Result<PackageHealt
         .and_then(Value::as_str)
         .and_then(parse_rfc3339_utc);
 
-    let latest_obj = latest_version
-        .as_deref()
-        .and_then(|ver| root.get("versions").and_then(|v| v.get(ver)));
+    let latest_obj =
+        latest_version.as_deref().and_then(|ver| root.get("versions").and_then(|v| v.get(ver)));
 
     let deprecation_message = latest_obj
         .and_then(|v| v.get("deprecated"))

@@ -16,17 +16,11 @@ pub struct ChangedFile {
 
 impl ChangedFile {
     pub fn from_path(path: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-            hunks: None,
-        }
+        Self { path: path.into(), hunks: None }
     }
 
     pub fn with_hunks(path: impl Into<String>, hunks: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-            hunks: Some(hunks.into()),
-        }
+        Self { path: path.into(), hunks: Some(hunks.into()) }
     }
 }
 
@@ -77,17 +71,13 @@ pub fn classify_files(files: &[ChangedFile]) -> DiffClassification {
         if category_rank(category) > category_rank(primary) {
             primary = category;
         }
-        per_file.push(FileClassification {
-            path: file.path.clone(),
-            category,
-            tier,
-        });
+        per_file.push(FileClassification { path: file.path.clone(), category, tier });
     }
 
-    let only_docs_or_style = seen
-        .iter()
-        .all(|c| matches!(c, DiffCategory::Docs | DiffCategory::StyleOnly));
-    let needs_visual_qa = seen.contains(&DiffCategory::StyleOnly) || seen.contains(&DiffCategory::Ui);
+    let only_docs_or_style =
+        seen.iter().all(|c| matches!(c, DiffCategory::Docs | DiffCategory::StyleOnly));
+    let needs_visual_qa =
+        seen.contains(&DiffCategory::StyleOnly) || seen.contains(&DiffCategory::Ui);
     let needs_deps_audit = seen.contains(&DiffCategory::Deps);
     let categories = seen.into_iter().collect();
 
@@ -179,23 +169,32 @@ fn is_docs_path(path: &str, name: &str) -> bool {
 fn is_deps_manifest(name: &str, path: &str) -> bool {
     matches!(
         name,
-        "package.json" | "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock"
-            | "cargo.toml" | "cargo.lock" | "pyproject.toml" | "poetry.lock"
-            | "uv.lock" | "pubspec.yaml" | "pubspec.lock" | "libs.versions.toml"
-            | "build.gradle" | "build.gradle.kts" | "composer.json" | "composer.lock"
-    ) || (path.ends_with(".txt") && (name.starts_with("requirements") || has_dir_segment(path, "requirements")))
+        "package.json"
+            | "package-lock.json"
+            | "pnpm-lock.yaml"
+            | "yarn.lock"
+            | "cargo.toml"
+            | "cargo.lock"
+            | "pyproject.toml"
+            | "poetry.lock"
+            | "uv.lock"
+            | "pubspec.yaml"
+            | "pubspec.lock"
+            | "libs.versions.toml"
+            | "build.gradle"
+            | "build.gradle.kts"
+            | "composer.json"
+            | "composer.lock"
+    ) || (path.ends_with(".txt")
+        && (name.starts_with("requirements") || has_dir_segment(path, "requirements")))
 }
 
 fn is_style_extension(path: &str) -> bool {
-    [".css", ".scss", ".sass", ".less", ".styl"]
-        .iter()
-        .any(|ext| path.ends_with(ext))
+    [".css", ".scss", ".sass", ".less", ".styl"].iter().any(|ext| path.ends_with(ext))
 }
 
 fn is_contract_path(path: &str) -> bool {
-    [".proto", ".graphql", ".gql", ".prisma"]
-        .iter()
-        .any(|ext| path.ends_with(ext))
+    [".proto", ".graphql", ".gql", ".prisma"].iter().any(|ext| path.ends_with(ext))
         || path.contains("openapi")
         || path.contains("swagger")
         || has_dir_segment(path, "contracts")
@@ -209,9 +208,9 @@ fn is_contract_path(path: &str) -> bool {
 
 fn has_dir_segment(path: &str, seg: &str) -> bool {
     path.strip_prefix(seg).is_some_and(|rest| rest.starts_with('/'))
-        || path
-            .match_indices(seg)
-            .any(|(idx, _)| idx > 0 && path.as_bytes()[idx - 1] == b'/' && path[idx + seg.len()..].starts_with('/'))
+        || path.match_indices(seg).any(|(idx, _)| {
+            idx > 0 && path.as_bytes()[idx - 1] == b'/' && path[idx + seg.len()..].starts_with('/')
+        })
 }
 
 fn is_config_path(path: &str, name: &str) -> bool {
@@ -220,8 +219,15 @@ fn is_config_path(path: &str, name: &str) -> bool {
         || path.ends_with(".yml")
         || path.ends_with(".yaml")
         || [
-            "tsconfig", ".eslintrc", "eslint.config.", "biome.json",
-            "vite.config.", "next.config.", "astro.config.", "vitest.config.", "jest.config.",
+            "tsconfig",
+            ".eslintrc",
+            "eslint.config.",
+            "biome.json",
+            "vite.config.",
+            "next.config.",
+            "astro.config.",
+            "vitest.config.",
+            "jest.config.",
         ]
         .iter()
         .any(|p| name.starts_with(p))

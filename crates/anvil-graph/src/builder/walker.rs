@@ -4,15 +4,13 @@ use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
-use anyhow::Result;
 use anvil_ast::analyze_file;
 use anvil_core::config::AnvilConfig;
 use anvil_core::traits::{EdgeRef, FileAstFacts, Language};
+use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use crate::model::{
-    CodeGraph, CompactEdge, GraphEdgeKind, GraphNode, NodeId, NodeKind,
-};
+use crate::model::{CodeGraph, CompactEdge, GraphEdgeKind, GraphNode, NodeId, NodeKind};
 use crate::resolvers::{EdgeTarget, ResolvedEdge, kotlin};
 
 pub(crate) use super::remove::{finalize_unused_slots, remove_file_incremental};
@@ -62,11 +60,7 @@ pub(crate) fn extract_from_bytes(
     let kotlin_pkg = (facts.language == Language::Kotlin)
         .then(|| kotlin::extract_kotlin_package(&source))
         .flatten();
-    Ok(Some(ExtractedFile {
-        facts,
-        kotlin_pkg,
-        stat,
-    }))
+    Ok(Some(ExtractedFile { facts, kotlin_pkg, stat }))
 }
 
 pub(crate) fn insert_file_facts(
@@ -75,14 +69,7 @@ pub(crate) fn insert_file_facts(
     update_live_indexes: bool,
     mut reuse_slots: Option<&mut FxHashMap<String, NodeId>>,
 ) -> Vec<EdgeRef> {
-    let FileAstFacts {
-        path,
-        blake3_hash,
-        language,
-        symbols,
-        edges,
-        diagnostics: _,
-    } = item.facts;
+    let FileAstFacts { path, blake3_hash, language, symbols, edges, diagnostics: _ } = item.facts;
 
     graph.file_hashes.insert(path.clone(), blake3_hash);
     graph.file_stats.insert(path.clone(), item.stat);
@@ -160,7 +147,12 @@ fn insert_symbol_into_graph(
             graph.angular_selectors.insert(label_ref.clone(), sym_nid);
         }
     }
-    let edge = CompactEdge { source: file_nid, target: sym_nid, kind: GraphEdgeKind::Contains, line: sym.line };
+    let edge = CompactEdge {
+        source: file_nid,
+        target: sym_nid,
+        kind: GraphEdgeKind::Contains,
+        line: sym.line,
+    };
     graph.push_edge(edge, update_live_indexes);
 }
 
@@ -175,12 +167,7 @@ pub(crate) fn push_resolved_edges(
             EdgeTarget::External(raw) => graph.intern_external(&raw),
         };
         graph.push_edge(
-            CompactEdge {
-                source: re.source,
-                target,
-                kind: re.kind,
-                line: re.line,
-            },
+            CompactEdge { source: re.source, target, kind: re.kind, line: re.line },
             update_adj,
         );
     }

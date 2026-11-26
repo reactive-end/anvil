@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use anvil_core::fs_util::atomic_write;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -27,10 +27,7 @@ struct DepsCacheDisk {
 
 impl Default for DepsCacheDisk {
     fn default() -> Self {
-        Self {
-            version: CACHE_SCHEMA_VERSION,
-            entries: FxHashMap::default(),
-        }
+        Self { version: CACHE_SCHEMA_VERSION, entries: FxHashMap::default() }
     }
 }
 
@@ -44,10 +41,7 @@ pub(crate) struct DepsCache {
 impl DepsCache {
     /// Returns `.harness/.state/deps-cache.json`.
     pub(crate) fn cache_path(repo_root: &Path) -> PathBuf {
-        repo_root
-            .join(".harness")
-            .join(".state")
-            .join("deps-cache.json")
+        repo_root.join(".harness").join(".state").join("deps-cache.json")
     }
 
     /// Loads cache from disk if present and valid; falls back to an empty cache on corruption.
@@ -58,11 +52,7 @@ impl DepsCache {
             .and_then(|bytes| serde_json::from_slice::<DepsCacheDisk>(&bytes).ok())
             .filter(|disk| disk.version == CACHE_SCHEMA_VERSION)
             .unwrap_or_default();
-        Self {
-            path,
-            data,
-            dirty: false,
-        }
+        Self { path, data, dirty: false }
     }
 
     /// Returns cached package metadata when present and younger than `ttl_hours`.
@@ -76,23 +66,13 @@ impl DepsCache {
         let key = cache_key(ecosystem, package);
         let entry = self.data.entries.get(&key)?;
         let ttl_secs = ttl_hours.saturating_mul(3600);
-        if now.timestamp() - entry.cached_at_secs <= ttl_secs {
-            Some(&entry.info)
-        } else {
-            None
-        }
+        if now.timestamp() - entry.cached_at_secs <= ttl_secs { Some(&entry.info) } else { None }
     }
 
     /// Inserts or refreshes a registry entry and marks the cache dirty.
     pub(crate) fn insert(&mut self, info: PackageHealthInfo, now: DateTime<Utc>) {
         let key = cache_key(info.ecosystem, &info.name);
-        self.data.entries.insert(
-            key,
-            CachedPackageEntry {
-                info,
-                cached_at_secs: now.timestamp(),
-            },
-        );
+        self.data.entries.insert(key, CachedPackageEntry { info, cached_at_secs: now.timestamp() });
         self.dirty = true;
     }
 
@@ -100,9 +80,7 @@ impl DepsCache {
     pub(crate) fn prune_expired(&mut self, ttl_hours: i64, now: DateTime<Utc>) {
         let ttl_secs = ttl_hours.saturating_mul(3600);
         let before = self.data.entries.len();
-        self.data
-            .entries
-            .retain(|_, entry| now.timestamp() - entry.cached_at_secs <= ttl_secs);
+        self.data.entries.retain(|_, entry| now.timestamp() - entry.cached_at_secs <= ttl_secs);
         if self.data.entries.len() != before {
             self.dirty = true;
         }

@@ -22,11 +22,7 @@ fn init_git_repo(dir: &Path, user_name: &str) {
 }
 
 fn run_git(dir: &Path, args: &[&str]) -> String {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .expect("git should execute");
+    let out = Command::new("git").args(args).current_dir(dir).output().expect("git should execute");
     assert!(
         out.status.success(),
         "git {} failed: {}",
@@ -139,10 +135,7 @@ fn assert_slim_index_shape(raw_json: &str, task_id: &str, entries: usize, files:
     assert_eq!(index.version, TASKS_INDEX_SCHEMA_VERSION);
     assert_eq!(index.tasks[0].entry_count, entries);
     assert_eq!(index.tasks[0].files_count, files);
-    assert_eq!(
-        index.tasks[0].progress_file,
-        format!(".harness/tasks/{task_id}/progress.md")
-    );
+    assert_eq!(index.tasks[0].progress_file, format!(".harness/tasks/{task_id}/progress.md"));
 }
 
 #[test]
@@ -153,11 +146,9 @@ fn install_merge_driver_and_resolve_merge_work() {
     install_git_merge_driver(tmp.path()).expect("install driver");
     install_git_merge_driver(tmp.path()).expect("idempotent reinstall");
 
-    let gitattrs = fs::read_to_string(tmp.path().join(".gitattributes")).expect("read gitattributes");
-    assert_eq!(
-        gitattrs.lines().filter(|l| l.trim() == "tasks.json merge=anvil-tasks").count(),
-        1
-    );
+    let gitattrs =
+        fs::read_to_string(tmp.path().join(".gitattributes")).expect("read gitattributes");
+    assert_eq!(gitattrs.lines().filter(|l| l.trim() == "tasks.json merge=anvil-tasks").count(), 1);
     let configured = run_git(tmp.path(), &["config", "--get", "merge.anvil-tasks.driver"]);
     assert!(configured.contains("anvil tasks merge-driver"));
 
@@ -183,7 +174,8 @@ fn install_merge_driver_and_resolve_merge_work() {
     theirs.tasks[0].entry_count = 2;
     theirs.tasks[0].files_count = 1;
     theirs.tasks[0].summary = "Dev B change".to_owned();
-    fs::write(&theirs_path, serde_json::to_string_pretty(&theirs).expect("json")).expect("write theirs");
+    fs::write(&theirs_path, serde_json::to_string_pretty(&theirs).expect("json"))
+        .expect("write theirs");
 
     let merged = resolve_merge(&base_path, &ours_path, &theirs_path, tmp.path()).expect("merge");
     let parsed: TasksIndexFile =
@@ -237,7 +229,8 @@ fn resolve_merge_accepts_legacy_v1_and_outputs_v2_index() {
     theirs.tasks[0].contributors.push("dev-b".to_owned());
     theirs.tasks[0].entry_count = 2;
     theirs.tasks[0].files_touched.push("b.rs".to_owned());
-    fs::write(&theirs_path, serde_json::to_string_pretty(&theirs).expect("json")).expect("write theirs");
+    fs::write(&theirs_path, serde_json::to_string_pretty(&theirs).expect("json"))
+        .expect("write theirs");
 
     let merged = resolve_merge(&base_path, &ours_path, &theirs_path, tmp.path()).expect("merge");
     let raw = fs::read_to_string(&ours_path).expect("read merged");
@@ -257,9 +250,7 @@ fn active_task_auto_lifecycle_creates_reuses_and_advances_after_done() {
 
     for ignored in ["", "   ", "/compact", "/plan auth"] {
         assert!(
-            ensure_task_for_prompt(tmp.path(), ignored)
-                .expect("ignored check")
-                .is_none(),
+            ensure_task_for_prompt(tmp.path(), ignored).expect("ignored check").is_none(),
             "expected prompt `{ignored}` to be ignored"
         );
     }
@@ -322,9 +313,10 @@ fn record_touched_file_accumulates_unique_project_paths() {
     init_git_repo(tmp.path(), "alice");
     write_identity_cache(tmp.path(), "alice", "test").expect("seed identity");
 
-    let (state, created) = ensure_task_for_prompt(tmp.path(), "Refactor authentication redirect flow")
-        .expect("ensure task")
-        .expect("task created");
+    let (state, created) =
+        ensure_task_for_prompt(tmp.path(), "Refactor authentication redirect flow")
+            .expect("ensure task")
+            .expect("task created");
     assert!(created);
 
     anvil_tasks::record_touched_file(tmp.path(), r"src\auth.kt").expect("record auth");
@@ -333,9 +325,8 @@ fn record_touched_file_accumulates_unique_project_paths() {
     anvil_tasks::record_touched_file(tmp.path(), ".harness/config.json").expect("skip harness");
     anvil_tasks::record_touched_file(tmp.path(), "tasks.json").expect("skip tasks.json");
 
-    let active = anvil_tasks::load_active_task(tmp.path())
-        .expect("load active")
-        .expect("active exists");
+    let active =
+        anvil_tasks::load_active_task(tmp.path()).expect("load active").expect("active exists");
     assert_eq!(active.task_id, state.task_id);
     assert_eq!(active.touched_files, vec!["src/auth.kt", "src/webview.kt"]);
 }
@@ -368,9 +359,8 @@ fn lazy_task_materializes_only_on_real_file_edit() {
     let second = anvil_tasks::materialize_task_on_edit(tmp.path(), "src/lib.rs")
         .expect("append second file");
     assert!(second.is_none());
-    let active = anvil_tasks::load_active_task(tmp.path())
-        .expect("load active")
-        .expect("active exists");
+    let active =
+        anvil_tasks::load_active_task(tmp.path()).expect("load active").expect("active exists");
     assert_eq!(active.touched_files, vec!["src/lib.rs", "src/main.rs"]);
 }
 
@@ -407,8 +397,14 @@ fn progress_md_and_resume_brief_track_and_recover_work() {
 
     let json_raw = r#"{"project":"core","features":[{"id":"F001","name":"Implementar alertas","behavior":"Detectar bajo stock","verify":"node --test","status":"not_started"}]}"#;
     let list = anvil_tasks::parse_feature_list_json(json_raw).expect("parse list");
-    anvil_tasks::import_feature_list_in_group(tmp.path(), &list, Some("core"), Some("alice"), false)
-        .expect("import queued");
+    anvil_tasks::import_feature_list_in_group(
+        tmp.path(),
+        &list,
+        Some("core"),
+        Some("alice"),
+        false,
+    )
+    .expect("import queued");
 
     let (started, _) =
         anvil_tasks::begin_existing_task(tmp.path(), "core/F001", "alice", Some("Analyze ledger"))
@@ -486,11 +482,13 @@ fn short_sequential_ids_custom_id_natural_sort_and_migration() {
     assert_eq!(m1.task_id, "T-001");
     assert_eq!(m2.task_id, "T-002");
 
-    let custom = anvil_tasks::start_task_with_id(tmp.path(), "alice", "Custom code task", Some("F039"))
-        .expect("custom id");
+    let custom =
+        anvil_tasks::start_task_with_id(tmp.path(), "alice", "Custom code task", Some("F039"))
+            .expect("custom id");
     assert_eq!(custom.task_id, "F039");
     assert!(
-        anvil_tasks::start_task_with_id(tmp.path(), "alice", "Duplicate code", Some("F039")).is_err()
+        anvil_tasks::start_task_with_id(tmp.path(), "alice", "Duplicate code", Some("F039"))
+            .is_err()
     );
 
     assert_eq!(anvil_tasks::compare_task_ids("T-002", "T-010"), std::cmp::Ordering::Less);

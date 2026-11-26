@@ -159,15 +159,10 @@ fn init_merges_hooks_and_mcp_configs_without_clobbering_user_entries() {
     .expect("parse settings");
     assert_eq!(claude_settings["model"], "sonnet");
     assert_eq!(claude_settings["permissions"]["allow"][0], "Bash(npm test)");
-    let pre_hooks = claude_settings["hooks"]["PreToolUse"]
-        .as_array()
-        .expect("PreToolUse array");
+    let pre_hooks = claude_settings["hooks"]["PreToolUse"].as_array().expect("PreToolUse array");
     assert_eq!(pre_hooks.len(), 2);
     assert_eq!(pre_hooks[0]["hooks"][0]["command"], "custom-lint-guard");
-    assert_eq!(
-        pre_hooks[1]["hooks"][0]["command"],
-        "anvil hook PreToolUse --adapter claude"
-    );
+    assert_eq!(pre_hooks[1]["hooks"][0]["command"], "anvil hook PreToolUse --adapter claude");
     assert_eq!(
         claude_settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"],
         "anvil hook user-prompt-submit --adapter claude"
@@ -189,10 +184,9 @@ fn init_merges_hooks_and_mcp_configs_without_clobbering_user_entries() {
     assert_eq!(agy_mcp["mcpServers"]["playwright"]["command"], "npx");
     assert_eq!(agy_mcp["mcpServers"]["anvil"]["command"], "anvil");
 
-    let claude_mcp: Value = serde_json::from_str(
-        &fs::read_to_string(root.join(".mcp.json")).expect("read .mcp.json"),
-    )
-    .expect("parse .mcp.json");
+    let claude_mcp: Value =
+        serde_json::from_str(&fs::read_to_string(root.join(".mcp.json")).expect("read .mcp.json"))
+            .expect("parse .mcp.json");
     assert_eq!(claude_mcp["mcpServers"]["github"]["command"], "gh-mcp");
     assert_eq!(claude_mcp["mcpServers"]["anvil"]["command"], "anvil");
 }
@@ -392,17 +386,11 @@ fn infer_default_adapter_detects_single_secondary_ide_and_defaults_empty_to_all(
     let codex_repo = tempdir().expect("codex repo");
     fs::create_dir_all(codex_repo.path().join(".codex")).expect("mkdir .codex");
     sync::init_repo(codex_repo.path()).expect("init codex repo");
-    assert_eq!(
-        AnvilConfig::load(codex_repo.path()).expect("load").adapters,
-        AdapterTarget::Codex
-    );
+    assert_eq!(AnvilConfig::load(codex_repo.path()).expect("load").adapters, AdapterTarget::Codex);
 
     let empty_repo = tempdir().expect("empty repo");
     sync::init_repo(empty_repo.path()).expect("init empty repo");
-    assert_eq!(
-        AnvilConfig::load(empty_repo.path()).expect("load").adapters,
-        AdapterTarget::All
-    );
+    assert_eq!(AnvilConfig::load(empty_repo.path()).expect("load").adapters, AdapterTarget::All);
 }
 
 #[test]
@@ -429,7 +417,8 @@ fn umbrella_root_docs_include_availability_guard() {
 #[test]
 fn ide_specific_templates_multiline_codex_and_claude_hook_merge_preserve_neighbors() {
     let cursor_repo = tempdir().expect("cursor");
-    sync::init_repo_with_adapter(cursor_repo.path(), Some(AdapterTarget::Cursor)).expect("cursor init");
+    sync::init_repo_with_adapter(cursor_repo.path(), Some(AdapterTarget::Cursor))
+        .expect("cursor init");
     let mdc = fs::read_to_string(cursor_repo.path().join(".cursor/rules/anvil.mdc")).expect("mdc");
     assert!(mdc.contains("Cursor Thin Adapter"));
     assert!(mdc.contains(".cursor/mcp.json"));
@@ -442,21 +431,20 @@ fn ide_specific_templates_multiline_codex_and_claude_hook_merge_preserve_neighbo
         "[mcp_servers.anvil]\ncommand = \"old\"\nargs = [\n  \"--old\",\n  \"mcp\",\n]\n\n[other]\nk = 1\n",
     )
     .expect("seed multiline toml");
-    sync::init_repo_with_adapter(codex_repo.path(), Some(AdapterTarget::Codex)).expect("codex init");
+    sync::init_repo_with_adapter(codex_repo.path(), Some(AdapterTarget::Codex))
+        .expect("codex init");
     let toml = fs::read_to_string(codex_repo.path().join(".codex/config.toml")).expect("toml");
     assert!(toml.contains("args = [\"mcp\"]"));
     assert!(!toml.contains("\"--old\""));
     assert!(toml.contains("[other]\nk = 1"));
-    let codex_agents = fs::read_to_string(codex_repo.path().join("AGENTS.md")).expect("codex agents");
+    let codex_agents =
+        fs::read_to_string(codex_repo.path().join("AGENTS.md")).expect("codex agents");
     assert!(codex_agents.contains("Codex Thin Adapter"));
     assert!(!codex_agents.contains(".agents/mcp_config.json"));
 
     fs::remove_dir_all(codex_repo.path().join(".harness")).expect("clear .harness");
     sync::init_repo(codex_repo.path()).expect("re-infer codex with AGENTS.md");
-    assert_eq!(
-        AnvilConfig::load(codex_repo.path()).expect("cfg").adapters,
-        AdapterTarget::Codex
-    );
+    assert_eq!(AnvilConfig::load(codex_repo.path()).expect("cfg").adapters, AdapterTarget::Codex);
 
     let claude_repo = tempdir().expect("claude");
     fs::create_dir_all(claude_repo.path().join(".claude")).expect("mkdir .claude");
@@ -465,7 +453,8 @@ fn ide_specific_templates_multiline_codex_and_claude_hook_merge_preserve_neighbo
         r#"{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"my-user-hook"},{"type":"command","command":"anvil hook old"}]}]}}"#,
     )
     .expect("seed co-located claude hooks");
-    sync::init_repo_with_adapter(claude_repo.path(), Some(AdapterTarget::Claude)).expect("claude init");
+    sync::init_repo_with_adapter(claude_repo.path(), Some(AdapterTarget::Claude))
+        .expect("claude init");
     let settings: Value = serde_json::from_str(
         &fs::read_to_string(claude_repo.path().join(".claude/settings.json")).expect("read"),
     )

@@ -2,18 +2,18 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::check_cache::{self, CachedTier1};
 use anvil_core::config::{AnvilConfig, StackKind};
 use anvil_core::diff_classifier::DiffClassification;
-use anvil_core::git::AddedLines;
 use anvil_core::fs_util::{
     resolve_godot_bin, resolve_local_or_path_bin, resolve_php_bin, resolve_php_vendor_script,
 };
+use anvil_core::git::AddedLines;
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_core::traits::CompressedOutput;
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::impact::BlastRadiusReport;
+use anyhow::Result;
 use chrono::Utc;
 
 use crate::ui;
@@ -62,7 +62,8 @@ pub(super) fn run_tier1(
     );
     let subrepo_paths: Vec<String> = config.subrepos.iter().map(|s| s.path.clone()).collect();
     let cache_key =
-        check_cache::compute_scope_key_with_subrepos(root, &cache_scope, &subrepo_paths, &salt).ok();
+        check_cache::compute_scope_key_with_subrepos(root, &cache_scope, &subrepo_paths, &salt)
+            .ok();
     if !boundaries_failed && !opts.no_cache && try_tier1_cache_hit(root, cache_key.as_deref()) {
         return Ok(false);
     }
@@ -82,14 +83,7 @@ pub(super) fn run_tier1(
 
 fn print_boundary_diagnostics(diags: &[anvil_core::traits::Diagnostic]) -> bool {
     for d in diags {
-        println!(
-            "  {} [{}] {}:{} — {}",
-            ui::error_badge(),
-            d.rule,
-            d.file,
-            d.line,
-            d.message
-        );
+        println!("  {} [{}] {}:{} — {}", ui::error_badge(), d.rule, d.file, d.line, d.message);
     }
     !diags.is_empty()
 }
@@ -189,11 +183,7 @@ fn has_installed_typechecker(root: &Path, config: &AnvilConfig) -> bool {
     }
     config.subrepos.iter().any(|sub| {
         let sub_dir = root.join(&sub.path);
-        let stacks = if sub.stacks.is_empty() {
-            &config.stacks
-        } else {
-            &sub.stacks
-        };
+        let stacks = if sub.stacks.is_empty() { &config.stacks } else { &sub.stacks };
         sub_dir.is_dir() && has_typechecker_in_dir(&sub_dir, stacks)
     })
 }
@@ -227,8 +217,7 @@ fn has_typechecker_in_dir(dir: &Path, stacks: &[StackKind]) -> bool {
     {
         return true;
     }
-    if stacks.contains(&StackKind::FlutterDart)
-        && resolve_local_or_path_bin(dir, "dart").is_some()
+    if stacks.contains(&StackKind::FlutterDart) && resolve_local_or_path_bin(dir, "dart").is_some()
     {
         return true;
     }

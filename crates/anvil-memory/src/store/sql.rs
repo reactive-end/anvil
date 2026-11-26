@@ -17,9 +17,7 @@ pub(crate) fn find_topic_meta_in_tx(
     let mut stmt = tx.prepare_cached(
         "SELECT id, created_at, updated_at FROM observations WHERE topic_key = ?1",
     )?;
-    Ok(stmt
-        .query_row([topic_key], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-        .optional()?)
+    Ok(stmt.query_row([topic_key], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).optional()?)
 }
 
 pub(crate) fn insert_observation_row(
@@ -132,16 +130,17 @@ pub(crate) fn record_ingested_chunk_in_tx(
 }
 
 pub(crate) fn delete_removed_chunk_in_tx(tx: &Transaction<'_>, filename: &str) -> Result<usize> {
-    let mut obs_stmt =
-        tx.prepare_cached("DELETE FROM observations WHERE chunk_filename = ?1")?;
+    let mut obs_stmt = tx.prepare_cached("DELETE FROM observations WHERE chunk_filename = ?1")?;
     let removed = obs_stmt.execute([filename])?;
-    let mut chunk_stmt =
-        tx.prepare_cached("DELETE FROM ingested_chunks WHERE filename = ?1")?;
+    let mut chunk_stmt = tx.prepare_cached("DELETE FROM ingested_chunks WHERE filename = ?1")?;
     chunk_stmt.execute([filename])?;
     Ok(removed)
 }
 
-pub(crate) fn delete_expired_observations_in_tx(tx: &Transaction<'_>, now_ms: i64) -> Result<usize> {
+pub(crate) fn delete_expired_observations_in_tx(
+    tx: &Transaction<'_>,
+    now_ms: i64,
+) -> Result<usize> {
     let mut stmt = tx.prepare_cached(
         "DELETE FROM observations WHERE expires_at IS NOT NULL AND expires_at <= ?1",
     )?;

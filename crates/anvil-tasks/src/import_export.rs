@@ -57,11 +57,7 @@ pub fn parse_feature_list_json(raw: &str) -> Result<ImportedFeatureList> {
     for (idx, item) in items.iter().enumerate() {
         features.push(parse_single_feature(item, idx)?);
     }
-    Ok(ImportedFeatureList {
-        project,
-        updated,
-        features,
-    })
+    Ok(ImportedFeatureList { project, updated, features })
 }
 
 fn extract_items(val: &Value) -> Result<(Option<String>, Option<String>, &[Value])> {
@@ -89,9 +85,7 @@ fn parse_single_feature(item: &Value, idx: usize) -> Result<ImportedFeature> {
         .unwrap_or_else(|| format!("F{:03}", idx + 1));
     let id = sanitize_task_id(&raw_id, idx);
     let name = opt_trimmed_str(
-        obj.get("name")
-            .or_else(|| obj.get("title"))
-            .or_else(|| obj.get("request")),
+        obj.get("name").or_else(|| obj.get("title")).or_else(|| obj.get("request")),
     )
     .ok_or_else(|| anyhow::anyhow!("feature `{id}` is missing required `name`/`title`"))?;
     let behavior = opt_trimmed_str(obj.get("behavior").or_else(|| obj.get("description")));
@@ -99,14 +93,7 @@ fn parse_single_feature(item: &Value, idx: usize) -> Result<ImportedFeature> {
     let evidence = opt_trimmed_str(obj.get("evidence"));
     let status = parse_feature_status(obj.get("status"), obj.get("passes"));
 
-    Ok(ImportedFeature {
-        id,
-        name,
-        behavior,
-        verify,
-        status,
-        evidence,
-    })
+    Ok(ImportedFeature { id, name, behavior, verify, status, evidence })
 }
 
 fn parse_feature_status(status_val: Option<&Value>, passes_val: Option<&Value>) -> TaskStatus {
@@ -218,10 +205,8 @@ fn import_one_feature(
             created_at: Utc::now(),
         };
         atomic_write_json(&meta_path, &meta)?;
-        let summary = feat
-            .evidence
-            .clone()
-            .unwrap_or_else(|| "Imported from feature list".to_owned());
+        let summary =
+            feat.evidence.clone().unwrap_or_else(|| "Imported from feature list".to_owned());
         append_entry_with_evidence(
             repo,
             &feat.id,
@@ -288,34 +273,26 @@ fn update_existing_feature(
 /// optionally filtered by group prefix or `project` name (stripping the group prefix from `id`).
 pub fn export_feature_list(repo: &Path, group_or_project_filter: Option<&str>) -> Result<Value> {
     let consolidated = consolidate_repo_tasks(repo)?;
-    let filter_norm = group_or_project_filter
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let filter_norm = group_or_project_filter.map(str::trim).filter(|s| !s.is_empty());
     let matched: Vec<_> = consolidated
         .tasks
         .into_iter()
         .filter(|t| {
             filter_norm.is_none_or(|f| {
-                t.task_id
-                    .split_once('/')
-                    .is_some_and(|(g, _)| g.eq_ignore_ascii_case(f))
+                t.task_id.split_once('/').is_some_and(|(g, _)| g.eq_ignore_ascii_case(f))
                     || t.project.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(f))
             })
         })
         .collect();
 
-    let inferred_project = filter_norm
-        .map(str::to_owned)
-        .or_else(|| matched.iter().find_map(|t| t.project.clone()));
+    let inferred_project =
+        filter_norm.map(str::to_owned).or_else(|| matched.iter().find_map(|t| t.project.clone()));
 
     let features: Vec<Value> = matched
         .into_iter()
         .map(|t| {
-            let local_id = t
-                .task_id
-                .split_once('/')
-                .map_or(t.task_id.as_str(), |(_, code)| code)
-                .to_owned();
+            let local_id =
+                t.task_id.split_once('/').map_or(t.task_id.as_str(), |(_, code)| code).to_owned();
             let evidence = t.evidence.unwrap_or_else(|| t.summary.clone());
             json!({
                 "id": local_id,
@@ -336,30 +313,17 @@ pub fn export_feature_list(repo: &Path, group_or_project_filter: Option<&str>) -
 }
 
 fn opt_trimmed_str(val: Option<&Value>) -> Option<String> {
-    val.and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
+    val.and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)
 }
 
 fn sanitize_task_id(raw: &str, idx: usize) -> String {
     let clean: String = raw
         .trim()
         .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
-                c
-            } else {
-                '-'
-            }
-        })
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') { c } else { '-' })
         .collect();
     let trimmed = clean.trim_matches('-');
-    if trimmed.is_empty() {
-        format!("F{:03}", idx + 1)
-    } else {
-        trimmed.to_owned()
-    }
+    if trimmed.is_empty() { format!("F{:03}", idx + 1) } else { trimmed.to_owned() }
 }
 
 #[cfg(test)]
@@ -454,7 +418,10 @@ mod tests {
         assert_eq!(exp_voz["features"].as_array().unwrap().len(), 1);
         assert_eq!(exp_voz["features"][0]["id"], "F001");
 
-        assert!(import_feature_list_in_group(dir.path(), &voz, Some("../evil"), Some("a"), false).is_err());
+        assert!(
+            import_feature_list_in_group(dir.path(), &voz, Some("../evil"), Some("a"), false)
+                .is_err()
+        );
         assert!(read_single_task(dir.path(), "../evil/F001").is_err());
     }
 }

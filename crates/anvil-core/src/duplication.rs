@@ -11,7 +11,10 @@ use rustc_hash::FxHashMap;
 use crate::git::AddedLines;
 use crate::sonar::has_allow_comment;
 use crate::traits::{Diagnostic, Severity};
-use lines::{collapse, hashed_lines, in_ranges, is_checked_path, is_substantial, language_key, normalize, window_hash};
+use lines::{
+    collapse, hashed_lines, in_ranges, is_checked_path, is_substantial, language_key, normalize,
+    window_hash,
+};
 
 /// Rule id of every finding.
 pub const RULE: &str = "duplication:new-code";
@@ -86,7 +89,10 @@ fn collect_blocks(root: &Path, added: &AddedLines, window: usize) -> FxHashMap<u
                 line: u32::try_from(first + 1).unwrap_or(1),
                 text: win.iter().map(|(_, l)| l.clone()).collect(),
             };
-            blocks.entry(window_hash(language_key(file), &hashed[start..start + window])).or_default().push(block);
+            blocks
+                .entry(window_hash(language_key(file), &hashed[start..start + window]))
+                .or_default()
+                .push(block);
         }
     }
     blocks
@@ -108,7 +114,9 @@ fn scan_repository(
             .chunks(chunk)
             .map(|part| {
                 scope.spawn(move || {
-                    part.iter().flat_map(|rel| scan_file(root, rel, added, blocks, window)).collect::<Vec<Hit>>()
+                    part.iter()
+                        .flat_map(|rel| scan_file(root, rel, added, blocks, window))
+                        .collect::<Vec<Hit>>()
                 })
             })
             .collect();
@@ -160,7 +168,10 @@ fn report(hits: &[Hit], window: usize) -> Vec<Diagnostic> {
     let mut previous: Option<&Hit> = None;
     for hit in hits {
         let continues = previous.is_some_and(|p| {
-            p.file == hit.file && p.other_file == hit.other_file && p.idx + 1 == hit.idx && p.other_idx + 1 == hit.other_idx
+            p.file == hit.file
+                && p.other_file == hit.other_file
+                && p.idx + 1 == hit.idx
+                && p.other_idx + 1 == hit.other_idx
         });
         if continues || (covered.0 == hit.file && hit.idx < covered.1) {
             covered = (hit.file.as_str(), hit.idx + window);

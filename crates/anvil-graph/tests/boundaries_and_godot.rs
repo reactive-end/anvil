@@ -55,7 +55,11 @@ fn read_symbol_rejects_paths_outside_repo_root() {
     let outer_root = outer.path();
     write_file(outer_root, "outside.ts", "export function secretFn(): number {\n  return 42;\n}\n");
     let repo_root = outer_root.join("a").join("repo");
-    write_file(&repo_root, "src/inside.ts", "export function insideFn(): number {\n  return 1;\n}\n");
+    write_file(
+        &repo_root,
+        "src/inside.ts",
+        "export function insideFn(): number {\n  return 1;\n}\n",
+    );
 
     let mut engine = CodeGraphEngine::build(&repo_root, AnvilConfig::default()).expect("build");
     let inside = engine
@@ -94,10 +98,7 @@ fn godot_scene_script_preload_and_blast_radius() {
     let dir = TempDir::new().expect("tempdir");
     seed_godot_fixture(dir.path());
 
-    let cfg = AnvilConfig {
-        stacks: vec![StackKind::Godot],
-        ..AnvilConfig::default()
-    };
+    let cfg = AnvilConfig { stacks: vec![StackKind::Godot], ..AnvilConfig::default() };
     let engine = CodeGraphEngine::build(dir.path(), cfg).expect("build godot graph");
     assert!(!engine.graph.file_hashes.contains_key(".godot/ignored_cache.gd"));
 
@@ -139,10 +140,22 @@ fn godot_autoload_uid_and_extends_resolve_correctly() {
 fn check_boundaries_catches_forbidden_cross_layer_imports_and_cycles() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path();
-    write_file(root, "src/domain/order.ts", "import { Button } from '../ui/Button';\nexport function makeOrder() { return Button(); }\n");
+    write_file(
+        root,
+        "src/domain/order.ts",
+        "import { Button } from '../ui/Button';\nexport function makeOrder() { return Button(); }\n",
+    );
     write_file(root, "src/ui/Button.ts", "export function Button() { return 'btn'; }\n");
-    write_file(root, "src/cycle/a.ts", "import { b } from './b';\nexport function a() { return b(); }\n");
-    write_file(root, "src/cycle/b.ts", "import { a } from './a';\nexport function b() { return a(); }\n");
+    write_file(
+        root,
+        "src/cycle/a.ts",
+        "import { b } from './b';\nexport function a() { return b(); }\n",
+    );
+    write_file(
+        root,
+        "src/cycle/b.ts",
+        "import { a } from './a';\nexport function b() { return a(); }\n",
+    );
 
     let config = AnvilConfig {
         boundaries: vec![BoundaryRule {

@@ -21,8 +21,8 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use ulid::Ulid;
 
-use crate::traits::{CompressedOutput, OutputParser};
 use crate::proc_util::{TIMEOUT_EXIT_CODE, TIMEOUT_MARKER};
+use crate::traits::{CompressedOutput, OutputParser};
 
 pub const DEFAULT_MAX_LINES: usize = 50;
 pub const DEFAULT_MAX_TOKENS: usize = 1200;
@@ -85,8 +85,8 @@ pub fn strip_ansi(input: &str) -> Cow<'_, str> {
         return Cow::Borrowed(input);
     }
     static ANSI_RE: OnceLock<Regex> = OnceLock::new();
-    let re = ANSI_RE
-        .get_or_init(|| Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").expect("valid ansi regex"));
+    let re =
+        ANSI_RE.get_or_init(|| Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").expect("valid ansi regex"));
     re.replace_all(input, "")
 }
 
@@ -145,7 +145,11 @@ pub(crate) fn fail_output(
 }
 
 /// Enforces hard caps on line count and approximate token budget (~4 chars/token).
-pub(crate) fn cap_lines(lines: &[String], max_lines: usize, max_tokens: usize) -> (Vec<String>, bool) {
+pub(crate) fn cap_lines(
+    lines: &[String],
+    max_lines: usize,
+    max_tokens: usize,
+) -> (Vec<String>, bool) {
     let char_budget = max_tokens.saturating_mul(4);
     let mut out = Vec::with_capacity(lines.len().min(max_lines));
     let mut used_chars = 0usize;

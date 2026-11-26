@@ -2,10 +2,10 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
 use anvil_core::stats::{AnvilStats, QualityStats, load_stats, percentile_ms, reset_stats};
+use anyhow::Result;
 
 use crate::ui;
 
@@ -21,11 +21,8 @@ pub fn execute(root: &Path, reset: bool, trajectories: bool) -> Result<()> {
     ui::print_section("Session Telemetry");
 
     let st = load_stats(root)?;
-    let avg_ms = if st.hook_calls > 0 {
-        st.total_hook_ms as f64 / st.hook_calls as f64
-    } else {
-        0.0
-    };
+    let avg_ms =
+        if st.hook_calls > 0 { st.total_hook_ms as f64 / st.hook_calls as f64 } else { 0.0 };
     let total_tokens_saved = st
         .tokens_saved_compressor
         .saturating_add(st.tokens_saved_symbol_read)
@@ -125,19 +122,11 @@ fn print_trajectory_section(root: &Path, st: &AnvilStats) {
     ui::print_section("Trajectory & Latency");
     ui::print_kv(
         "latency:",
-        &format!(
-            "p50={}ms p95={}ms (samples={})",
-            p50,
-            p95,
-            st.hook_latencies_ms.len()
-        ),
+        &format!("p50={}ms p95={}ms (samples={})", p50, p95, st.hook_latencies_ms.len()),
     );
     ui::print_kv(
         "code_mode:",
-        &format!(
-            "calls={} tokens_saved={}",
-            st.code_mode_calls, st.tokens_saved_code_mode
-        ),
+        &format!("calls={} tokens_saved={}", st.code_mode_calls, st.tokens_saved_code_mode),
     );
     if let Ok(cfg) = AnvilConfig::load_or_default(root)
         && let Ok(cb) = CircuitBreaker::new(root, cfg.circuit_breaker_limit).status()
@@ -157,11 +146,16 @@ fn print_quality(quality: &QualityStats) {
     }
     ui::print_kv(
         "checks:",
-        &format!("green={} red={}", ui::green(&quality.checks_passed.to_string()), quality.checks_failed),
+        &format!(
+            "green={} red={}",
+            ui::green(&quality.checks_passed.to_string()),
+            quality.checks_failed
+        ),
     );
-    let rate = quality
-        .escape_rate()
-        .map_or_else(|| "n/a (no green check yet)".to_owned(), |rate| format!("{rate:.2} per green check"));
+    let rate = quality.escape_rate().map_or_else(
+        || "n/a (no green check yet)".to_owned(),
+        |rate| format!("{rate:.2} per green check"),
+    );
     ui::print_kv(
         "review_findings:",
         &format!(
@@ -174,6 +168,8 @@ fn print_quality(quality: &QualityStats) {
         println!("    {:<24} {count:>4}", ui::cyan(category));
     }
     for (category, count) in quality.ratchet_candidates() {
-        println!("  consider: anvil ratchet log --rule {category} ... ({count} findings after green)");
+        println!(
+            "  consider: anvil ratchet log --rule {category} ... ({count} findings after green)"
+        );
     }
 }

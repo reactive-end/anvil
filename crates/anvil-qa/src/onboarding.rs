@@ -4,8 +4,8 @@ mod options;
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::config::{AnvilConfig, MobileQaDriver, StackKind, WebQaDriver};
+use anyhow::Result;
 
 use crate::model::{OnboardingPrompt, UiPlatform};
 use options::{build_mobile_options, build_web_options, probe_tools};
@@ -32,11 +32,7 @@ pub fn detect_ui_platform(config: &AnvilConfig) -> UiPlatform {
     let mut has_web = false;
     let mut has_mobile = false;
 
-    for stack in config
-        .stacks
-        .iter()
-        .chain(config.subrepos.iter().flat_map(|s| s.stacks.iter()))
-    {
+    for stack in config.stacks.iter().chain(config.subrepos.iter().flat_map(|s| s.stacks.iter())) {
         match stack {
             StackKind::React
             | StackKind::Vite
@@ -67,10 +63,7 @@ pub fn detect_ui_platform(config: &AnvilConfig) -> UiPlatform {
 }
 
 /// Builds an onboarding prompt by probing local tools if any active platform is `Unconfigured`.
-pub fn build_onboarding_prompt(
-    repo_root: &Path,
-    config: &AnvilConfig,
-) -> Option<OnboardingPrompt> {
+pub fn build_onboarding_prompt(repo_root: &Path, config: &AnvilConfig) -> Option<OnboardingPrompt> {
     let availability = ToolAvailability::probe(repo_root, config);
     build_onboarding_prompt_with(config, availability)
 }
@@ -89,24 +82,11 @@ pub fn build_onboarding_prompt_with(
         return None;
     }
 
-    let web_options = if web_needed {
-        build_web_options(availability)
-    } else {
-        Vec::new()
-    };
-    let mobile_options = if mobile_needed {
-        build_mobile_options(availability)
-    } else {
-        Vec::new()
-    };
+    let web_options = if web_needed { build_web_options(availability) } else { Vec::new() };
+    let mobile_options =
+        if mobile_needed { build_mobile_options(availability) } else { Vec::new() };
 
-    Some(OnboardingPrompt {
-        platform,
-        web_needed,
-        mobile_needed,
-        web_options,
-        mobile_options,
-    })
+    Some(OnboardingPrompt { platform, web_needed, mobile_needed, web_options, mobile_options })
 }
 
 /// Persists a selected web QA driver into `.harness/config.json`.

@@ -48,9 +48,7 @@ pub fn create_checkpoint(root: &Path, label: Option<&str>) -> Result<String> {
     let _guard = TempIndexGuard(temp_index.clone());
 
     run_git_env(root, &["add", "-A"], &temp_index)?;
-    let tree = run_git_env(root, &["write-tree"], &temp_index)?
-        .trim()
-        .to_owned();
+    let tree = run_git_env(root, &["write-tree"], &temp_index)?.trim().to_owned();
 
     let slug = sanitize_label(label.unwrap_or("snapshot"));
     let ts = Utc::now().format("%Y%m%d-%H%M%S");
@@ -208,11 +206,7 @@ fn sanitize_label(label: &str) -> String {
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
         .collect();
     let trimmed = cleaned.trim_matches('-');
-    if trimmed.is_empty() {
-        "snapshot".to_owned()
-    } else {
-        trimmed.chars().take(40).collect()
-    }
+    if trimmed.is_empty() { "snapshot".to_owned() } else { trimmed.chars().take(40).collect() }
 }
 
 fn run_git(root: &Path, args: &[&str]) -> Result<String> {
@@ -222,11 +216,7 @@ fn run_git(root: &Path, args: &[&str]) -> Result<String> {
         .output()
         .with_context(|| format!("failed to run git {}", args.join(" ")))?;
     if !out.status.success() {
-        bail!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        bail!("git {} failed: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -239,11 +229,7 @@ fn run_git_env(root: &Path, args: &[&str], index_file: &Path) -> Result<String> 
         .output()
         .with_context(|| format!("failed to run git {}", args.join(" ")))?;
     if !out.status.success() {
-        bail!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        bail!("git {} failed: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }

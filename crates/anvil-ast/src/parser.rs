@@ -2,8 +2,8 @@
 
 use std::cell::RefCell;
 
-use anyhow::{Context, Result};
 use anvil_core::traits::Language;
+use anyhow::{Context, Result};
 use rustc_hash::FxHashMap;
 use tree_sitter::{Language as TsLanguage, Parser, Tree};
 

@@ -31,13 +31,7 @@ pub struct ExtractState<'a> {
 impl<'a> ExtractState<'a> {
     /// Creates an extraction collector for a single file.
     pub fn new(file: &'a str, source: &'a str, language: Language) -> Self {
-        Self {
-            file,
-            source,
-            language,
-            symbols: Vec::new(),
-            edges: Vec::new(),
-        }
+        Self { file, source, language, symbols: Vec::new(), edges: Vec::new() }
     }
 
     /// Returns the UTF-8 slice for `node`, or empty string on invalid UTF-8.

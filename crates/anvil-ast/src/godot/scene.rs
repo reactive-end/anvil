@@ -21,12 +21,8 @@ const PHYSICS_BODIES: &[&str] = &[
     "Area3D",
 ];
 
-const COLLISION_SHAPES: &[&str] = &[
-    "CollisionShape2D",
-    "CollisionShape3D",
-    "CollisionPolygon2D",
-    "CollisionPolygon3D",
-];
+const COLLISION_SHAPES: &[&str] =
+    &["CollisionShape2D", "CollisionShape3D", "CollisionPolygon2D", "CollisionPolygon3D"];
 
 struct ParsedNode {
     line: u32,
@@ -51,10 +47,7 @@ pub fn analyze(
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("tscn"));
-    let lines: Vec<&str> = source
-        .split('\n')
-        .map(|l| l.strip_suffix('\r').unwrap_or(l))
-        .collect();
+    let lines: Vec<&str> = source.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
     let comments: Vec<Option<&str>> = lines
         .iter()
         .map(|l| {
@@ -67,13 +60,7 @@ pub fn analyze(
     let mut edges = Vec::new();
     let mut nodes = Vec::new();
 
-    parse_scene_sections(
-        normalized_file,
-        &lines,
-        &mut ext_resources,
-        &mut edges,
-        &mut nodes,
-    );
+    parse_scene_sections(normalized_file, &lines, &mut ext_resources, &mut edges, &mut nodes);
 
     let mut diagnostics = Vec::new();
     if is_tscn {
@@ -176,16 +163,7 @@ fn parse_node_header(line: u32, attrs_raw: &str) -> Option<ParsedNode> {
         Some(p) => format!("{p}/{name}"),
     };
 
-    Some(ParsedNode {
-        line,
-        end_line: line,
-        name,
-        node_type,
-        parent,
-        path,
-        instance,
-        script: None,
-    })
+    Some(ParsedNode { line, end_line: line, name, node_type, parent, path, instance, script: None })
 }
 
 fn parse_script_assignment(
@@ -207,12 +185,8 @@ fn parse_script_assignment(
 }
 
 fn extract_ext_resource_id(val: &str) -> Option<&str> {
-    let inner = val
-        .strip_prefix("ExtResource")?
-        .trim_start()
-        .strip_prefix('(')?
-        .strip_suffix(')')?
-        .trim();
+    let inner =
+        val.strip_prefix("ExtResource")?.trim_start().strip_prefix('(')?.strip_suffix(')')?.trim();
     Some(inner.trim_matches(|c| c == '"' || c == '\''))
 }
 
@@ -324,10 +298,7 @@ fn check_collision_required(
         }
         let has_collision = nodes.iter().any(|child| {
             child.parent.as_deref() == Some(body.path.as_str())
-                && child
-                    .node_type
-                    .as_deref()
-                    .is_some_and(|ty| COLLISION_SHAPES.contains(&ty))
+                && child.node_type.as_deref().is_some_and(|ty| COLLISION_SHAPES.contains(&ty))
         });
         if !has_collision {
             push_diag(

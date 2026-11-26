@@ -75,9 +75,7 @@ pub fn check_test_tampering_diff(rel_path: &str, unified_diff: &str) -> Vec<Diag
         return Vec::new();
     }
     let (added, removed) = split_diff_lines(unified_diff);
-    let allow_override = added
-        .iter()
-        .any(|(_, l)| has_valid_allow_comment(l, "no-test-tampering"));
+    let allow_override = added.iter().any(|(_, l)| has_valid_allow_comment(l, "no-test-tampering"));
     if allow_override {
         return Vec::new();
     }
@@ -216,10 +214,7 @@ fn count_assertions<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
         })
         .map(strip_string_literals)
         .map(|l| {
-            let marker_hits: usize = ASSERTION_MARKERS
-                .iter()
-                .map(|m| l.matches(m).count())
-                .sum();
+            let marker_hits: usize = ASSERTION_MARKERS.iter().map(|m| l.matches(m).count()).sum();
             let py_assert = usize::from(l.trim_start().starts_with("assert "));
             marker_hits + py_assert
         })

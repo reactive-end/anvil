@@ -69,11 +69,9 @@ fn docs_and_deps_and_contracts_classify_accurately() {
         assert!(deps.needs_deps_audit);
     }
 
-    for contract_path in [
-        "proto/orders.proto",
-        "contracts/orders.ts",
-        "services/api/contracts/user.ts",
-    ] {
+    for contract_path in
+        ["proto/orders.proto", "contracts/orders.ts", "services/api/contracts/user.ts"]
+    {
         let contract = classify_paths(&[contract_path, "src/service.ts"]);
         assert_eq!(contract.primary_category, DiffCategory::Contract, "path={contract_path}");
         assert_eq!(contract.minimum_tier, Tier::Tier1);
@@ -82,7 +80,8 @@ fn docs_and_deps_and_contracts_classify_accurately() {
 
 #[test]
 fn style_classifier_never_bypasses_onclick_or_background_sync_calls() {
-    let onclick_bypass = "@@ -5,2 +5,2 @@\n- className=\"btn\"\n+ className=\"btn\" onClick={deleteDb}\n";
+    let onclick_bypass =
+        "@@ -5,2 +5,2 @@\n- className=\"btn\"\n+ className=\"btn\" onClick={deleteDb}\n";
     let d1 = classify_files(&[ChangedFile::with_hunks("src/Danger.tsx", onclick_bypass)]);
     assert_eq!(d1.primary_category, DiffCategory::Ui);
     assert_eq!(d1.minimum_tier, Tier::Tier2);

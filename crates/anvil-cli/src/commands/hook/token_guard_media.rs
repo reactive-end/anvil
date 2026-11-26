@@ -26,8 +26,9 @@ fn kind_from_extension(path: &Path) -> Option<FileKind> {
         "pdf" => Some(FileKind::Pdf),
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "tif" | "tiff" | "avif"
         | "heic" | "heif" => Some(FileKind::Image),
-        "mp3" | "wav" | "ogg" | "flac" | "m4a" | "aac" | "mp4" | "mov" | "webm" | "mkv"
-        | "avi" => Some(FileKind::AudioVideo),
+        "mp3" | "wav" | "ogg" | "flac" | "m4a" | "aac" | "mp4" | "mov" | "webm" | "mkv" | "avi" => {
+            Some(FileKind::AudioVideo)
+        }
         "exe" | "dll" | "so" | "dylib" | "zip" | "tar" | "gz" | "7z" | "rar" | "wasm"
         | "sqlite" | "db" | "bin" | "o" | "a" | "class" | "jar" | "pyc" | "docx" | "xlsx"
         | "pptx" => Some(FileKind::OtherBinary),

@@ -25,12 +25,7 @@ impl OutputParser for SonarParser {
             );
         }
         let lines = if errors.is_empty() {
-            raw_output
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .map(str::to_owned)
-                .collect()
+            raw_output.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()
         } else {
             errors
         };

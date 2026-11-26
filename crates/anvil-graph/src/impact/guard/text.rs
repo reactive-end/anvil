@@ -29,7 +29,8 @@ impl Corpus {
 
 fn load(graph: &CodeGraph) -> Vec<(String, String)> {
     let root = Path::new(&graph.repo_root);
-    let mut paths: Vec<&String> = graph.file_hashes.keys().filter(|p| is_code_file(graph, p)).collect();
+    let mut paths: Vec<&String> =
+        graph.file_hashes.keys().filter(|p| is_code_file(graph, p)).collect();
     paths.sort();
     paths
         .into_iter()
@@ -46,7 +47,10 @@ fn is_code_file(graph: &CodeGraph, path: &str) -> bool {
         .flatten()
         .filter_map(|&nid| graph.get_node(nid))
         .find_map(|n| n.language);
-    !matches!(language, None | Some(Language::Json | Language::Yaml | Language::Markdown | Language::Other))
+    !matches!(
+        language,
+        None | Some(Language::Json | Language::Yaml | Language::Markdown | Language::Other)
+    )
 }
 
 fn read_small(path: &Path) -> Option<String> {
@@ -99,7 +103,9 @@ pub(super) fn allows_symbol(source: &str, line: u32) -> bool {
 }
 
 fn is_comment_or_attribute(line: &str) -> bool {
-    COMMENT_TOKENS.iter().any(|t| line.starts_with(t)) || line.starts_with('*') || line.starts_with('@')
+    COMMENT_TOKENS.iter().any(|t| line.starts_with(t))
+        || line.starts_with('*')
+        || line.starts_with('@')
 }
 
 fn has_allow_marker(line: &str) -> bool {
@@ -132,7 +138,8 @@ mod tests {
 
     #[test]
     fn allow_applies_to_the_file_header_or_the_line_above() {
-        let source = "// anvil-allow(overengineering): kept for the plugin API\nexport const a = 1;\n";
+        let source =
+            "// anvil-allow(overengineering): kept for the plugin API\nexport const a = 1;\n";
         assert!(allows_file(source));
         let source = "export const a = 1;\n// anvil-allow(overengineering): kept\n#[x]\nexport const b = 2;\n";
         assert!(!allows_file(source));

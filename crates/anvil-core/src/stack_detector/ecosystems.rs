@@ -65,7 +65,8 @@ fn detect_js_tools(dir: &Path, pkg_text: &str, tools: &mut FxHashSet<ToolKind>) 
     if has_any_prefix(dir, &[".eslintrc", "eslint.config."]) || pkg_text.contains("\"eslint\"") {
         tools.insert(ToolKind::Eslint);
     }
-    if has_any_file(dir, &["biome.json", "biome.jsonc"]) || pkg_text.contains("\"@biomejs/biome\"") {
+    if has_any_file(dir, &["biome.json", "biome.jsonc"]) || pkg_text.contains("\"@biomejs/biome\"")
+    {
         tools.insert(ToolKind::Biome);
     }
     if pkg_text.contains("\"vue-tsc\"") {
@@ -228,9 +229,7 @@ fn is_expo_app(dir: &Path) -> bool {
     if has_any_file(dir, &["app.config.ts", "app.config.js"]) {
         return true;
     }
-    fs::read_to_string(dir.join("app.json"))
-        .map(|s| s.contains("\"expo\""))
-        .unwrap_or(false)
+    fs::read_to_string(dir.join("app.json")).map(|s| s.contains("\"expo\"")).unwrap_or(false)
 }
 
 fn has_any_file(dir: &Path, names: &[&str]) -> bool {

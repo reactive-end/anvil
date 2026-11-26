@@ -3,9 +3,9 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use anvil_mcp::McpServer;
 use anvil_mcp::tools_codemode::call_code_exec;
+use anyhow::{Context, Result};
 use serde_json::json;
 
 use crate::cli::subcmds::CodeSubcmd;
@@ -21,10 +21,8 @@ pub fn execute(root: &Path, sub: CodeSubcmd) -> Result<()> {
                 script
             };
             let mut server = McpServer::new(root)?;
-            let out = call_code_exec(
-                &mut server,
-                &json!({ "script": source, "max_calls": max_calls }),
-            )?;
+            let out =
+                call_code_exec(&mut server, &json!({ "script": source, "max_calls": max_calls }))?;
             println!("{}", serde_json::to_string_pretty(&out)?);
             Ok(())
         }

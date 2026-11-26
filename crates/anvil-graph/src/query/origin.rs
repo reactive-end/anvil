@@ -69,9 +69,8 @@ fn resolve_origin_start(graph: &CodeGraph, query_str: &str) -> Option<(NodeId, O
     if let Some(nid) = resolve_target_node(graph, query_str) {
         return Some((nid, None));
     }
-    let (file_part, sym_part) = query_str
-        .rsplit_once("::")
-        .or_else(|| query_str.rsplit_once('#'))?;
+    let (file_part, sym_part) =
+        query_str.rsplit_once("::").or_else(|| query_str.rsplit_once('#'))?;
     let file_nid = resolve_target_node(graph, file_part)?;
     let sym = sym_part.trim();
     Some((file_nid, (!sym.is_empty()).then(|| sym.to_owned())))
@@ -98,10 +97,8 @@ fn pick_origin_next_edge<'a>(
 
     if !primary.is_empty() {
         if let Some(sym) = wanted_sym
-            && let Some(matched) = primary
-                .iter()
-                .copied()
-                .find(|e| target_provides_symbol(graph, e.target, sym, 6))
+            && let Some(matched) =
+                primary.iter().copied().find(|e| target_provides_symbol(graph, e.target, sym, 6))
         {
             return Some(matched);
         }
@@ -114,10 +111,8 @@ fn pick_origin_next_edge<'a>(
             .filter(|e| e.is_resolved() && e.kind == GraphEdgeKind::Imports)
             .collect();
         if let Some(sym) = wanted_sym
-            && let Some(matched) = imports
-                .iter()
-                .copied()
-                .find(|e| target_provides_symbol(graph, e.target, sym, 6))
+            && let Some(matched) =
+                imports.iter().copied().find(|e| target_provides_symbol(graph, e.target, sym, 6))
         {
             return Some(matched);
         }
@@ -164,9 +159,7 @@ fn target_provides_symbol(
 fn find_symbol_in_file(graph: &CodeGraph, file: &str, sym: &str) -> Option<NodeId> {
     let nids = graph.file_nodes.get(file)?;
     nids.iter().copied().find(|&nid| {
-        graph
-            .get_node(nid)
-            .is_some_and(|n| n.kind == NodeKind::Symbol && n.label == sym)
+        graph.get_node(nid).is_some_and(|n| n.kind == NodeKind::Symbol && n.label == sym)
     })
 }
 

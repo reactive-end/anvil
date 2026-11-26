@@ -114,7 +114,8 @@ fn update_existing_section(
         }
     }
 
-    changed |= insert_missing_fields(&mut out, header_idx, command_line, args_line, has_command, has_args);
+    changed |=
+        insert_missing_fields(&mut out, header_idx, command_line, args_line, has_command, has_args);
     out.extend(lines[section_end..].iter().map(|s| (*s).to_owned()));
     if !changed {
         return original.to_owned();

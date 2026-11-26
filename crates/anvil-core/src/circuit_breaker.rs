@@ -78,10 +78,7 @@ pub struct CircuitBreaker {
 impl CircuitBreaker {
     pub fn new(repo_root: &Path, limit: u32) -> Self {
         Self {
-            state_path: repo_root
-                .join(".harness")
-                .join(".state")
-                .join("circuit.json"),
+            state_path: repo_root.join(".harness").join(".state").join("circuit.json"),
             limit: limit.max(1),
         }
     }
@@ -223,24 +220,26 @@ pub fn normalize_error(raw: &str) -> String {
     static RE_WS: OnceLock<Regex> = OnceLock::new();
 
     let re_ts = RE_ISO_TS.get_or_init(|| {
-        Regex::new(r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b")
-            .expect("valid iso timestamp regex")
+        Regex::new(
+            r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b",
+        )
+        .expect("valid iso timestamp regex")
     });
     let re_uuid = RE_UUID.get_or_init(|| {
-        Regex::new(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
-            .expect("valid uuid regex")
+        Regex::new(
+            r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
+        )
+        .expect("valid uuid regex")
     });
     let re_tmp = RE_TMP.get_or_init(|| {
-        Regex::new(r"(?:/tmp/[A-Za-z0-9._-]+|\.tmp\.[A-Za-z0-9._-]+)")
-            .expect("valid temp id regex")
+        Regex::new(r"(?:/tmp/[A-Za-z0-9._-]+|\.tmp\.[A-Za-z0-9._-]+)").expect("valid temp id regex")
     });
     let re_addr =
         RE_HEX_ADDR.get_or_init(|| Regex::new(r"0x[0-9a-fA-F]+").expect("valid hex addr regex"));
     let re_hex_long = RE_HEX_LONG
         .get_or_init(|| Regex::new(r"\b[0-9a-fA-F]{12,}\b").expect("valid long hex regex"));
-    let re_loc = RE_LINE_COL.get_or_init(|| {
-        Regex::new(r"(?::|\()\d+(?::|,)\d+\)?:?").expect("valid location regex")
-    });
+    let re_loc = RE_LINE_COL
+        .get_or_init(|| Regex::new(r"(?::|\()\d+(?::|,)\d+\)?:?").expect("valid location regex"));
     let re_dur = RE_DURATION.get_or_init(|| {
         Regex::new(r"\b\d+(?:\.\d+)?(?:ms|µs|us|ns|s)\b").expect("valid duration regex")
     });

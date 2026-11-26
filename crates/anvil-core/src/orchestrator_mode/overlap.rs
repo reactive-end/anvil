@@ -38,9 +38,7 @@ fn nested(a: &str, b: &str) -> bool {
 /// The directory a glob is confined to: everything before the segment holding the first `*`.
 fn glob_base(glob: &str) -> String {
     let literal = &glob[..glob.find('*').unwrap_or(glob.len())];
-    literal
-        .rfind('/')
-        .map_or_else(String::new, |cut| literal[..cut].to_owned())
+    literal.rfind('/').map_or_else(String::new, |cut| literal[..cut].to_owned())
 }
 
 #[cfg(test)]

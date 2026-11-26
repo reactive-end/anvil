@@ -13,7 +13,7 @@ use anvil_tasks::ledger::{append_entry_as, start_task_as, write_task_plan};
 use anvil_tasks::merge_driver::{
     DEFAULT_DRIVER_CMD, install_git_merge_driver, install_git_merge_driver_with_cmd, resolve_merge,
 };
-use anvil_tasks::{TasksIndexFile, TaskStatus, build_root_tasks_json, read_single_task};
+use anvil_tasks::{TaskStatus, TasksIndexFile, build_root_tasks_json, read_single_task};
 use tempfile::TempDir;
 
 type TestCase = (&'static str, fn() -> anyhow::Result<()>);
@@ -24,14 +24,8 @@ fn main() -> ExitCode {
     }
 
     let tests: [TestCase; 2] = [
-        (
-            "real_git_two_branch_merge_preserves_both_authors",
-            run_real_git_merge_test,
-        ),
-        (
-            "missing_anvil_falls_back_to_git_merge_file",
-            run_missing_anvil_fallback_test,
-        ),
+        ("real_git_two_branch_merge_preserves_both_authors", run_real_git_merge_test),
+        ("missing_anvil_falls_back_to_git_merge_file", run_missing_anvil_fallback_test),
     ];
     run_test_suite(&tests)
 }
@@ -66,11 +60,7 @@ fn run_test_suite(tests: &[TestCase]) -> ExitCode {
             }
         }
     }
-    if failed {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
+    if failed { ExitCode::FAILURE } else { ExitCode::SUCCESS }
 }
 
 fn run_real_git_merge_test() -> anyhow::Result<()> {
@@ -138,18 +128,12 @@ fn run_missing_anvil_fallback_test() -> anyhow::Result<()> {
     git(repo, &["commit", "-m", "chore: initial tasks.json"])?;
 
     git(repo, &["checkout", "-b", "dev-a"])?;
-    fs::write(
-        repo.join("tasks.json"),
-        render_two_task_json("Alpha updated", "Beta initial"),
-    )?;
+    fs::write(repo.join("tasks.json"), render_two_task_json("Alpha updated", "Beta initial"))?;
     git(repo, &["commit", "-am", "feat(dev-a): update first task"])?;
 
     git(repo, &["checkout", "main"])?;
     git(repo, &["checkout", "-b", "dev-b"])?;
-    fs::write(
-        repo.join("tasks.json"),
-        render_two_task_json("Alpha initial", "Beta updated"),
-    )?;
+    fs::write(repo.join("tasks.json"), render_two_task_json("Alpha initial", "Beta updated"))?;
     git(repo, &["commit", "-am", "feat(dev-b): update second task"])?;
 
     let sanitized_path = build_sanitized_path_without_anvil()?;
@@ -201,9 +185,7 @@ fn build_sanitized_path_without_anvil() -> anyhow::Result<OsString> {
 
 fn find_in_path(bin: &str) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
-    env::split_paths(&path_var)
-        .map(|dir| dir.join(bin))
-        .find(|candidate| candidate.is_file())
+    env::split_paths(&path_var).map(|dir| dir.join(bin)).find(|candidate| candidate.is_file())
 }
 
 fn push_dir_if_safe(dirs: &mut Vec<PathBuf>, dir: &Path) {
@@ -225,14 +207,7 @@ fn commit_branch_entry(
     git(repo, &["checkout", "-b", branch_and_author])?;
     let tasks = anvil_tasks::list_tasks(repo)?;
     let task_id = &tasks[0].task_id;
-    append_entry_as(
-        repo,
-        task_id,
-        branch_and_author,
-        status,
-        summary,
-        &[touched_file.to_owned()],
-    )?;
+    append_entry_as(repo, task_id, branch_and_author, status, summary, &[touched_file.to_owned()])?;
     let plan = format!("# {branch_and_author} Plan\n- {touched_file}\n");
     write_task_plan(repo, task_id, branch_and_author, &plan)?;
     build_root_tasks_json(repo)?;
@@ -245,11 +220,8 @@ fn assert_merged_state(repo: &Path, task_id: &str) -> anyhow::Result<()> {
     let unmerged = git(repo, &["diff", "--name-only", "--diff-filter=U"])?;
     anyhow::ensure!(unmerged.trim().is_empty(), "expected ZERO conflicts, found: {unmerged}");
 
-    let entries_dir = PathBuf::from(repo)
-        .join(".harness")
-        .join("tasks")
-        .join(task_id)
-        .join("entries");
+    let entries_dir =
+        PathBuf::from(repo).join(".harness").join("tasks").join(task_id).join("entries");
     let entry_files: Vec<String> = fs::read_dir(&entries_dir)?
         .flatten()
         .filter_map(|e| e.file_name().to_str().map(str::to_owned))

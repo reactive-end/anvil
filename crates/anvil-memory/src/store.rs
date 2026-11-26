@@ -5,8 +5,8 @@ pub(crate) mod sql;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use anvil_core::traits::FreshnessState;
+use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -162,9 +162,7 @@ impl MemoryStore {
             sql::OBS_COLUMNS
         );
         let mut stmt = self.conn.prepare_cached(&query)?;
-        Ok(stmt
-            .query_row(params![value, now_ms], row_to_observation)
-            .optional()?)
+        Ok(stmt.query_row(params![value, now_ms], row_to_observation).optional()?)
     }
 
     /// Lists all observations linked to at least one file or symbol.
@@ -234,9 +232,7 @@ impl MemoryStore {
 
     /// Returns the set of already-ingested chunk filenames for API compatibility.
     pub fn ingested_chunk_filenames(&self) -> Result<FxHashSet<String>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT filename FROM ingested_chunks")?;
+        let mut stmt = self.conn.prepare_cached("SELECT filename FROM ingested_chunks")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         let mut names = FxHashSet::default();
         for row in rows {
@@ -247,10 +243,10 @@ impl MemoryStore {
 
     /// Returns a map of `filename -> blake3_hash` for all previously ingested chunk files.
     pub fn ingested_chunk_hashes(&self) -> Result<FxHashMap<String, String>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT filename, blake3_hash FROM ingested_chunks")?;
-        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+        let mut stmt =
+            self.conn.prepare_cached("SELECT filename, blake3_hash FROM ingested_chunks")?;
+        let rows =
+            stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         let mut hashes = FxHashMap::default();
         for row in rows {
             let (filename, hash) = row?;
@@ -261,9 +257,9 @@ impl MemoryStore {
 
     /// Returns a map of `filename -> IngestedChunkMeta` for all previously ingested chunk files.
     pub(crate) fn ingested_chunk_meta(&self) -> Result<FxHashMap<String, IngestedChunkMeta>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT filename, blake3_hash, mtime_ns, byte_len FROM ingested_chunks")?;
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT filename, blake3_hash, mtime_ns, byte_len FROM ingested_chunks",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,

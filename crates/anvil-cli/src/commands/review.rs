@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::stats::{self, NewFinding, ReviewEntry};
+use anyhow::Result;
 
 use crate::cli::subcmds::ReviewSubcmd;
 use crate::ui;

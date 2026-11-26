@@ -67,15 +67,26 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let tmp = TempDir::new().unwrap();
-        let (bin_dir, state, home) = (tmp.path().join("bin"), tmp.path().join("state"), tmp.path().join("home"));
+        let (bin_dir, state, home) =
+            (tmp.path().join("bin"), tmp.path().join("state"), tmp.path().join("home"));
         fs::create_dir_all(&bin_dir).unwrap();
         fs::create_dir_all(&state).unwrap();
         let source = tmp.path().join("fake_claude.rs");
         fs::write(&source, FAKE_CLAUDE).unwrap();
         let exe = bin_dir.join(format!("claude{}", env::consts::EXE_SUFFIX));
         let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned());
-        let built = Command::new(rustc).arg("--edition=2021").arg(&source).arg("-o").arg(&exe).output().unwrap();
-        assert!(built.status.success(), "fake claude failed to compile: {}", String::from_utf8_lossy(&built.stderr));
+        let built = Command::new(rustc)
+            .arg("--edition=2021")
+            .arg(&source)
+            .arg("-o")
+            .arg(&exe)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "fake claude failed to compile: {}",
+            String::from_utf8_lossy(&built.stderr)
+        );
         Self { _tmp: tmp, bin_dir, state, home }
     }
 
@@ -99,7 +110,11 @@ impl Fixture {
     }
 
     fn calls(&self) -> Vec<String> {
-        fs::read_to_string(self.state.join("calls.log")).unwrap_or_default().lines().map(str::to_owned).collect()
+        fs::read_to_string(self.state.join("calls.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
     }
 
     fn seed_older_marketplace(&self, other: &Path) {
@@ -142,7 +157,10 @@ fn files_under(dir: &Path) -> Vec<String> {
 fn install_reinstall_and_uninstall_go_through_the_claude_cli() {
     let fx = Fixture::new();
     let first = ok(&fx.anvil(&["install"], &[]));
-    assert!(first.contains("installed anvil-mode@anvil") && first.contains("Restart Claude Code"), "{first}");
+    assert!(
+        first.contains("installed anvil-mode@anvil") && first.contains("Restart Claude Code"),
+        "{first}"
+    );
 
     let shipped = files_under(&fx.folder());
     assert!(shipped.contains(&"anvil-mode/hooks/register.tsx".to_owned()), "{shipped:?}");
@@ -150,8 +168,14 @@ fn install_reinstall_and_uninstall_go_through_the_claude_cli() {
 
     let calls = fx.calls();
     let folder = fx.folder().to_string_lossy().into_owned();
-    assert!(calls.iter().any(|c| c.starts_with("plugin marketplace add ") && c.contains(&folder)), "{calls:?}");
-    assert!(calls.contains(&"plugin install anvil-mode@anvil --scope user".to_owned()), "{calls:?}");
+    assert!(
+        calls.iter().any(|c| c.starts_with("plugin marketplace add ") && c.contains(&folder)),
+        "{calls:?}"
+    );
+    assert!(
+        calls.contains(&"plugin install anvil-mode@anvil --scope user".to_owned()),
+        "{calls:?}"
+    );
 
     ok(&fx.anvil(&["install"], &[]));
     assert!(fx.calls().contains(&"plugin update anvil-mode@anvil --scope user".to_owned()));
@@ -179,7 +203,10 @@ fn install_repoints_a_marketplace_registered_elsewhere_and_upgrades() {
     assert_eq!(status["marketplace"]["anvilFolder"], json!(true));
     let calls = fx.calls();
     assert!(calls.contains(&"plugin update anvil-mode@anvil --scope user".to_owned()), "{calls:?}");
-    assert!(!calls.iter().any(|c| c.starts_with("plugin marketplace remove")), "in-place switch: {calls:?}");
+    assert!(
+        !calls.iter().any(|c| c.starts_with("plugin marketplace remove")),
+        "in-place switch: {calls:?}"
+    );
 }
 
 #[test]
@@ -191,7 +218,8 @@ fn failed_install_restores_the_previous_marketplace() {
     let out = fx.anvil(&["install"], &[("FAKE_CLAUDE_FAIL", "update")]);
     assert!(!out.status.success());
     assert!(text(&out).contains("restored the previous marketplace"), "{}", text(&out));
-    let last_add = fx.calls().into_iter().rfind(|c| c.starts_with("plugin marketplace add ")).unwrap();
+    let last_add =
+        fx.calls().into_iter().rfind(|c| c.starts_with("plugin marketplace add ")).unwrap();
     assert!(last_add.contains(&*elsewhere.to_string_lossy()), "{last_add}");
 }
 
@@ -240,7 +268,14 @@ fn orchestrator_mode_denies_plugin_changes() {
     let repo = TempDir::new().unwrap();
     let root = repo.path();
     Command::new("git").arg("init").current_dir(root).output().unwrap();
-    let anvil = |args: &[&str]| Command::new(env!("CARGO_BIN_EXE_anvil")).arg("--root").arg(root).args(args).output().unwrap();
+    let anvil = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_anvil"))
+            .arg("--root")
+            .arg(root)
+            .args(args)
+            .output()
+            .unwrap()
+    };
     ok(&anvil(&["init"]));
     ok(&anvil(&["orchestrator", "on"]));
 
@@ -260,9 +295,14 @@ fn orchestrator_mode_denies_plugin_changes() {
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
-        std::io::Write::write_all(&mut child.stdin.take().unwrap(), payload.to_string().as_bytes()).unwrap();
+        std::io::Write::write_all(&mut child.stdin.take().unwrap(), payload.to_string().as_bytes())
+            .unwrap();
         let out = String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap();
         let parsed: Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(parsed["hookSpecificOutput"]["permissionDecision"], json!("deny"), "{command}: {out}");
+        assert_eq!(
+            parsed["hookSpecificOutput"]["permissionDecision"],
+            json!("deny"),
+            "{command}: {out}"
+        );
     }
 }

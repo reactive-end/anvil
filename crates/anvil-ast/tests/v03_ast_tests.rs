@@ -69,7 +69,10 @@ fn http_route_normalization_unifies_backend_and_frontend_shapes() {
     assert_eq!(normalize_route_target("GET", "${this.apiUrl}/orders/${id}"), expected);
     assert_eq!(normalize_route_target("GET", "${API_URL}/orders/${order.id}?expand=1"), expected);
     assert_eq!(normalize_route_target("GET", "https://api.example.com//orders/:id/"), expected);
-    assert_eq!(normalize_route_target("GET", "http://localhost:3000/orders/<int:id>#top"), expected);
+    assert_eq!(
+        normalize_route_target("GET", "http://localhost:3000/orders/<int:id>#top"),
+        expected
+    );
     assert_eq!(normalize_route_target("GET", "orders/{id}"), expected);
 
     assert_eq!(normalize_route_target("post", "/"), Some("route:POST /".to_owned()));
@@ -114,7 +117,9 @@ export class OrdersController {
     assert!(routes.contains(&("OrdersController.findOne", "route:GET /orders/:param")));
     assert!(routes.contains(&("OrdersController.create", "route:POST /orders")));
     assert!(routes.contains(&("OrdersController.replace", "route:PUT /orders/:param")));
-    assert!(routes.contains(&("OrdersController.updateStatus", "route:PATCH /orders/:param/status")));
+    assert!(
+        routes.contains(&("OrdersController.updateStatus", "route:PATCH /orders/:param/status"))
+    );
     assert!(routes.contains(&("OrdersController.remove", "route:DELETE /orders/:param")));
 }
 
@@ -179,7 +184,8 @@ export class OrdersClient {
   }
 }
 "#;
-    let ts_facts = analyze_file(Path::new("src/orders.client.ts"), ts_src, &cfg()).expect("ts client");
+    let ts_facts =
+        analyze_file(Path::new("src/orders.client.ts"), ts_src, &cfg()).expect("ts client");
     let ts_routes: Vec<(&str, &str)> = ts_facts
         .edges
         .iter()
@@ -205,7 +211,8 @@ interface OrdersApi {
     suspend fun deleteOrder(@Path("id") id: String): Unit
 }
 "#;
-    let kt_facts = analyze_file(Path::new("app/OrdersApi.kt"), kt_src, &cfg()).expect("kt retrofit");
+    let kt_facts =
+        analyze_file(Path::new("app/OrdersApi.kt"), kt_src, &cfg()).expect("kt retrofit");
     let kt_routes: Vec<(&str, &str)> = kt_facts
         .edges
         .iter()
@@ -217,5 +224,7 @@ interface OrdersApi {
     assert!(kt_routes.contains(&("OrdersApi.submitOrder", "route:POST /orders/:param")));
     assert!(kt_routes.contains(&("OrdersApi.deleteOrder", "route:DELETE /orders/:param")));
     assert_eq!(kt_routes.len(), 3);
-    assert!(kt_facts.symbols.iter().any(|s| s.name == "OrdersApi" && s.kind == SymbolKind::Interface));
+    assert!(
+        kt_facts.symbols.iter().any(|s| s.name == "OrdersApi" && s.kind == SymbolKind::Interface)
+    );
 }

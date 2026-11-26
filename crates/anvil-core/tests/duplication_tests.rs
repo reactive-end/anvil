@@ -37,7 +37,11 @@ fn run(root: &Path, repo_files: &[&str], new_files: &[&str]) -> Vec<Diagnostic> 
 fn existing_helper_repo() -> TempDir {
     let dir = TempDir::new().expect("tempdir");
     let body = logic("total", 10);
-    write(dir.path(), "src/util.ts", &format!("export function helper() {{\n{body}\n  return total0;\n}}\n"));
+    write(
+        dir.path(),
+        "src/util.ts",
+        &format!("export function helper() {{\n{body}\n  return total0;\n}}\n"),
+    );
     dir
 }
 
@@ -45,7 +49,11 @@ fn existing_helper_repo() -> TempDir {
 fn a_copy_of_an_unchanged_helper_is_an_error_naming_it() {
     let repo = existing_helper_repo();
     let body = logic("total", 10);
-    write(repo.path(), "src/fresh.ts", &format!("export function again() {{\n{body}\n  return total1;\n}}\n"));
+    write(
+        repo.path(),
+        "src/fresh.ts",
+        &format!("export function again() {{\n{body}\n  return total1;\n}}\n"),
+    );
     let diags = run(repo.path(), &["src/util.ts", "src/fresh.ts"], &["src/fresh.ts"]);
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(diags[0].rule, "duplication:new-code");
@@ -57,7 +65,11 @@ fn a_copy_of_an_unchanged_helper_is_an_error_naming_it() {
 fn a_repeat_inside_new_code_is_reported_once_at_the_later_copy() {
     let dir = TempDir::new().expect("tempdir");
     let body = logic("part", 9);
-    write(dir.path(), "src/new.ts", &format!("function a() {{\n{body}\n}}\nfunction b() {{\n{body}\n}}\n"));
+    write(
+        dir.path(),
+        "src/new.ts",
+        &format!("function a() {{\n{body}\n}}\nfunction b() {{\n{body}\n}}\n"),
+    );
     let diags = run(dir.path(), &["src/new.ts"], &["src/new.ts"]);
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(diags[0].line, 13);
@@ -76,7 +88,8 @@ fn a_window_under_the_minimum_is_silent() {
 #[test]
 fn imports_and_trivial_statements_are_silent() {
     let repo = TempDir::new().expect("tempdir");
-    let imports: String = (0..12).map(|i| format!("import {{ item{i} }} from './mod{i}';\n")).collect();
+    let imports: String =
+        (0..12).map(|i| format!("import {{ item{i} }} from './mod{i}';\n")).collect();
     let trivial = "return;\nbreak;\nOk(())\nelse {\n}\n".repeat(4);
     write(repo.path(), "src/a.ts", &format!("{imports}{trivial}"));
     write(repo.path(), "src/b.ts", &format!("{imports}{trivial}"));
@@ -88,7 +101,9 @@ fn test_files_are_neither_checked_nor_a_source_of_duplicates() {
     let repo = existing_helper_repo();
     let body = logic("total", 10);
     write(repo.path(), "src/util.test.ts", &body);
-    assert!(run(repo.path(), &["src/util.ts", "src/util.test.ts"], &["src/util.test.ts"]).is_empty());
+    assert!(
+        run(repo.path(), &["src/util.ts", "src/util.test.ts"], &["src/util.test.ts"]).is_empty()
+    );
     write(repo.path(), "tests/copy.ts", &body);
     write(repo.path(), "src/fresh.ts", &body);
     let diags = run(repo.path(), &["tests/copy.ts", "src/fresh.ts"], &["src/fresh.ts"]);

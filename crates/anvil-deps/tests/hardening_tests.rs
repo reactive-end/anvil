@@ -71,10 +71,7 @@ fn parses_abbreviated_npm_install_v1_and_latest_shapes() {
     let info = parse_npm_registry_json("left-pad", abbr).expect("abbreviated npm");
     assert_eq!(info.latest_version.as_deref(), Some("1.3.0"));
     assert!(info.deprecated);
-    assert_eq!(
-        info.deprecation_message.as_deref(),
-        Some("use String.prototype.padStart")
-    );
+    assert_eq!(info.deprecation_message.as_deref(), Some("use String.prototype.padStart"));
     assert!(info.last_publish.is_some());
 
     let latest_only = r#"{
@@ -85,10 +82,7 @@ fn parses_abbreviated_npm_install_v1_and_latest_shapes() {
     let latest_info = parse_npm_registry_json("lodash", latest_only).expect("/latest npm");
     assert_eq!(latest_info.latest_version.as_deref(), Some("4.17.21"));
     assert!(!latest_info.deprecated);
-    assert_eq!(
-        latest_info.repository_url.as_deref(),
-        Some("https://github.com/lodash/lodash.git")
-    );
+    assert_eq!(latest_info.repository_url.as_deref(), Some("https://github.com/lodash/lodash.git"));
 }
 
 #[test]
@@ -118,10 +112,7 @@ local_core = { path = \"../core\" }\nws_dep = { workspace = true }\n\
     assert_eq!(info.latest_version.as_deref(), Some("1.0.210"));
     assert!(info.deprecated);
     assert!(info.last_publish.is_some());
-    assert_eq!(
-        info.repository_url.as_deref(),
-        Some("https://github.com/serde-rs/serde")
-    );
+    assert_eq!(info.repository_url.as_deref(), Some("https://github.com/serde-rs/serde"));
 }
 
 #[test]
@@ -209,9 +200,7 @@ fn bounded_parallel_audit_caps_concurrency_at_8_and_speeds_up_20_deps() {
     }
     fs::write(tmp.path().join("requirements.txt"), "requests==2.32.3\n").expect("write reqs");
     assert_eq!(
-        parse_manifest(tmp.path(), &PathBuf::from("requirements.txt"))
-            .expect("parse reqs")
-            .len(),
+        parse_manifest(tmp.path(), &PathBuf::from("requirements.txt")).expect("parse reqs").len(),
         1
     );
 
@@ -276,19 +265,13 @@ fn supports_and_parses_variant_requirements_txt_manifests() {
         "requirements_prod.txt",
         "deploy/requirements-ci.txt",
     ] {
-        assert!(
-            is_supported_manifest(&PathBuf::from(name)),
-            "expected {name} to be supported"
-        );
+        assert!(is_supported_manifest(&PathBuf::from(name)), "expected {name} to be supported");
     }
     assert!(!is_supported_manifest(&PathBuf::from("notes.txt")));
 
     let tmp = TempDir::new().expect("tempdir");
-    fs::write(
-        tmp.path().join("requirements-dev.txt"),
-        "pytest>=8.0.0\nruff==0.6.0\n",
-    )
-    .expect("write requirements-dev.txt");
+    fs::write(tmp.path().join("requirements-dev.txt"), "pytest>=8.0.0\nruff==0.6.0\n")
+        .expect("write requirements-dev.txt");
 
     let specs =
         parse_manifest(tmp.path(), &PathBuf::from("requirements-dev.txt")).expect("parse dev reqs");
@@ -296,4 +279,3 @@ fn supports_and_parses_variant_requirements_txt_manifests() {
     assert_eq!(names, vec!["pytest", "ruff"]);
     assert!(specs.iter().all(|s| s.ecosystem == Ecosystem::Pypi));
 }
-

@@ -5,12 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::{resolve_godot_bin, resolve_local_or_path_bin};
 use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
+use anyhow::Result;
 
 use super::tests_native::{run_kotlin_tests, run_php_tests, run_rust_tests};
 use super::typecheck_godot::resolve_godot_project_for_script;
@@ -103,7 +103,14 @@ fn run_js_tests(
         if let Some(vitest) = resolve_bin_subrepo_or_root(&work_dir, repo_root, "vitest") {
             let mut args = vec!["related", "--run"];
             args.extend_from_slice(&refs);
-            outputs.push(exec_compressed(repo_root, &work_dir, config, &vitest, "vitest related", &args)?);
+            outputs.push(exec_compressed(
+                repo_root,
+                &work_dir,
+                config,
+                &vitest,
+                "vitest related",
+                &args,
+            )?);
         } else if let Some(jest) = resolve_bin_subrepo_or_root(&work_dir, repo_root, "jest") {
             let mut args = vec!["--findRelatedTests"];
             args.extend_from_slice(&refs);
@@ -117,7 +124,8 @@ fn run_js_tests(
             )?);
         } else if uses_node_test(&work_dir, repo_root) {
             if let Some(node) = resolve_bin_subrepo_or_root(&work_dir, repo_root, "node") {
-                let test_refs: Vec<&str> = refs.iter().copied().filter(|p| is_js_test_path(p)).collect();
+                let test_refs: Vec<&str> =
+                    refs.iter().copied().filter(|p| is_js_test_path(p)).collect();
                 let mut args = vec!["--test"];
                 args.extend_from_slice(&test_refs);
                 outputs.push(exec_compressed(
@@ -153,15 +161,13 @@ fn package_uses_node_test(pkg_path: &Path) -> bool {
     let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
         return false;
     };
-    val.get("scripts")
-        .and_then(|s| s.as_object())
-        .is_some_and(|scripts| {
-            scripts
-                .iter()
-                .filter(|(k, _)| *k == "test" || k.starts_with("test:"))
-                .filter_map(|(_, v)| v.as_str())
-                .any(cmd_uses_node_test)
-        })
+    val.get("scripts").and_then(|s| s.as_object()).is_some_and(|scripts| {
+        scripts
+            .iter()
+            .filter(|(k, _)| *k == "test" || k.starts_with("test:"))
+            .filter_map(|(_, v)| v.as_str())
+            .any(cmd_uses_node_test)
+    })
 }
 
 fn cmd_uses_node_test(cmd: &str) -> bool {
@@ -186,11 +192,9 @@ fn run_dart_flutter_tests(
     config: &AnvilConfig,
     files: &[&str],
 ) -> Result<CompressedOutput> {
-    let uses_flutter = fs::read_to_string(repo_root.join("pubspec.yaml"))
-        .is_ok_and(|s| s.contains("flutter:"));
-    if uses_flutter
-        && let Some(flutter) = resolve_local_or_path_bin(repo_root, "flutter")
-    {
+    let uses_flutter =
+        fs::read_to_string(repo_root.join("pubspec.yaml")).is_ok_and(|s| s.contains("flutter:"));
+    if uses_flutter && let Some(flutter) = resolve_local_or_path_bin(repo_root, "flutter") {
         let mut args = vec!["test"];
         args.extend_from_slice(files);
         return exec_compressed(repo_root, repo_root, config, &flutter, "flutter test", &args);
@@ -226,9 +230,7 @@ fn run_simple_file_runner(
 
 fn resolve_bin_subrepo_or_root(work_dir: &Path, repo_root: &Path, bin: &str) -> Option<PathBuf> {
     resolve_local_or_path_bin(work_dir, bin).or_else(|| {
-        (work_dir != repo_root)
-            .then(|| resolve_local_or_path_bin(repo_root, bin))
-            .flatten()
+        (work_dir != repo_root).then(|| resolve_local_or_path_bin(repo_root, bin)).flatten()
     })
 }
 
@@ -253,10 +255,7 @@ fn group_by_subrepo(
         if let Some((_, sub_path, stripped)) = matched {
             grouped.entry(repo_root.join(sub_path)).or_default().push(stripped);
         } else {
-            grouped
-                .entry(repo_root.to_path_buf())
-                .or_default()
-                .push((*file).to_owned());
+            grouped.entry(repo_root.to_path_buf()).or_default().push((*file).to_owned());
         }
     }
     grouped.into_iter().collect()
@@ -348,14 +347,7 @@ fn run_godot_gut_tests(
         .collect();
     let gtest_arg = format!("-gtest={}", res_tests.join(","));
     let proj_str = proj_dir.to_string_lossy().into_owned();
-    let args = [
-        "--headless",
-        "-s",
-        "--path",
-        &proj_str,
-        "addons/gut/gut_cmdln.gd",
-        "-gexit",
-        &gtest_arg,
-    ];
+    let args =
+        ["--headless", "-s", "--path", &proj_str, "addons/gut/gut_cmdln.gd", "-gexit", &gtest_arg];
     exec_compressed(repo_root, &proj_dir, config, &bin, "godot gut", &args)
 }

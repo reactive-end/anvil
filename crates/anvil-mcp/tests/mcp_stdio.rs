@@ -73,9 +73,7 @@ fn mcp_initialize_and_tools_list() {
     assert_eq!(resps[0].result.as_ref().unwrap()["serverInfo"]["name"], "anvil-mcp");
     assert_eq!(resps[1].result, Some(json!({})));
 
-    let tools = resps[2].result.as_ref().unwrap()["tools"]
-        .as_array()
-        .unwrap();
+    let tools = resps[2].result.as_ref().unwrap()["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 23);
     assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
     assert!(tools.iter().any(|t| t["name"] == "context_pack"));
@@ -88,7 +86,8 @@ fn mcp_initialize_and_tools_list() {
 fn mcp_tools_list_includes_full_task_lifecycle_tools() {
     let repo = setup_sample_repo();
     let mut server = McpServer::new(repo.path()).unwrap();
-    let resps = run_session(&mut server, &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })]);
+    let resps =
+        run_session(&mut server, &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })]);
     let tools = resps[0].result.as_ref().unwrap()["tools"].as_array().unwrap();
     assert!(tools.iter().any(|t| t["name"] == "task_start"));
     assert!(tools.iter().any(|t| t["name"] == "task_update"));
@@ -133,10 +132,7 @@ fn mcp_memory_tools_roundtrip() {
         ],
     );
 
-    let obs_id = parse_tool_json(&initial[0])["observation"]["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let obs_id = parse_tool_json(&initial[0])["observation"]["id"].as_str().unwrap().to_owned();
     assert_eq!(parse_tool_json(&initial[1])["hits"][0]["id"], json!(obs_id));
 
     let followups = run_session(
@@ -262,7 +258,8 @@ fn mcp_memory_syncs_new_external_chunk_on_chunks_dir_mtime_change() {
         "updated_at": 1700000000000i64,
         "expires_at": null
     });
-    fs::write(chunks_dir.join("teammate-01J00000000000000000000002.jsonl"), format!("{chunk}\n")).unwrap();
+    fs::write(chunks_dir.join("teammate-01J00000000000000000000002.jsonl"), format!("{chunk}\n"))
+        .unwrap();
 
     let second = run_session(
         &mut server,
@@ -294,9 +291,7 @@ fn mcp_negotiates_protocol_version_and_emits_compact_tool_json() {
     );
     assert_eq!(resps[0].result.as_ref().unwrap()["protocolVersion"], json!("2025-03-26"));
     assert_eq!(resps[1].result.as_ref().unwrap()["protocolVersion"], json!("2024-11-05"));
-    let text = resps[2].result.as_ref().unwrap()["content"][0]["text"]
-        .as_str()
-        .unwrap();
+    let text = resps[2].result.as_ref().unwrap()["content"][0]["text"].as_str().unwrap();
     assert!(!text.contains('\n'), "expected compact JSON without newlines, got: {text}");
 }
 
@@ -321,11 +316,8 @@ fn mcp_mem_save_before_read_still_syncs_preexisting_external_chunk() {
         "updated_at": 1700000000000i64,
         "expires_at": null
     });
-    fs::write(
-        chunks_dir.join("teammate-01J00000000000000000000009.jsonl"),
-        format!("{chunk}\n"),
-    )
-    .unwrap();
+    fs::write(chunks_dir.join("teammate-01J00000000000000000000009.jsonl"), format!("{chunk}\n"))
+        .unwrap();
 
     let mut server = McpServer::new(repo.path()).unwrap();
     let resps = run_session(
@@ -357,24 +349,36 @@ fn mcp_task_lifecycle_start_update_resume_and_done() {
     let resps = run_session(
         &mut server,
         &[
-            call_req(1, "task_start", json!({
-                "task_id": "F010", "group": "core",
-                "title": "Reorganización visual del módulo de cobros",
-                "summary": "Analizados componentes existentes"
-            })),
-            call_req(2, "task_update", json!({
-                "task_id": "core/F010",
-                "summary": "Actualizadas tarjetas principales",
-                "done_steps": ["Refactorizadas tarjetas"],
-                "next_steps": ["Actualizar filtros", "Correr tests"],
-                "files": ["src/app.ts"]
-            })),
+            call_req(
+                1,
+                "task_start",
+                json!({
+                    "task_id": "F010", "group": "core",
+                    "title": "Reorganización visual del módulo de cobros",
+                    "summary": "Analizados componentes existentes"
+                }),
+            ),
+            call_req(
+                2,
+                "task_update",
+                json!({
+                    "task_id": "core/F010",
+                    "summary": "Actualizadas tarjetas principales",
+                    "done_steps": ["Refactorizadas tarjetas"],
+                    "next_steps": ["Actualizar filtros", "Correr tests"],
+                    "files": ["src/app.ts"]
+                }),
+            ),
             call_req(3, "task_resume", json!({})),
-            call_req(4, "task_done", json!({
-                "task_id": "core/F010",
-                "summary": "Módulo y filtros verificados",
-                "evidence": "Tests verdes"
-            })),
+            call_req(
+                4,
+                "task_done",
+                json!({
+                    "task_id": "core/F010",
+                    "summary": "Módulo y filtros verificados",
+                    "evidence": "Tests verdes"
+                }),
+            ),
             call_req(5, "task_list", json!({ "group": "core", "limit": 5 })),
         ],
     );
@@ -382,7 +386,10 @@ fn mcp_task_lifecycle_start_update_resume_and_done() {
     let started = parse_tool_json(&resps[0]);
     assert_eq!(started["task_id"], json!("core/F010"));
     assert_eq!(started["progress_file"], json!(".harness/tasks/core/F010/progress.md"));
-    assert_eq!(parse_tool_json(&resps[1])["next_steps"], json!(["Actualizar filtros", "Correr tests"]));
+    assert_eq!(
+        parse_tool_json(&resps[1])["next_steps"],
+        json!(["Actualizar filtros", "Correr tests"])
+    );
 
     let resumed = parse_tool_json(&resps[2]);
     assert_eq!(resumed["found"], json!(true));
@@ -401,7 +408,11 @@ fn mcp_task_record_validation_and_skip() {
         &mut server,
         &[
             call_req(1, "task_record", json!({ "title": "   ", "summary": "Empty title fails" })),
-            call_req(2, "task_record", json!({ "title": "Fix header?", "summary": "Allowed title" })),
+            call_req(
+                2,
+                "task_record",
+                json!({ "title": "Fix header?", "summary": "Allowed title" }),
+            ),
             call_req(3, "task_skip", json!({ "reason": "Ajuste menor de padding" })),
         ],
     );
@@ -437,36 +448,17 @@ fn mcp_context_pack_returns_bounded_graph_and_memory_packet() {
         ],
     );
 
-    let obs_id = parse_tool_json(&resps[0])["observation"]["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let obs_id = parse_tool_json(&resps[0])["observation"]["id"].as_str().unwrap().to_owned();
     let pack = parse_tool_json(&resps[1]);
     assert_eq!(pack["targets"], json!(["add"]));
-    assert!(
-        pack["resolved_files"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|f| f == "src/math.ts")
-    );
+    assert!(pack["resolved_files"].as_array().unwrap().iter().any(|f| f == "src/math.ts"));
     let outlines = pack["outlines"].as_array().unwrap();
     assert!(outlines.iter().any(|o| {
         o["file"] == "src/math.ts"
-            && o["symbols"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|s| s["name"] == "add")
+            && o["symbols"].as_array().unwrap().iter().any(|s| s["name"] == "add")
     }));
     assert!(!pack["edges"].as_array().unwrap().is_empty());
-    assert!(
-        pack["memories"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|m| m["id"] == obs_id)
-    );
+    assert!(pack["memories"].as_array().unwrap().iter().any(|m| m["id"] == obs_id));
     assert!(pack["related_tests"].is_array());
     let est = pack["estimated_tokens"].as_u64().unwrap();
     assert!(est > 0 && est <= 1200);
@@ -480,7 +472,7 @@ fn mcp_code_exec_multistep_roundtrip() {
     let resps = run_session(
         &mut server,
         &[
-                call_req(
+            call_req(
                 1,
                 "code_exec",
                 json!({
@@ -510,7 +502,13 @@ fn mcp_review_log_records_a_finding_and_reports_the_category() {
         "severity": "high",
         "file": "src/a.ts:3"
     });
-    let resps = run_session(&mut server, &[call_req(1, "review_log", args), call_req(2, "review_log", json!({ "description": "x", "category": "Bad Slug" }))]);
+    let resps = run_session(
+        &mut server,
+        &[
+            call_req(1, "review_log", args),
+            call_req(2, "review_log", json!({ "description": "x", "category": "Bad Slug" })),
+        ],
+    );
     let ok = resps[0].result.as_ref().unwrap();
     assert_eq!(ok["isError"], false);
     let payload: Value = serde_json::from_str(ok["content"][0]["text"].as_str().unwrap()).unwrap();

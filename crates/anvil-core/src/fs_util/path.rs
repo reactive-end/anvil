@@ -76,11 +76,8 @@ fn find_windows_php_bin() -> Option<PathBuf> {
     }
     let laragon_php = Path::new(r"C:\laragon\bin\php");
     if let Ok(entries) = std::fs::read_dir(laragon_php) {
-        let mut versions: Vec<PathBuf> = entries
-            .flatten()
-            .map(|e| e.path().join("php.exe"))
-            .filter(|p| p.is_file())
-            .collect();
+        let mut versions: Vec<PathBuf> =
+            entries.flatten().map(|e| e.path().join("php.exe")).filter(|p| p.is_file()).collect();
         versions.sort();
         if let Some(latest) = versions.pop() {
             return Some(latest);
@@ -138,12 +135,10 @@ fn find_windows_godot_bin() -> Option<PathBuf> {
                 .map(|e| e.path())
                 .filter(|p| {
                     p.is_file()
-                        && p.file_name()
-                            .and_then(|n| n.to_str())
-                            .is_some_and(|n| {
-                                let l = n.to_ascii_lowercase();
-                                l.starts_with("godot") && l.ends_with(".exe")
-                            })
+                        && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                            let l = n.to_ascii_lowercase();
+                            l.starts_with("godot") && l.ends_with(".exe")
+                        })
                 })
                 .collect();
             cands.sort();
@@ -208,12 +203,8 @@ fn is_executable_file(path: &Path) -> bool {
 
 fn windows_pathext() -> Vec<String> {
     let raw = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
-    let mut exts: Vec<String> = raw
-        .split(';')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .collect();
+    let mut exts: Vec<String> =
+        raw.split(';').map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
     for fallback in [".EXE", ".CMD", ".BAT"] {
         if !exts.iter().any(|e| e.eq_ignore_ascii_case(fallback)) {
             exts.push(fallback.to_owned());
@@ -240,11 +231,7 @@ pub fn sanitize_author(raw: &str) -> String {
     while out.ends_with('-') {
         out.pop();
     }
-    if out.is_empty() {
-        "unknown".to_owned()
-    } else {
-        out
-    }
+    if out.is_empty() { "unknown".to_owned() } else { out }
 }
 
 /// Relativizes `path` against `root` with forward slashes and case-insensitive Windows drive/prefix matching.
@@ -255,9 +242,7 @@ pub fn relativize_path(root: &Path, path: &Path) -> String {
     let case_insensitive =
         cfg!(windows) || (has_drive_prefix(&root_norm) && has_drive_prefix(&path_norm));
     let matched = if case_insensitive {
-        path_norm
-            .to_ascii_lowercase()
-            .starts_with(&root_norm.to_ascii_lowercase())
+        path_norm.to_ascii_lowercase().starts_with(&root_norm.to_ascii_lowercase())
     } else {
         path_norm.starts_with(&root_norm)
     };
@@ -272,10 +257,7 @@ pub fn relativize_path(root: &Path, path: &Path) -> String {
         }
     }
 
-    path_norm
-        .strip_prefix("./")
-        .unwrap_or(&path_norm)
-        .to_owned()
+    path_norm.strip_prefix("./").unwrap_or(&path_norm).to_owned()
 }
 
 fn normalize_slashed_path(path: &Path, trim_trailing_slash: bool) -> String {

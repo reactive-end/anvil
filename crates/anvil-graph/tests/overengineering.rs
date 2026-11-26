@@ -43,15 +43,24 @@ fn zero_consumers_is_an_error_naming_the_rule_and_the_file() {
     assert_eq!(findings.len(), 1, "{findings:?}");
     let finding = &findings[0];
     assert_eq!(finding.rule, "overengineering:unused-new-code");
-    assert_eq!((finding.file.as_str(), finding.line, finding.symbol.as_deref()), ("src/orphan.ts", 1, None));
-    assert!(finding.message.contains("no non-test consumer") && finding.message.contains("orphanTask"));
+    assert_eq!(
+        (finding.file.as_str(), finding.line, finding.symbol.as_deref()),
+        ("src/orphan.ts", 1, None)
+    );
+    assert!(
+        finding.message.contains("no non-test consumer") && finding.message.contains("orphanTask")
+    );
     assert!(finding.suggestion.contains("anvil-allow(overengineering): <reason>"));
 }
 
 #[test]
 fn consumers_that_are_only_tests_do_not_count() {
     let repo = ts_repo();
-    write_repo_file(repo.path(), "src/tested.ts", "export function onlyTestsUseMe() { return 4; }\n");
+    write_repo_file(
+        repo.path(),
+        "src/tested.ts",
+        "export function onlyTestsUseMe() { return 4; }\n",
+    );
     write_repo_file(
         repo.path(),
         "src/tested.test.ts",
@@ -97,10 +106,19 @@ fn an_unused_export_of_a_used_file_is_reported_by_name() {
 fn entry_points_are_silent() {
     let repo = ts_repo();
     write_repo_file(repo.path(), "src/main.ts", "export function boot() {}\n");
-    write_repo_file(repo.path(), "vite.config.ts", "export default { plugins: [] };\nexport const extra = 1;\n");
-    write_repo_file(repo.path(), "package.json", "{\"name\":\"x\",\"main\":\"src/published.ts\"}\n");
+    write_repo_file(
+        repo.path(),
+        "vite.config.ts",
+        "export default { plugins: [] };\nexport const extra = 1;\n",
+    );
+    write_repo_file(
+        repo.path(),
+        "package.json",
+        "{\"name\":\"x\",\"main\":\"src/published.ts\"}\n",
+    );
     write_repo_file(repo.path(), "src/published.ts", "export function publicApi() {}\n");
-    let findings = unused_new_code(repo.path(), &["src/main.ts", "vite.config.ts", "src/published.ts"]);
+    let findings =
+        unused_new_code(repo.path(), &["src/main.ts", "vite.config.ts", "src/published.ts"]);
     assert!(findings.is_empty(), "{findings:?}");
 }
 
@@ -138,7 +156,11 @@ fn languages_without_resolved_references_are_silent() {
 fn rust_repo() -> TempDir {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path();
-    write_repo_file(root, "Cargo.toml", "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n");
+    write_repo_file(
+        root,
+        "Cargo.toml",
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    );
     write_repo_file(
         root,
         "src/lib.rs",
@@ -156,7 +178,8 @@ fn rust_repo() -> TempDir {
 #[test]
 fn rust_modules_declared_by_their_parent_are_still_dead_when_nothing_uses_them() {
     let repo = rust_repo();
-    let findings = unused_new_code(repo.path(), &["src/used.rs", "src/dead.rs", "src/reexported.rs"]);
+    let findings =
+        unused_new_code(repo.path(), &["src/used.rs", "src/dead.rs", "src/reexported.rs"]);
     let files: Vec<&str> = findings.iter().map(|f| f.file.as_str()).collect();
     assert_eq!(files, vec!["src/dead.rs"], "{findings:?}");
 }
@@ -165,7 +188,11 @@ fn rust_modules_declared_by_their_parent_are_still_dead_when_nothing_uses_them()
 fn rust_entry_points_and_attributed_items_are_silent() {
     let repo = rust_repo();
     write_repo_file(repo.path(), "src/bin/tool.rs", "pub fn only_here() {}\n");
-    write_repo_file(repo.path(), "src/ffi.rs", "#[no_mangle]\npub extern \"C\" fn exported_to_c() {}\n");
+    write_repo_file(
+        repo.path(),
+        "src/ffi.rs",
+        "#[no_mangle]\npub extern \"C\" fn exported_to_c() {}\n",
+    );
     write_repo_file(
         repo.path(),
         "src/lib.rs",

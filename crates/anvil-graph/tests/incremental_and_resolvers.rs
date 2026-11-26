@@ -47,10 +47,7 @@ fn incremental_single_file_update_skips_untouched_files_and_persists_binary() {
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
 
     assert!(changed);
-    assert!(
-        elapsed_ms < 50.0,
-        "incremental update took {elapsed_ms:.2}ms"
-    );
+    assert!(elapsed_ms < 50.0, "incremental update took {elapsed_ms:.2}ms");
     assert_eq!(engine.graph.file_hashes.get("src/b.ts"), hash_b_before.as_ref());
     assert_eq!(engine.graph.file_hashes.get("src/c.ts"), hash_c_before.as_ref());
     assert!(engine.graph.contains_node_id("sym:src/a.ts::alphaTwo"));
@@ -108,11 +105,7 @@ fn write_multi_lang_fixtures(root: &Path) {
 
     // Dart / Flutter
     write_repo_file(root, "flutter_app/pubspec.yaml", "name: my_flutter_app\n");
-    write_repo_file(
-        root,
-        "flutter_app/lib/widgets/badge.dart",
-        "class StatusBadge {}\n",
-    );
+    write_repo_file(root, "flutter_app/lib/widgets/badge.dart", "class StatusBadge {}\n");
     write_repo_file(
         root,
         "flutter_app/lib/main.dart",
@@ -129,25 +122,13 @@ fn multi_language_resolvers_nestjs_python_kotlin_dart() {
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("build multi-lang");
 
     let nest_impact = engine.blast_radius(&["nest/auth.service.ts".to_owned()], 2);
-    assert!(
-        nest_impact
-            .impacted_files
-            .iter()
-            .any(|i| i.file == "nest/auth.module.ts")
-    );
+    assert!(nest_impact.impacted_files.iter().any(|i| i.file == "nest/auth.module.ts"));
 
     let py_impact = engine.blast_radius(&["pypkg/utils.py".to_owned()], 2);
-    assert!(
-        py_impact
-            .impacted_files
-            .iter()
-            .any(|i| i.file == "pypkg/sub/service.py")
-    );
+    assert!(py_impact.impacted_files.iter().any(|i| i.file == "pypkg/sub/service.py"));
 
-    let kt_impact = engine.blast_radius(
-        &["android/src/main/kotlin/com/example/ui/Button.kt".to_owned()],
-        2,
-    );
+    let kt_impact =
+        engine.blast_radius(&["android/src/main/kotlin/com/example/ui/Button.kt".to_owned()], 2);
     assert!(
         kt_impact
             .impacted_files
@@ -156,10 +137,5 @@ fn multi_language_resolvers_nestjs_python_kotlin_dart() {
     );
 
     let dart_impact = engine.blast_radius(&["flutter_app/lib/widgets/badge.dart".to_owned()], 2);
-    assert!(
-        dart_impact
-            .impacted_files
-            .iter()
-            .any(|i| i.file == "flutter_app/lib/main.dart")
-    );
+    assert!(dart_impact.impacted_files.iter().any(|i| i.file == "flutter_app/lib/main.dart"));
 }

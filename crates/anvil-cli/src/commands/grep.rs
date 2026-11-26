@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::diff_grep::compressed_grep;
+use anyhow::Result;
 
 /// Executes `anvil grep <pattern> [--max-matches N] [--max-tokens N]`.
 pub fn execute(root: &Path, pattern: &str, max_matches: usize, max_tokens: usize) -> Result<()> {

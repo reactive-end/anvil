@@ -7,8 +7,8 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
 use anvil_core::fs_util::atomic_write;
+use anyhow::{Context, Result, bail};
 use rustc_hash::FxHashMap;
 
 use crate::model::CodeGraph;
@@ -62,8 +62,8 @@ pub fn save_binary(graph: &CodeGraph, path: &Path) -> Result<()> {
     }
 
     let (nodes, live_nodes) = build_wire_nodes(graph, &file_to_idx);
-    let live_edges = u32::try_from(graph.edges.iter().filter(|e| !e.is_tombstone()).count())
-        .unwrap_or(u32::MAX);
+    let live_edges =
+        u32::try_from(graph.edges.iter().filter(|e| !e.is_tombstone()).count()).unwrap_or(u32::MAX);
     let file_count = u32::try_from(files.len()).unwrap_or(u32::MAX);
 
     let wire = GraphWire {
@@ -73,12 +73,8 @@ pub fn save_binary(graph: &CodeGraph, path: &Path) -> Result<()> {
         edges: graph.edges.clone(),
         externals: graph.externals.clone(),
     };
-    let header = encode_header(GraphHeader {
-        version: GRAPH_VERSION,
-        live_nodes,
-        live_edges,
-        file_count,
-    });
+    let header =
+        encode_header(GraphHeader { version: GRAPH_VERSION, live_nodes, live_edges, file_count });
     let mut bytes = Vec::with_capacity(HEADER_LEN + graph.nodes.len() * 32 + graph.edges.len() * 8);
     bytes.extend_from_slice(&header);
     postcard::to_io(&wire, &mut bytes).context("failed to serialize code graph to postcard")?;
@@ -87,8 +83,8 @@ pub fn save_binary(graph: &CodeGraph, path: &Path) -> Result<()> {
 
 /// Loads a `CodeGraph` from compact `postcard` binary storage and rebuilds fast indexes.
 pub fn load_binary(path: &Path) -> Result<CodeGraph> {
-    let bytes =
-        fs::read(path).with_context(|| format!("failed to read binary graph {}", path.display()))?;
+    let bytes = fs::read(path)
+        .with_context(|| format!("failed to read binary graph {}", path.display()))?;
     let _header = parse_header(&bytes)?;
     let wire: GraphWire = postcard::from_bytes(&bytes[HEADER_LEN..])
         .context("failed to deserialize binary code graph")?;

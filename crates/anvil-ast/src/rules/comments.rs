@@ -22,9 +22,7 @@ pub fn check_comment_node(node: Node<'_>, state: &mut RuleState<'_>) {
 }
 
 fn check_markers(node: Node<'_>, text: &str, state: &mut RuleState<'_>) {
-    let Some(re) = MARKER_RE
-        .get_or_init(|| Regex::new(r"\b(TODO|FIXME|HACK|XXX)\b").ok())
-        .as_ref()
+    let Some(re) = MARKER_RE.get_or_init(|| Regex::new(r"\b(TODO|FIXME|HACK|XXX)\b").ok()).as_ref()
     else {
         return;
     };

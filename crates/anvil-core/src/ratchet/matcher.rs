@@ -12,11 +12,7 @@ pub(super) fn matches_target(rel_path: &str, file_globs: &[String], languages: &
 }
 
 fn matches_language(rel_path: &str, languages: &[String]) -> bool {
-    let ext = rel_path
-        .rsplit('.')
-        .next()
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let ext = rel_path.rsplit('.').next().map(str::to_ascii_lowercase).unwrap_or_default();
     if ext.is_empty() || !rel_path.contains('.') {
         return false;
     }
@@ -63,8 +59,7 @@ fn match_segments(pat: &[&str], path: &[&str]) -> bool {
     match (pat.first(), path.first()) {
         (None, None) => true,
         (Some(&"**"), _) => {
-            match_segments(&pat[1..], path)
-                || (!path.is_empty() && match_segments(pat, &path[1..]))
+            match_segments(&pat[1..], path) || (!path.is_empty() && match_segments(pat, &path[1..]))
         }
         (Some(p), Some(s)) => {
             wildcard_match(p.as_bytes(), s.as_bytes()) && match_segments(&pat[1..], &path[1..])
@@ -169,7 +164,11 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
 }
 
-pub(super) fn is_match_in_comment_or_string(rel_path: &str, line: &str, match_start: usize) -> bool {
+pub(super) fn is_match_in_comment_or_string(
+    rel_path: &str,
+    line: &str,
+    match_start: usize,
+) -> bool {
     let bytes = line.as_bytes();
     let limit = match_start.min(bytes.len());
     let allow_hash = uses_hash_comments(rel_path);
@@ -226,11 +225,7 @@ fn uses_hash_comments(rel_path: &str) -> bool {
     ) {
         return true;
     }
-    let ext = rel_path
-        .rsplit('.')
-        .next()
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let ext = rel_path.rsplit('.').next().map(str::to_ascii_lowercase).unwrap_or_default();
     matches!(
         ext.as_str(),
         "py" | "pyi"
@@ -250,11 +245,7 @@ fn uses_hash_comments(rel_path: &str) -> bool {
 }
 
 fn uses_dash_comments(rel_path: &str) -> bool {
-    let ext = rel_path
-        .rsplit('.')
-        .next()
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let ext = rel_path.rsplit('.').next().map(str::to_ascii_lowercase).unwrap_or_default();
     matches!(ext.as_str(), "sql" | "lua" | "hs")
 }
 

@@ -81,8 +81,7 @@ fn extract_diff_path(header: &str, chunk: &str) -> Option<String> {
             return Some(rest[..mid].replace('\\', "/"));
         }
     }
-    rest.rsplit_once(" b/")
-        .map(|(_, b)| b.replace('\\', "/"))
+    rest.rsplit_once(" b/").map(|(_, b)| b.replace('\\', "/"))
 }
 
 /// Inclusive 1-based line ranges added to each file, keyed by repository-relative path.

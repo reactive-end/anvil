@@ -29,11 +29,7 @@ impl OutputParser for PhpParser {
 
     fn parse(&self, _command: &str, exit_code: i32, raw_output: &str) -> CompressedOutput {
         if exit_code == 0 {
-            return pass_output(
-                self.name(),
-                exit_code,
-                "PASS (php): checks passed".to_owned(),
-            );
+            return pass_output(self.name(), exit_code, "PASS (php): checks passed".to_owned());
         }
 
         let mut lines = collect_php_diagnostic_lines(raw_output);
@@ -46,13 +42,7 @@ impl OutputParser for PhpParser {
                 .collect();
         }
         let total = lines.len();
-        fail_output(
-            self.name(),
-            exit_code,
-            format!("FAIL (php): {total} issue(s)"),
-            lines,
-            total,
-        )
+        fail_output(self.name(), exit_code, format!("FAIL (php): {total} issue(s)"), lines, total)
     }
 }
 
@@ -106,9 +96,6 @@ fn is_important_php_diagnostic(line: &str) -> bool {
         || line.starts_with("Tests:")
         || line.starts_with("[ERROR]")
         || line.contains(") ")
-            && line
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_digit())
+            && line.chars().next().is_some_and(|c| c.is_ascii_digit())
             && line.contains("::")
 }

@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use anvil_core::config::AnvilConfig;
 use anvil_core::traits::{Diagnostic, FileAstFacts, Language};
+use anyhow::{Context, Result};
 use tree_sitter::Node;
 
 use crate::rules::{self, RuleState};
@@ -61,12 +61,7 @@ pub fn analyze_sfc(
         );
         symbols.extend(facts.symbols);
         edges.extend(facts.edges);
-        diagnostics.extend(
-            facts
-                .diagnostics
-                .into_iter()
-                .filter(|d| d.rule != "root-hygiene"),
-        );
+        diagnostics.extend(facts.diagnostics.into_iter().filter(|d| d.rule != "root-hygiene"));
     }
 
     collect_template_comment_diagnostics(
@@ -93,15 +88,9 @@ pub fn analyze_sfc(
 }
 
 fn resolve_sfc_language(blocks: &[SfcBlock], is_astro: bool) -> Language {
-    let has_ts = is_astro
-        || blocks
-            .iter()
-            .any(|b| matches!(b.lang, Language::TypeScript | Language::Tsx));
-    if has_ts {
-        Language::TypeScript
-    } else {
-        Language::JavaScript
-    }
+    let has_ts =
+        is_astro || blocks.iter().any(|b| matches!(b.lang, Language::TypeScript | Language::Tsx));
+    if has_ts { Language::TypeScript } else { Language::JavaScript }
 }
 
 fn extract_blocks(source: &str, is_astro: bool) -> Vec<SfcBlock> {
@@ -116,9 +105,7 @@ fn extract_blocks(source: &str, is_astro: bool) -> Vec<SfcBlock> {
     let bytes = source.as_bytes();
     while i < bytes.len() {
         if source[i..].starts_with("<!--") {
-            i = source[i + 4..]
-                .find("-->")
-                .map_or(bytes.len(), |rel| i + 4 + rel + 3);
+            i = source[i + 4..].find("-->").map_or(bytes.len(), |rel| i + 4 + rel + 3);
             continue;
         }
         if bytes[i] == b'<'
@@ -138,9 +125,7 @@ fn extract_blocks(source: &str, is_astro: bool) -> Vec<SfcBlock> {
 
 fn extract_astro_frontmatter(source: &str) -> Option<(SfcBlock, usize)> {
     let first_nl = source.find('\n')?;
-    let first_line = source[..first_nl]
-        .trim_end_matches('\r')
-        .trim_end_matches([' ', '\t']);
+    let first_line = source[..first_nl].trim_end_matches('\r').trim_end_matches([' ', '\t']);
     if first_line != "---" {
         return None;
     }
@@ -148,18 +133,10 @@ fn extract_astro_frontmatter(source: &str) -> Option<(SfcBlock, usize)> {
     let fm_start = first_nl + 1;
     let mut pos = fm_start;
     while pos <= source.len() {
-        let line_end = source[pos..]
-            .find('\n')
-            .map_or(source.len(), |rel| pos + rel);
-        let line = source[pos..line_end]
-            .trim_end_matches('\r')
-            .trim_end_matches([' ', '\t']);
+        let line_end = source[pos..].find('\n').map_or(source.len(), |rel| pos + rel);
+        let line = source[pos..line_end].trim_end_matches('\r').trim_end_matches([' ', '\t']);
         if line == "---" {
-            let mask_end = if line_end < source.len() {
-                line_end + 1
-            } else {
-                line_end
-            };
+            let mask_end = if line_end < source.len() { line_end + 1 } else { line_end };
             let block = SfcBlock {
                 lang: Language::TypeScript,
                 content_start: fm_start,
@@ -241,10 +218,7 @@ fn find_close_tag(source: &str, start: usize, is_script: bool) -> Option<(usize,
     while let Some(rel) = source[pos..].find('<') {
         let lt_pos = pos + rel;
         let tail = &source[lt_pos..];
-        if tail
-            .get(..target_len)
-            .is_some_and(|p| p.eq_ignore_ascii_case(target))
-        {
+        if tail.get(..target_len).is_some_and(|p| p.eq_ignore_ascii_case(target)) {
             let mut cursor = lt_pos + target_len;
             let bytes = source.as_bytes();
             while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
@@ -387,14 +361,8 @@ fn collect_template_comment_diagnostics(
         return Ok(());
     };
     let root = tree.root_node();
-    let mut state = RuleState::new(
-        normalized_file,
-        path,
-        &masked,
-        Language::Html,
-        config,
-        Some(root),
-    );
+    let mut state =
+        RuleState::new(normalized_file, path, &masked, Language::Html, config, Some(root));
     walk_html_comments(root, &mut state);
     diagnostics.extend(state.diagnostics);
     Ok(())

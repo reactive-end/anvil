@@ -54,10 +54,8 @@ pub fn search(
          ORDER BY bm25(observations_fts, 3.0, 2.0, 1.5, 1.0, 1.0, 1.5) ASC, o.updated_at DESC
          LIMIT ?4",
     )?;
-    let rows = stmt.query_map(
-        params![fts_query, kind_filter, now_ms, limit_i64],
-        row_to_search_hit,
-    )?;
+    let rows =
+        stmt.query_map(params![fts_query, kind_filter, now_ms, limit_i64], row_to_search_hit)?;
     collect_rows(rows)
 }
 
@@ -96,13 +94,15 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Observation>> {
          WHERE id = ?1 AND (expires_at IS NULL OR expires_at > ?2)"
     );
     let mut stmt = conn.prepare_cached(&sql)?;
-    Ok(stmt
-        .query_row(params![id, now_ms], row_to_observation)
-        .optional()?)
+    Ok(stmt.query_row(params![id, now_ms], row_to_observation).optional()?)
 }
 
 /// Returns compact recent decisions, gotchas, domain rules, and active sessions within `max_tokens`.
-pub fn session_context(conn: &Connection, max_tokens: usize, now_ms: i64) -> Result<Vec<SearchHit>> {
+pub fn session_context(
+    conn: &Connection,
+    max_tokens: usize,
+    now_ms: i64,
+) -> Result<Vec<SearchHit>> {
     if max_tokens == 0 {
         return Ok(Vec::new());
     }
@@ -161,26 +161,18 @@ fn resolve_anchor(
          LIMIT 1",
     )?;
     Ok(stmt
-        .query_row(params![id_or_topic, now_ms], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
+        .query_row(params![id_or_topic, now_ms], |row| Ok((row.get(0)?, row.get(1)?)))
         .optional()?)
 }
 
-fn fetch_anchor(
-    conn: &Connection,
-    anchor_id: &str,
-    now_ms: i64,
-) -> Result<Option<TimelineEntry>> {
+fn fetch_anchor(conn: &Connection, anchor_id: &str, now_ms: i64) -> Result<Option<TimelineEntry>> {
     let mut stmt = conn.prepare_cached(
         "SELECT id, topic_key, kind, title, created_at, updated_at, freshness
          FROM observations
          WHERE id = ?1 AND (expires_at IS NULL OR expires_at > ?2)",
     )?;
     Ok(stmt
-        .query_row(params![anchor_id, now_ms], |row| {
-            row_to_timeline_entry(row, true)
-        })
+        .query_row(params![anchor_id, now_ms], |row| row_to_timeline_entry(row, true))
         .optional()?)
 }
 

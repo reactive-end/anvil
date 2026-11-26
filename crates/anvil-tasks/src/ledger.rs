@@ -42,13 +42,7 @@ pub fn sanitize_group_name(raw: &str) -> Result<String> {
     }
     let clean: String = trimmed_raw
         .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
-                c
-            } else {
-                '-'
-            }
-        })
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') { c } else { '-' })
         .collect();
     let trimmed = clean.trim_matches('-');
     if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("entries") {
@@ -71,9 +65,7 @@ pub fn validate_task_id_path(task_id: &str) -> Result<String> {
         let valid_chars = !seg.is_empty()
             && *seg != "."
             && *seg != ".."
-            && seg
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'));
+            && seg.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'));
         if !valid_chars || (idx == 0 && parts.len() == 2 && seg.eq_ignore_ascii_case("entries")) {
             bail!("invalid task ID segment `{seg}` in `{task_id}`");
         }
@@ -113,9 +105,7 @@ fn split_group_and_code(id: &str) -> (Option<&str>, &str) {
 }
 
 fn split_id_prefix_num(id: &str) -> (&str, Option<u64>) {
-    let digit_start = id
-        .rfind(|c: char| !c.is_ascii_digit())
-        .map_or(0, |i| i + 1);
+    let digit_start = id.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
     if digit_start < id.len()
         && let Ok(num) = id[digit_start..].parse::<u64>()
     {
@@ -226,8 +216,8 @@ fn next_sequential_task_id_in(repo: &Path, group: Option<&str>) -> Result<String
     };
     let mut max_num = 0u32;
     if scan_dir.is_dir() {
-        let rd =
-            fs::read_dir(&scan_dir).with_context(|| format!("failed to read {}", scan_dir.display()))?;
+        let rd = fs::read_dir(&scan_dir)
+            .with_context(|| format!("failed to read {}", scan_dir.display()))?;
         for entry in rd.flatten() {
             if let Some(name) = entry.file_name().to_str()
                 && let Some(num) = parse_short_seq_id(name)
@@ -255,13 +245,7 @@ fn sanitize_explicit_id(raw: &str) -> Result<String> {
     let clean: String = raw
         .trim()
         .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
-                c
-            } else {
-                '-'
-            }
-        })
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') { c } else { '-' })
         .collect();
     let trimmed = clean.trim_matches('-');
     if trimmed.is_empty() {
@@ -352,9 +336,7 @@ pub fn append_entry_with_details(
         timestamp: Utc::now(),
     };
 
-    let entry_path = dir
-        .join("entries")
-        .join(format!("{clean_author}-{entry_id}.json"));
+    let entry_path = dir.join("entries").join(format!("{clean_author}-{entry_id}.json"));
     if entry_path.exists() {
         bail!("immutable entry already exists at {}", entry_path.display());
     }
@@ -364,9 +346,7 @@ pub fn append_entry_with_details(
 }
 
 fn opt_trimmed(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
+    raw.map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)
 }
 
 fn normalize_steps(steps: &[String]) -> Vec<String> {
@@ -405,9 +385,8 @@ pub(crate) fn discover_task_dirs(root: &Path) -> Result<Vec<PathBuf>> {
         return Ok(Vec::new());
     }
     let mut dirs = Vec::new();
-    for entry in fs::read_dir(root)
-        .with_context(|| format!("failed to read {}", root.display()))?
-        .flatten()
+    for entry in
+        fs::read_dir(root).with_context(|| format!("failed to read {}", root.display()))?.flatten()
     {
         let p = entry.path();
         if !p.is_dir() {
@@ -476,7 +455,9 @@ pub fn migrate_legacy_task_ids(repo: &Path) -> Result<Vec<(String, String)>> {
     let lock_path = repo.join(".harness/.state/tasks-id.lock");
     let renamed = with_file_lock(&lock_path, ID_LOCK_TIMEOUT_MS, || {
         let mut legacy = collect_legacy_metas(&root)?;
-        legacy.sort_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.task_id.cmp(&b.task_id)));
+        legacy.sort_by(|a, b| {
+            a.created_at.cmp(&b.created_at).then_with(|| a.task_id.cmp(&b.task_id))
+        });
         let mut pairs = Vec::with_capacity(legacy.len());
         for meta in legacy {
             let new_id = migrate_one_legacy_dir(repo, &meta)?;
@@ -506,7 +487,9 @@ fn update_active_task_after_migration(repo: &Path, renamed: &[(String, String)])
 
 fn collect_legacy_metas(root: &Path) -> Result<Vec<TaskMeta>> {
     let mut out = Vec::new();
-    for entry in fs::read_dir(root).with_context(|| format!("failed to read {}", root.display()))?.flatten() {
+    for entry in
+        fs::read_dir(root).with_context(|| format!("failed to read {}", root.display()))?.flatten()
+    {
         let dir = entry.path();
         if !dir.is_dir() || !dir.join("meta.json").is_file() {
             continue;
@@ -571,9 +554,5 @@ fn normalize_files(files: &[String]) -> Vec<String> {
 fn truncate_chars(text: &str, max_chars: usize) -> String {
     let mut iter = text.chars();
     let taken: String = iter.by_ref().take(max_chars).collect();
-    if iter.next().is_some() {
-        format!("{taken}...")
-    } else {
-        taken
-    }
+    if iter.next().is_some() { format!("{taken}...") } else { taken }
 }

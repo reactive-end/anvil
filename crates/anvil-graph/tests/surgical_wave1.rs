@@ -42,13 +42,19 @@ fn store_read_header_returns_exact_counts_and_rejects_corrupt() {
     assert_eq!(hdr.live_edges as usize, engine.graph.edges.len());
 
     let bad_magic = root.join("bad_magic.bin");
-    fs::write(&bad_magic, b"BADMAGIC\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-        .expect("write bad magic");
+    fs::write(
+        &bad_magic,
+        b"BADMAGIC\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+    )
+    .expect("write bad magic");
     assert!(store::read_header(&bad_magic).is_err());
 
     let bad_ver = root.join("bad_ver.bin");
-    fs::write(&bad_ver, b"ANVLGRPH\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-        .expect("write bad version");
+    fs::write(
+        &bad_ver,
+        b"ANVLGRPH\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+    )
+    .expect("write bad version");
     assert!(store::read_header(&bad_ver).is_err());
 
     let truncated = root.join("truncated.bin");
@@ -89,12 +95,10 @@ fn store_recomputes_tombstones_on_reload_and_triggers_compaction() {
     assert_eq!(reloaded.tombstone_edges, engine.graph.tombstone_edges);
 
     fs::remove_file(root.join("src/c.ts")).expect("remove c.ts");
-    let _ = anvil_graph::builder::update_file(&mut reloaded, root, "src/c.ts", &AnvilConfig::default())
-        .expect("remove c.ts");
-    assert_eq!(
-        reloaded.tombstone_nodes, 0,
-        "25% tombstone compaction must trigger after reload"
-    );
+    let _ =
+        anvil_graph::builder::update_file(&mut reloaded, root, "src/c.ts", &AnvilConfig::default())
+            .expect("remove c.ts");
+    assert_eq!(reloaded.tombstone_nodes, 0, "25% tombstone compaction must trigger after reload");
 }
 
 #[test]
@@ -143,18 +147,11 @@ fn tsconfig_precedence_and_node_modules_extends() {
     let rules = TsConfigRules::load(root);
     assert_eq!(rules.base_url.as_deref(), Some(""));
 
-    let app_targets = rules
-        .paths
-        .iter()
-        .find(|(p, _)| p == "@app/*")
-        .map(|(_, t)| t.as_slice());
+    let app_targets = rules.paths.iter().find(|(p, _)| p == "@app/*").map(|(_, t)| t.as_slice());
     assert_eq!(app_targets, Some(&["src/real-app/*".to_owned()][..]));
 
-    let override_targets = rules
-        .paths
-        .iter()
-        .find(|(p, _)| p == "@override/*")
-        .map(|(_, t)| t.as_slice());
+    let override_targets =
+        rules.paths.iter().find(|(p, _)| p == "@override/*").map(|(_, t)| t.as_slice());
     assert_eq!(override_targets, Some(&["src/right/*".to_owned()][..]));
 
     assert!(rules.paths.iter().any(|(p, _)| p == "@nm/*"));
@@ -257,7 +254,8 @@ fn typecheck_filter_preserves_unattributed_and_multiline_rust_errors() {
     assert!(!global_out.passed, "unattributed compiler failure must fail: {global_out:?}");
     assert_eq!(global_out.exit_code, 2);
 
-    let rust_impacted = "error[E0308]: mismatched types\n  --> src/lib.rs:10:5\n   |\n10 |     \"bad\"\n";
+    let rust_impacted =
+        "error[E0308]: mismatched types\n  --> src/lib.rs:10:5\n   |\n10 |     \"bad\"\n";
     let rust_fail = filter_typecheck_output(
         None,
         "cargo check",
@@ -341,10 +339,7 @@ fn load_cached_rebuilds_cleanly_on_legacy_v2_header() {
     assert!(store::read_header(&bin_path).is_err());
 
     let engine = CodeGraphEngine::load_cached(root, AnvilConfig::default()).expect("rebuild v3");
-    let slice = engine
-        .read_symbol("greet", false)
-        .expect("read_symbol")
-        .expect("greet found");
+    let slice = engine.read_symbol("greet", false).expect("read_symbol").expect("greet found");
     assert_eq!(slice.start_line, 1);
     assert_eq!(slice.end_line, 3);
 }

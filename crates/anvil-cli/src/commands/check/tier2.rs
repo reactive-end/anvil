@@ -50,11 +50,7 @@ fn run_deps_audit(root: &Path, changed: &[String], full: bool) -> bool {
     let manifests: Vec<PathBuf> = if full {
         discover_manifests(root)
     } else {
-        changed
-            .iter()
-            .map(PathBuf::from)
-            .filter(|p| is_supported_manifest(p))
-            .collect()
+        changed.iter().map(PathBuf::from).filter(|p| is_supported_manifest(p)).collect()
     };
     if manifests.is_empty() {
         return false;

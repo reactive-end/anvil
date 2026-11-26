@@ -26,10 +26,8 @@ pub fn parse_cargo_toml(manifest_path: &str, content: &str) -> Result<Vec<Depend
         }
     }
 
-    if let Some(ws_deps) = root
-        .get("workspace")
-        .and_then(|w| w.get("dependencies"))
-        .and_then(TomlValue::as_table)
+    if let Some(ws_deps) =
+        root.get("workspace").and_then(|w| w.get("dependencies")).and_then(TomlValue::as_table)
     {
         collect_cargo_table(ws_deps, manifest_path, &mut seen, &mut specs);
     }
@@ -76,16 +74,13 @@ pub fn parse_crates_io_json(package: &str, body: &str) -> Result<PackageHealthIn
         latest_version
             .as_deref()
             .and_then(|ver| {
-                arr.iter()
-                    .find(|v| v.get("num").and_then(JsonValue::as_str) == Some(ver))
+                arr.iter().find(|v| v.get("num").and_then(JsonValue::as_str) == Some(ver))
             })
             .or_else(|| arr.first())
     });
 
-    let yanked = latest_ver_obj
-        .and_then(|v| v.get("yanked"))
-        .and_then(JsonValue::as_bool)
-        .unwrap_or(false);
+    let yanked =
+        latest_ver_obj.and_then(|v| v.get("yanked")).and_then(JsonValue::as_bool).unwrap_or(false);
 
     let last_publish = crate_obj
         .and_then(|c| c.get("updated_at"))
@@ -146,18 +141,10 @@ fn extract_cargo_dep(alias: &str, val: &TomlValue) -> Option<(String, Option<Str
     if table.contains_key("path") || table.contains_key("git") {
         return None;
     }
-    let version = table
-        .get("version")
-        .and_then(TomlValue::as_str)
-        .map(str::to_owned);
+    let version = table.get("version").and_then(TomlValue::as_str).map(str::to_owned);
     if table.get("workspace").and_then(TomlValue::as_bool) == Some(true) && version.is_none() {
         return None;
     }
-    let name = table
-        .get("package")
-        .and_then(TomlValue::as_str)
-        .unwrap_or(alias)
-        .trim()
-        .to_owned();
+    let name = table.get("package").and_then(TomlValue::as_str).unwrap_or(alias).trim().to_owned();
     (!name.is_empty()).then_some((name, version))
 }

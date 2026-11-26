@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_godot_bin;
 use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
+use anyhow::Result;
 
 use crate::model::CodeGraph;
 
@@ -48,10 +48,11 @@ pub(super) fn run_godot_check(
         let (proj_dir, res_rel) = resolve_godot_project_for_script(work_dir, rel);
         let res_arg = format!("res://{res_rel}");
         let mut cmd = Command::new(&godot_bin);
-        cmd.arg("--headless")
-            .arg("--path")
-            .arg(&proj_dir)
-            .args(["--check-only", "--script", &res_arg]);
+        cmd.arg("--headless").arg("--path").arg(&proj_dir).args([
+            "--check-only",
+            "--script",
+            &res_arg,
+        ]);
         run_single_godot_check(&mut cmd, &res_arg, timeout, &mut exit_code, &mut combined);
     }
 
@@ -118,11 +119,7 @@ fn walk_gd_files(dir: &Path, rel_dir: &str, out: &mut Vec<String>, limit: usize)
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        let rel = if rel_dir.is_empty() {
-            name.to_owned()
-        } else {
-            format!("{rel_dir}/{name}")
-        };
+        let rel = if rel_dir.is_empty() { name.to_owned() } else { format!("{rel_dir}/{name}") };
         if path.is_dir() {
             if !matches!(name, ".git" | ".godot" | ".harness" | "addons") {
                 walk_gd_files(&path, &rel, out, limit);

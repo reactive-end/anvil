@@ -10,10 +10,9 @@ use super::{clean_php_name, enclosing_callable};
 
 /// Handles `Route::*`, `Inertia::render`, `View::make`, and `Livewire::*` static calls.
 pub fn visit_scoped_call(node: Node<'_>, state: &mut ExtractState<'_>) {
-    let (Some(scope), Some(name_node)) = (
-        node.child_by_field_name("scope"),
-        node.child_by_field_name("name"),
-    ) else {
+    let (Some(scope), Some(name_node)) =
+        (node.child_by_field_name("scope"), node.child_by_field_name("name"))
+    else {
         return;
     };
     let scope_short = clean_php_name(state.node_text(scope));
@@ -23,7 +22,9 @@ pub fn visit_scoped_call(node: Node<'_>, state: &mut ExtractState<'_>) {
 
     match scope_tail {
         "Route" => handle_route_call(node, method, args, state),
-        "Inertia" if method == "render" => emit_template_from_first_arg(node, args, "inertia", state),
+        "Inertia" if method == "render" => {
+            emit_template_from_first_arg(node, args, "inertia", state)
+        }
         "View" if method == "make" => emit_template_from_first_arg(node, args, "blade", state),
         "Livewire" if matches!(method, "component" | "test") => {
             emit_template_from_first_arg(node, args, "livewire", state);
@@ -125,7 +126,9 @@ fn handle_route_call(
                 emit_route_handler_call(*handler, group_controller.as_deref(), line, state);
             }
         }
-        "match" => handle_match_route(&positional, &prefix, group_controller.as_deref(), line, state),
+        "match" => {
+            handle_match_route(&positional, &prefix, group_controller.as_deref(), line, state)
+        }
         "apiResource" | "resource" => {
             if let Some(resource_name) = extract_php_string(positional[0], state) {
                 emit_resource_routes(&prefix, &resource_name, method == "resource", line, state);
@@ -324,13 +327,15 @@ fn extract_chain_prefix_and_controller(
                     let m = state.node_text(name_node).trim();
                     let args = obj.child_by_field_name("arguments");
                     if m == "prefix"
-                        && let Some(a) = args.and_then(|al| collect_argument_exprs(al).into_iter().next())
+                        && let Some(a) =
+                            args.and_then(|al| collect_argument_exprs(al).into_iter().next())
                         && let Some(s) = extract_php_string(a, state)
                     {
                         prefixes.push(s);
                     } else if m == "controller"
                         && controller.is_none()
-                        && let Some(a) = args.and_then(|al| collect_argument_exprs(al).into_iter().next())
+                        && let Some(a) =
+                            args.and_then(|al| collect_argument_exprs(al).into_iter().next())
                     {
                         controller = extract_class_const(a, state);
                     }
@@ -411,9 +416,7 @@ fn collect_argument_exprs<'a>(arg_list: Node<'a>) -> Vec<Node<'a>> {
         if child.kind() == "argument" {
             let mut a_cursor = child.walk();
             // Skip optional named-argument label (`name: expr`) and pick the value expression.
-            let expr = child
-                .named_children(&mut a_cursor)
-                .last();
+            let expr = child.named_children(&mut a_cursor).last();
             if let Some(e) = expr {
                 out.push(e);
             }
@@ -436,7 +439,11 @@ fn collect_array_values<'a>(arr: Node<'a>) -> Vec<Node<'a>> {
     out
 }
 
-fn extract_array_key_string(arr: Node<'_>, wanted_key: &str, state: &ExtractState<'_>) -> Option<String> {
+fn extract_array_key_string(
+    arr: Node<'_>,
+    wanted_key: &str,
+    state: &ExtractState<'_>,
+) -> Option<String> {
     if arr.kind() != "array_creation_expression" {
         return None;
     }
@@ -450,9 +457,7 @@ fn extract_array_key_string(arr: Node<'_>, wanted_key: &str, state: &ExtractStat
         for p in child.named_children(&mut e_cursor) {
             parts.push(p);
         }
-        if parts.len() == 2
-            && extract_php_string(parts[0], state).as_deref() == Some(wanted_key)
-        {
+        if parts.len() == 2 && extract_php_string(parts[0], state).as_deref() == Some(wanted_key) {
             return extract_php_string(parts[1], state);
         }
     }
@@ -463,10 +468,7 @@ fn extract_string_array(arr: Node<'_>, state: &ExtractState<'_>) -> Vec<String> 
     if arr.kind() != "array_creation_expression" {
         return Vec::new();
     }
-    collect_array_values(arr)
-        .into_iter()
-        .filter_map(|v| extract_php_string(v, state))
-        .collect()
+    collect_array_values(arr).into_iter().filter_map(|v| extract_php_string(v, state)).collect()
 }
 
 fn extract_class_const(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {

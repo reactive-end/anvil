@@ -13,10 +13,7 @@ use protocol::{DaemonEnvelope, DaemonRequest, DaemonResponse, DaemonState};
 
 /// Returns the canonical daemon metadata path `.harness/.state/daemon.json`.
 pub fn state_path(repo_root: &Path) -> PathBuf {
-    repo_root
-        .join(".harness")
-        .join(".state")
-        .join("daemon.json")
+    repo_root.join(".harness").join(".state").join("daemon.json")
 }
 
 /// Reads persisted daemon connection metadata if present and valid.
@@ -40,10 +37,7 @@ pub fn try_request(repo_root: &Path, request: DaemonRequest) -> Option<DaemonRes
     let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
     let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
 
-    let envelope = DaemonEnvelope {
-        token: state.token,
-        request,
-    };
+    let envelope = DaemonEnvelope { token: state.token, request };
     let mut bytes = serde_json::to_vec(&envelope).ok()?;
     bytes.push(b'\n');
     stream.write_all(&bytes).ok()?;

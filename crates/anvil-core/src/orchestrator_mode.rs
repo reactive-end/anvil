@@ -62,9 +62,7 @@ pub fn set_enabled(root: &Path, enabled: bool) -> Result<()> {
 pub fn record_spawn(root: &Path, session: &str, tool_use_id: &str, paths: &[String]) -> Result<()> {
     update_state(root, |state| {
         let now = Utc::now();
-        state
-            .spawns
-            .retain(|g| g.tool_use_id != tool_use_id && is_recent(g.granted_at, now));
+        state.spawns.retain(|g| g.tool_use_id != tool_use_id && is_recent(g.granted_at, now));
         state.spawns.push(SpawnGrant {
             session: session.to_owned(),
             tool_use_id: tool_use_id.to_owned(),
@@ -117,9 +115,7 @@ pub fn grant_scope(root: &Path, session: &str, paths: &[String]) -> Result<()> {
         let now = Utc::now();
         state.scopes.retain(|g| is_live(g, now));
         for path in paths {
-            state
-                .scopes
-                .retain(|g| !(g.session == session && &g.path == path));
+            state.scopes.retain(|g| !(g.session == session && &g.path == path));
             state.scopes.push(ScopeGrant {
                 session: session.to_owned(),
                 path: path.clone(),

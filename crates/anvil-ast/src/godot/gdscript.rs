@@ -80,14 +80,7 @@ fn scan_gd_lines(source: &str) -> Vec<GdLine<'_>> {
         let raw = raw_line.strip_suffix('\r').unwrap_or(raw_line);
         let starts_in_str = in_triple.is_some();
         let (raw_code, code, comment) = scan_single_line(raw, &mut in_triple);
-        result.push(GdLine {
-            line: idx as u32 + 1,
-            raw,
-            raw_code,
-            code,
-            comment,
-            starts_in_str,
-        });
+        result.push(GdLine { line: idx as u32 + 1, raw, raw_code, code, comment, starts_in_str });
     }
     result
 }
@@ -235,6 +228,25 @@ fn extract_all(ctx: &mut GdContext<'_>) {
     }
 }
 
+/// Records a function, or a method when it sits inside an inner class; returns its name and end.
+fn push_gd_func(
+    ctx: &mut GdContext<'_>,
+    idx: usize,
+    indent: usize,
+    func_name: String,
+    inner_class: Option<&(String, usize)>,
+) -> (String, u32) {
+    let line_no = ctx.lines[idx].line;
+    let end_line = compute_block_end_line(ctx.lines, idx, indent);
+    let (kind, qualified) = match inner_class {
+        Some((cls, _)) if indent > 0 => (SymbolKind::Method, format!("{cls}.{func_name}")),
+        _ => (SymbolKind::Function, func_name.clone()),
+    };
+    let exported = !func_name.starts_with('_');
+    push_gd_symbol(ctx, func_name, qualified.clone(), kind, (line_no, end_line), exported);
+    (qualified, end_line)
+}
+
 fn extract_line_decls(
     ctx: &mut GdContext<'_>,
     idx: usize,
@@ -257,21 +269,28 @@ fn extract_line_decls(
         push_gd_symbol(ctx, name.clone(), name, SymbolKind::Class, (line.line, line.line), true);
     } else if let Some(name) = extract_after_kw(trimmed, "class") {
         let end_line = compute_block_end_line(ctx.lines, idx, indent);
-        push_gd_symbol(ctx, name.clone(), name.clone(), SymbolKind::Class, (line.line, end_line), !name.starts_with('_'));
+        push_gd_symbol(
+            ctx,
+            name.clone(),
+            name.clone(),
+            SymbolKind::Class,
+            (line.line, end_line),
+            !name.starts_with('_'),
+        );
         *inner_class = Some((name, indent));
     } else if let Some(name) = extract_after_kw(trimmed, "signal") {
         push_gd_symbol(ctx, name.clone(), name, SymbolKind::Variable, (line.line, line.line), true);
     } else if let Some(func_name) = extract_func_name(trimmed) {
-        let end_line = compute_block_end_line(ctx.lines, idx, indent);
-        let (kind, qualified) = match inner_class {
-            Some((cls, _)) if indent > 0 => (SymbolKind::Method, format!("{cls}.{func_name}")),
-            _ => (SymbolKind::Function, func_name.clone()),
-        };
-        let exported = !func_name.starts_with('_');
-        push_gd_symbol(ctx, func_name, qualified.clone(), kind, (line.line, end_line), exported);
-        *active_func = Some((qualified, end_line));
+        *active_func = Some(push_gd_func(ctx, idx, indent, func_name, inner_class.as_ref()));
     } else if let Some(var_name) = extract_export_var_name(trimmed, *prev_has_export) {
-        push_gd_symbol(ctx, var_name.clone(), var_name, SymbolKind::Variable, (line.line, line.line), true);
+        push_gd_symbol(
+            ctx,
+            var_name.clone(),
+            var_name,
+            SymbolKind::Variable,
+            (line.line, line.line),
+            true,
+        );
     }
 
     *prev_has_export = trimmed.starts_with("@export");
@@ -466,9 +485,7 @@ fn extract_preloads(ctx: &mut GdContext<'_>, line: &GdLine<'_>, source_sym: Opti
 }
 
 fn extract_connects(ctx: &mut GdContext<'_>, line: &GdLine<'_>, source_sym: Option<&str>) {
-    let Some(re) = CONNECT_RE
-        .get_or_init(|| Regex::new(r"\.connect\s*\(([^)]+)\)").ok())
-        .as_ref()
+    let Some(re) = CONNECT_RE.get_or_init(|| Regex::new(r"\.connect\s*\(([^)]+)\)").ok()).as_ref()
     else {
         return;
     };
@@ -547,8 +564,7 @@ fn run_all_rules(ctx: &mut GdContext<'_>) {
 }
 
 fn starts_with_kw(s: &str, kw: &str) -> bool {
-    s.strip_prefix(kw)
-        .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+    s.strip_prefix(kw).is_some_and(|rest| rest.starts_with(char::is_whitespace))
 }
 
 fn has_named_func_paren(stmt: &str) -> bool {
@@ -580,9 +596,7 @@ fn check_tabs_only(ctx: &mut GdContext<'_>, line: &GdLine<'_>) {
 
 fn check_todo_comment(ctx: &mut GdContext<'_>, line: &GdLine<'_>) {
     let Some(comment) = line.comment else { return };
-    let Some(re) = TODO_RE
-        .get_or_init(|| Regex::new(r"\b(TODO|FIXME|HACK|XXX)\b").ok())
-        .as_ref()
+    let Some(re) = TODO_RE.get_or_init(|| Regex::new(r"\b(TODO|FIXME|HACK|XXX)\b").ok()).as_ref()
     else {
         return;
     };
@@ -641,7 +655,10 @@ fn check_gd3_keywords(ctx: &mut GdContext<'_>, line: &GdLine<'_>) {
 fn check_gd3_calls(ctx: &mut GdContext<'_>, line: &GdLine<'_>) {
     let Some(re) = GD3_CALL_RE
         .get_or_init(|| {
-            Regex::new(r"(\.instance\s*\(|\byield\s*\(|\bdeg2rad\s*\(|\brad2deg\s*\(|\brand_range\s*\()").ok()
+            Regex::new(
+                r"(\.instance\s*\(|\byield\s*\(|\bdeg2rad\s*\(|\brad2deg\s*\(|\brand_range\s*\()",
+            )
+            .ok()
         })
         .as_ref()
     else {
@@ -754,7 +771,8 @@ fn check_var_and_velocity(ctx: &mut GdContext<'_>, line: &GdLine<'_>) {
             Severity::Error,
             ctx.file,
             (line.line, col),
-            "Do not redeclare `var velocity` in a CharacterBody2D/CharacterBody3D script".to_owned(),
+            "Do not redeclare `var velocity` in a CharacterBody2D/CharacterBody3D script"
+                .to_owned(),
             Some("Use the built-in `velocity` property directly"),
         );
     }
@@ -775,9 +793,9 @@ fn check_var_type_annotation(
     let rest = rest_raw.trim_start();
     if let Some(after_inferred) = rest.strip_prefix(":=") {
         let rhs = after_inferred.trim_start();
-        let is_null = rhs.strip_prefix("null").is_some_and(|tail| {
-            tail.is_empty() || !is_ident_char(tail.as_bytes()[0])
-        });
+        let is_null = rhs
+            .strip_prefix("null")
+            .is_some_and(|tail| tail.is_empty() || !is_ident_char(tail.as_bytes()[0]));
         if is_null {
             push_typing_diag(
                 ctx,
@@ -814,7 +832,8 @@ fn check_var_type_annotation(
 fn check_func_typing(ctx: &mut GdContext<'_>, start_idx: usize) -> usize {
     let func_line = ctx.lines[start_idx].line;
     let (params, ret_tail, next_idx) = collect_func_header(ctx.lines, start_idx);
-    let func_allowed = has_godot_allow(&ctx.comments, func_line, "godot4-static-typing", ctx.config);
+    let func_allowed =
+        has_godot_allow(&ctx.comments, func_line, "godot4-static-typing", ctx.config);
 
     if !func_allowed {
         for (param_line, param_text) in params {

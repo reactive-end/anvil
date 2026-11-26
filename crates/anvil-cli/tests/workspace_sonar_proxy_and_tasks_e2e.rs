@@ -23,7 +23,12 @@ fn run_anvil(cwd: &Path, args: &[&str]) -> Output {
         .expect("run anvil")
 }
 
-fn run_anvil_stdin_env(cwd: &Path, args: &[&str], stdin_data: &str, envs: &[(&str, &str)]) -> Output {
+fn run_anvil_stdin_env(
+    cwd: &Path,
+    args: &[&str],
+    stdin_data: &str,
+    envs: &[(&str, &str)],
+) -> Output {
     let mut cmd = Command::new(anvil_bin());
     cmd.args(args)
         .current_dir(cwd)
@@ -55,7 +60,11 @@ fn setup_git_ts_repo() -> TempDir {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     Command::new("git").args(["init"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.email", "dev@example.com"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "dev@example.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
     Command::new("git").args(["config", "user.name", "Dev"]).current_dir(root).output().unwrap();
     fs::write(root.join("package.json"), r#"{"name":"p5-demo","version":"1.0.0"}"#).unwrap();
     fs::create_dir_all(root.join("src")).unwrap();
@@ -80,7 +89,8 @@ fn init_thin_umbrella_layout_avoids_root_state_and_sets_subrepo_mcp() {
     .unwrap();
 
     // Prompts: layout [2], backend Sonar [y -> default URL], frontend Sonar [n].
-    let out = run_anvil_stdin_env(root, &["init"], "2\ny\n\nn\n", &[("ANVIL_INIT_FORCE_PROMPT", "1")]);
+    let out =
+        run_anvil_stdin_env(root, &["init"], "2\ny\n\nn\n", &[("ANVIL_INIT_FORCE_PROMPT", "1")]);
     let stdout = assert_ok(&out, "interactive thin umbrella init");
     assert!(stdout.contains("How should Anvil manage this workspace?"));
     assert!(stdout.contains("Does subproject `backend` use SonarQube?"));
@@ -89,12 +99,20 @@ fn init_thin_umbrella_layout_avoids_root_state_and_sets_subrepo_mcp() {
     assert!(!root.join("tasks.json").exists(), "thin umbrella must NOT create root tasks.json");
     assert!(root.join("AGENTS.md").is_file());
 
-    let mcp_cfg: Value = serde_json::from_str(&fs::read_to_string(root.join(".agents/mcp_config.json")).unwrap()).unwrap();
+    let mcp_cfg: Value =
+        serde_json::from_str(&fs::read_to_string(root.join(".agents/mcp_config.json")).unwrap())
+            .unwrap();
     assert!(mcp_cfg["mcpServers"]["anvil-backend"].is_object());
     assert!(mcp_cfg["mcpServers"]["anvil-frontend"].is_object());
 
-    let be_cfg: Value = serde_json::from_str(&fs::read_to_string(root.join("backend/.harness/config.json")).unwrap()).unwrap();
-    let fe_cfg: Value = serde_json::from_str(&fs::read_to_string(root.join("frontend/.harness/config.json")).unwrap()).unwrap();
+    let be_cfg: Value = serde_json::from_str(
+        &fs::read_to_string(root.join("backend/.harness/config.json")).unwrap(),
+    )
+    .unwrap();
+    let fe_cfg: Value = serde_json::from_str(
+        &fs::read_to_string(root.join("frontend/.harness/config.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(be_cfg["sonar"]["enabled"], json!(true));
     assert_eq!(be_cfg["sonar"]["project_key"], json!("be-key"));
     assert_eq!(fe_cfg["sonar"]["enabled"], json!(false));
@@ -107,21 +125,30 @@ fn init_monorepo_layout_keeps_single_harness_at_root() {
     fs::create_dir_all(mroot.join("backend/src")).unwrap();
     fs::create_dir_all(mroot.join("frontend/src")).unwrap();
     fs::write(mroot.join("backend/package.json"), r#"{"name":"be","version":"1.0.0"}"#).unwrap();
-    fs::write(mroot.join("backend/sonar-project.properties"), "sonar.projectKey=be-mono\n").unwrap();
+    fs::write(mroot.join("backend/sonar-project.properties"), "sonar.projectKey=be-mono\n")
+        .unwrap();
     fs::write(
         mroot.join("frontend/package.json"),
         r#"{"name":"fe","dependencies":{"react":"18.0.0"}}"#,
     )
     .unwrap();
 
-    let mono_out = run_anvil_stdin_env(mroot, &["init"], "1\nn\ny\n\nn\n", &[("ANVIL_INIT_FORCE_PROMPT", "1")]);
+    let mono_out = run_anvil_stdin_env(
+        mroot,
+        &["init"],
+        "1\nn\ny\n\nn\n",
+        &[("ANVIL_INIT_FORCE_PROMPT", "1")],
+    );
     assert_ok(&mono_out, "interactive monorepo init");
     assert!(mroot.join(".harness/config.json").is_file());
     assert!(mroot.join("tasks.json").is_file());
     assert!(!mroot.join("backend/.harness").exists());
     assert!(!mroot.join("frontend/.harness").exists());
-    let root_cfg: Value = serde_json::from_str(&fs::read_to_string(mroot.join(".harness/config.json")).unwrap()).unwrap();
-    let be_sub = root_cfg["subrepos"].as_array().unwrap().iter().find(|s| s["path"] == "backend").unwrap();
+    let root_cfg: Value =
+        serde_json::from_str(&fs::read_to_string(mroot.join(".harness/config.json")).unwrap())
+            .unwrap();
+    let be_sub =
+        root_cfg["subrepos"].as_array().unwrap().iter().find(|s| s["path"] == "backend").unwrap();
     assert_eq!(be_sub["sonar_enabled"], json!(true));
 }
 
@@ -205,7 +232,10 @@ fn checkpoints_worktrees_specs_and_trajectory_stats_work() {
 
     // Code exec + trajectories stats.
     let code_out = assert_ok(
-        &run_anvil(root, &["code", "exec", "return anvil.graph_query({ term: 'app', limit: 3 }).count;"]),
+        &run_anvil(
+            root,
+            &["code", "exec", "return anvil.graph_query({ term: 'app', limit: 3 }).count;"],
+        ),
         "code exec",
     );
     let parsed: Value = serde_json::from_str(&code_out).unwrap();
@@ -326,16 +356,27 @@ fn grouped_task_imports_keep_identical_ids_isolated() {
         r#"{"project":"llm","features":[{"id":"F001","name":"LLM F1","verify":null,"status":"not_started","evidence":"dev"}]}"#,
     )
     .unwrap();
-    assert_ok(&run_anvil(root, &["tasks", "import", "avatar_features.json", "--group", "avatar"]), "import avatar");
-    assert_ok(&run_anvil(root, &["tasks", "import", "llm_features.json", "--group", "llm"]), "import llm");
+    assert_ok(
+        &run_anvil(root, &["tasks", "import", "avatar_features.json", "--group", "avatar"]),
+        "import avatar",
+    );
+    assert_ok(
+        &run_anvil(root, &["tasks", "import", "llm_features.json", "--group", "llm"]),
+        "import llm",
+    );
 
-    let avatar_list = assert_ok(&run_anvil(root, &["tasks", "list", "--group", "avatar"]), "list avatar");
+    let avatar_list =
+        assert_ok(&run_anvil(root, &["tasks", "list", "--group", "avatar"]), "list avatar");
     assert!(avatar_list.contains("avatar/F001 [not_started] AVATAR F1 [verify]"));
     assert!(!avatar_list.contains("llm/F001"));
 
-    let verify_grp = assert_ok(&run_anvil(root, &["tasks", "verify", "avatar/F001", "--record"]), "verify avatar");
+    let verify_grp = assert_ok(
+        &run_anvil(root, &["tasks", "verify", "avatar/F001", "--record"]),
+        "verify avatar",
+    );
     assert!(verify_grp.contains("PASS avatar/F001"));
-    let exp_av = assert_ok(&run_anvil(root, &["tasks", "export", "--group", "avatar"]), "export avatar");
+    let exp_av =
+        assert_ok(&run_anvil(root, &["tasks", "export", "--group", "avatar"]), "export avatar");
     let av_val: Value = serde_json::from_str(&exp_av).unwrap();
     assert_eq!(av_val["features"][0]["id"], json!("F001"));
     assert_eq!(av_val["features"][0]["status"], json!("done"));
@@ -352,7 +393,10 @@ fn task_progress_resume_and_session_start_lifecycle_e2e() {
         r#"{"project":"core","features":[{"id":"F001","name":"Core discount rule","behavior":"Add volume discount","verify":"echo discount_ok","status":"not_started"}]}"#,
     )
     .unwrap();
-    assert_ok(&run_anvil(root, &["tasks", "import", "core_features.json", "--group", "core"]), "import");
+    assert_ok(
+        &run_anvil(root, &["tasks", "import", "core_features.json", "--group", "core"]),
+        "import",
+    );
     let started = assert_ok(&run_anvil(root, &["tasks", "start", "core/F001"]), "start existing");
     assert!(started.contains("started existing task core/F001"));
     assert!(root.join(".harness/tasks/core/F001/progress.md").is_file());
@@ -378,7 +422,12 @@ fn task_progress_resume_and_session_start_lifecycle_e2e() {
     assert!(updated.contains("progress=.harness/tasks/core/F001/progress.md"));
 
     let hook_out = assert_ok(
-        &run_anvil_stdin_env(root, &["hook", "SessionStart", "--adapter", "antigravity"], "{}", &[]),
+        &run_anvil_stdin_env(
+            root,
+            &["hook", "SessionStart", "--adapter", "antigravity"],
+            "{}",
+            &[],
+        ),
         "session start",
     );
     assert!(hook_out.contains("core/F001"));
@@ -389,6 +438,7 @@ fn task_progress_resume_and_session_start_lifecycle_e2e() {
     assert!(resumed.contains("Added discount helper"));
     assert!(resumed.contains("Wire subtotal; Run verify"));
 
-    let verified = assert_ok(&run_anvil(root, &["tasks", "verify", "core/F001", "--record"]), "verify");
+    let verified =
+        assert_ok(&run_anvil(root, &["tasks", "verify", "core/F001", "--record"]), "verify");
     assert!(verified.contains("PASS core/F001"));
 }

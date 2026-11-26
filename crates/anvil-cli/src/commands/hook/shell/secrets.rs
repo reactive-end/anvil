@@ -5,29 +5,78 @@ use super::expand::{Invocation, is_search_command, string_literals};
 
 const READ_DESCRIPTION: &str = "reading or copying a secret/credential file from shell";
 
-const SAFE_ENV_TEMPLATES: &[&str] = &[
-    ".env.example", ".env.sample", ".env.template", ".env.dist", ".env.schema",
-];
+const SAFE_ENV_TEMPLATES: &[&str] =
+    &[".env.example", ".env.sample", ".env.template", ".env.dist", ".env.schema"];
 const SECRET_NAMES: &[&str] = &[
-    ".env", ".env*", ".npmrc", ".pypirc", ".netrc", ".git-credentials", "credentials.json",
-    "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+    ".env",
+    ".env*",
+    ".npmrc",
+    ".pypirc",
+    ".netrc",
+    ".git-credentials",
+    "credentials.json",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
 ];
 const SECRET_EXTENSIONS: &[&str] = &[".pem", ".key", ".p12", ".pfx", ".jks", ".keystore"];
 const SECRET_SUFFIX_PATHS: &[&str] = &[".aws/credentials", ".kube/config", ".docker/config.json"];
 
 const READERS: &[&str] = &[
-    "cat", "tac", "nl", "bat", "type", "get-content", "gc", "head", "tail", "less", "more", "sed",
-    "awk", "gawk", "perl", "base64", "xxd", "od", "hexdump", "strings", "cut", "sort", "uniq", "jq",
-    "yq", "paste", "diff", "cmp", "curl", "wget", "scp", "rsync", "zip", "tar", "gzip", "openssl",
-    "dd", "import-csv", "source", ".",
+    "cat",
+    "tac",
+    "nl",
+    "bat",
+    "type",
+    "get-content",
+    "gc",
+    "head",
+    "tail",
+    "less",
+    "more",
+    "sed",
+    "awk",
+    "gawk",
+    "perl",
+    "base64",
+    "xxd",
+    "od",
+    "hexdump",
+    "strings",
+    "cut",
+    "sort",
+    "uniq",
+    "jq",
+    "yq",
+    "paste",
+    "diff",
+    "cmp",
+    "curl",
+    "wget",
+    "scp",
+    "rsync",
+    "zip",
+    "tar",
+    "gzip",
+    "openssl",
+    "dd",
+    "import-csv",
+    "source",
+    ".",
 ];
-const COPIERS: &[&str] = &[
-    "cp", "copy", "mv", "move", "copy-item", "cpi", "move-item", "mi", "ln",
-];
+const COPIERS: &[&str] = &["cp", "copy", "mv", "move", "copy-item", "cpi", "move-item", "mi", "ln"];
 const EXPRESSION_FIRST: &[&str] = &["sed", "awk", "gawk", "jq", "yq", "perl"];
 const CODE_READ_MARKERS: &[&str] = &[
-    "open(", "read_text", "read_bytes", "readFile", "File.read", "IO.read", "file_get_contents",
-    "readlines", "createReadStream",
+    "open(",
+    "read_text",
+    "read_bytes",
+    "readFile",
+    "File.read",
+    "IO.read",
+    "file_get_contents",
+    "readlines",
+    "createReadStream",
 ];
 
 /// Returns `true` when `path` names a file that usually holds credentials.
@@ -42,9 +91,7 @@ pub fn is_secret_file(path: &str) -> bool {
         || SECRET_EXTENSIONS
             .iter()
             .any(|ext| name.strip_suffix(ext).is_some_and(|stem| !stem.is_empty()))
-        || SECRET_SUFFIX_PATHS
-            .iter()
-            .any(|suffix| norm.ends_with(suffix))
+        || SECRET_SUFFIX_PATHS.iter().any(|suffix| norm.ends_with(suffix))
 }
 
 /// Describes why `inv` exposes a secret file, or `None` when it does not.
@@ -70,11 +117,7 @@ fn secret_operands(inv: &Invocation) -> Vec<&str> {
             _ => Vec::new(),
         };
     }
-    let operands = inv
-        .args
-        .iter()
-        .map(String::as_str)
-        .filter(|a| !a.starts_with('-'));
+    let operands = inv.args.iter().map(String::as_str).filter(|a| !a.starts_with('-'));
     if COPIERS.contains(&name) {
         let mut sources: Vec<&str> = operands.collect();
         if sources.len() > 1 {

@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_adapters::sync;
 use anvil_core::config::{AdapterTarget, AnvilConfig};
+use anyhow::Result;
 
 use crate::ui;
 

@@ -22,9 +22,7 @@ fn enclosing_class(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> {
     let mut cur = node.parent();
     while let Some(parent) = cur {
         if parent.kind() == "class_definition" {
-            return parent
-                .child_by_field_name("name")
-                .map(|n| state.node_text(n).to_owned());
+            return parent.child_by_field_name("name").map(|n| state.node_text(n).to_owned());
         }
         cur = parent.parent();
     }
@@ -71,7 +69,9 @@ fn extract_function(node: Node<'_>, state: &mut ExtractState<'_>) {
 }
 
 fn extract_route_decorators(fn_node: Node<'_>, qualified_fn: &str, state: &mut ExtractState<'_>) {
-    let Some(parent) = fn_node.parent() else { return };
+    let Some(parent) = fn_node.parent() else {
+        return;
+    };
     if parent.kind() != "decorated_definition" {
         return;
     }
@@ -85,18 +85,28 @@ fn extract_route_decorators(fn_node: Node<'_>, qualified_fn: &str, state: &mut E
 }
 
 fn emit_python_decorator_route(dec: Node<'_>, qualified_fn: &str, state: &mut ExtractState<'_>) {
-    let Some(call) = dec.named_child(0) else { return };
+    let Some(call) = dec.named_child(0) else {
+        return;
+    };
     if call.kind() != "call" {
         return;
     }
-    let Some(fn_expr) = call.child_by_field_name("function") else { return };
+    let Some(fn_expr) = call.child_by_field_name("function") else {
+        return;
+    };
     if fn_expr.kind() != "attribute" {
         return;
     }
-    let Some(attr) = fn_expr.child_by_field_name("attribute") else { return };
+    let Some(attr) = fn_expr.child_by_field_name("attribute") else {
+        return;
+    };
     let attr_name = state.node_text(attr).trim();
-    let Some(args) = call.child_by_field_name("arguments") else { return };
-    let Some(path) = extract_python_route_path(args, state) else { return };
+    let Some(args) = call.child_by_field_name("arguments") else {
+        return;
+    };
+    let Some(path) = extract_python_route_path(args, state) else {
+        return;
+    };
     if !path.starts_with('/') {
         return;
     }
@@ -121,12 +131,7 @@ fn emit_python_decorator_route(dec: Node<'_>, qualified_fn: &str, state: &mut Ex
     let line = ExtractState::line_of(dec);
     for method in methods {
         if let Some(target) = normalize_route_target(&method, &path) {
-            state.push_edge(
-                Some(qualified_fn.to_owned()),
-                target,
-                EdgeKind::ExposesRoute,
-                line,
-            );
+            state.push_edge(Some(qualified_fn.to_owned()), target, EdgeKind::ExposesRoute, line);
         }
     }
 }
@@ -156,11 +161,15 @@ fn extract_python_methods_kwarg(args: Node<'_>, state: &ExtractState<'_>) -> Vec
         if arg.kind() != "keyword_argument" {
             continue;
         }
-        let Some(k) = arg.child_by_field_name("name") else { continue };
+        let Some(k) = arg.child_by_field_name("name") else {
+            continue;
+        };
         if state.node_text(k).trim() != "methods" {
             continue;
         }
-        let Some(v) = arg.child_by_field_name("value") else { continue };
+        let Some(v) = arg.child_by_field_name("value") else {
+            continue;
+        };
         if !matches!(v.kind(), "list" | "tuple" | "set") {
             continue;
         }
@@ -178,9 +187,7 @@ fn extract_python_methods_kwarg(args: Node<'_>, state: &ExtractState<'_>) -> Vec
 }
 
 fn unquote_python_string(raw: &str) -> String {
-    let stripped = raw
-        .trim()
-        .trim_start_matches(['f', 'F', 'r', 'R', 'u', 'U', 'b', 'B']);
+    let stripped = raw.trim().trim_start_matches(['f', 'F', 'r', 'R', 'u', 'U', 'b', 'B']);
     ExtractState::unquote(stripped).trim().to_owned()
 }
 
@@ -217,10 +224,5 @@ fn extract_call(node: Node<'_>, state: &mut ExtractState<'_>) {
         return;
     };
     let callee = state.node_text(fn_node).trim().to_owned();
-    state.push_edge(
-        None,
-        callee,
-        EdgeKind::Calls,
-        ExtractState::line_of(node),
-    );
+    state.push_edge(None, callee, EdgeKind::Calls, ExtractState::line_of(node));
 }

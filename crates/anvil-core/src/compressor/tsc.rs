@@ -63,7 +63,9 @@ impl OutputParser for TscParser {
 }
 
 fn command_has_tool_token(command: &str, tools: &[&str]) -> bool {
-    for raw_tok in command.split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')')) {
+    for raw_tok in
+        command.split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')'))
+    {
         let tok = raw_tok.trim_matches(|c| c == '"' || c == '\'');
         if tok.is_empty() {
             continue;

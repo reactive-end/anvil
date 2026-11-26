@@ -96,8 +96,7 @@ CREATE TABLE IF NOT EXISTS ingested_chunks (
 
 /// Applies performance-tuned SQLite pragmas (WAL, NORMAL sync, memory temp store, mmap).
 pub fn apply_pragmas(conn: &Connection) -> Result<()> {
-    conn.execute_batch(PRAGMAS_SQL)
-        .context("failed to apply SQLite performance pragmas")
+    conn.execute_batch(PRAGMAS_SQL).context("failed to apply SQLite performance pragmas")
 }
 
 /// Initializes tables, indexes, FTS5 virtual table, and sync triggers idempotently.
@@ -117,14 +116,12 @@ pub fn init_schema(conn: &mut Connection) -> Result<()> {
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .context("failed to re-read SQLite user_version")?;
     if current_version < CURRENT_SCHEMA_VERSION {
-        tx.execute_batch(SCHEMA_SQL)
-            .context("failed to initialize anvil-memory SQLite schema")?;
+        tx.execute_batch(SCHEMA_SQL).context("failed to initialize anvil-memory SQLite schema")?;
         migrate_v3_columns(&tx)?;
         tx.execute_batch(&format!("PRAGMA user_version = {CURRENT_SCHEMA_VERSION};"))
             .context("failed to update SQLite user_version")?;
     }
-    tx.commit()
-        .context("failed to commit anvil-memory schema transaction")
+    tx.commit().context("failed to commit anvil-memory schema transaction")
 }
 
 fn migrate_v3_columns(tx: &rusqlite::Transaction<'_>) -> Result<()> {
@@ -147,10 +144,8 @@ fn add_column_if_missing(
 ) -> Result<()> {
     let pragma = format!("PRAGMA table_info({table})");
     let mut stmt = tx.prepare(&pragma)?;
-    let exists = stmt
-        .query_map([], |row| row.get::<_, String>(1))?
-        .flatten()
-        .any(|name| name == column);
+    let exists =
+        stmt.query_map([], |row| row.get::<_, String>(1))?.flatten().any(|name| name == column);
     drop(stmt);
     if !exists {
         let alter = format!("ALTER TABLE {table} ADD COLUMN {column} {col_def}");

@@ -39,9 +39,7 @@ fn is_sibling_test_dir(src_dir: &str, cand_dir: &str) -> bool {
     let sub_tail = if src_dir.is_empty() {
         Some(cand_dir)
     } else {
-        cand_dir
-            .strip_prefix(src_dir)
-            .and_then(|rest| rest.strip_prefix('/'))
+        cand_dir.strip_prefix(src_dir).and_then(|rest| rest.strip_prefix('/'))
     };
     if matches!(sub_tail, Some("__tests__" | "tests")) {
         return true;
@@ -134,15 +132,9 @@ fn test_base_stem(path: &str) -> Option<String> {
     if let Some(rest) = fname.strip_prefix("test_") {
         return rest.split('.').next().map(str::to_owned);
     }
-    for suffix in [
-        "_test.py",
-        "_test.dart",
-        "test.kt",
-        "test.php",
-        "_test.rs",
-        "_tests.rs",
-        "_test.gd",
-    ] {
+    for suffix in
+        ["_test.py", "_test.dart", "test.kt", "test.php", "_test.rs", "_tests.rs", "_test.gd"]
+    {
         if let Some(stem) = fname.strip_suffix(suffix) {
             return Some(stem.to_owned());
         }

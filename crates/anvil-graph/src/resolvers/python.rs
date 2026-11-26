@@ -61,12 +61,7 @@ pub fn resolve_python_import(
 
 fn probe_python_file(stem: &str, graph: &CodeGraph) -> Option<String> {
     let clean = stem.trim_end_matches('/');
-    let candidates = [
-        format!("{clean}.py"),
-        format!("{clean}.pyi"),
-        format!("{clean}/__init__.py"),
-    ];
-    candidates
-        .into_iter()
-        .find(|c| graph.file_hashes.contains_key(c))
+    let candidates =
+        [format!("{clean}.py"), format!("{clean}.pyi"), format!("{clean}/__init__.py")];
+    candidates.into_iter().find(|c| graph.file_hashes.contains_key(c))
 }

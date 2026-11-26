@@ -52,8 +52,16 @@ fn setup_git_ts_repo() -> TempDir {
     let root = dir.path();
 
     Command::new("git").args(["init"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.name", "Test User"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
 
     fs::write(root.join("package.json"), r#"{"name":"sample","version":"1.0.0"}"#).unwrap();
     fs::write(root.join("tsconfig.json"), r#"{"compilerOptions":{"strict":true}}"#).unwrap();
@@ -79,11 +87,8 @@ struct DaemonGuard(PathBuf);
 
 impl Drop for DaemonGuard {
     fn drop(&mut self) {
-        let _ = Command::new(anvil_bin())
-            .arg("--root")
-            .arg(&self.0)
-            .args(["daemon", "stop"])
-            .output();
+        let _ =
+            Command::new(anvil_bin()).arg("--root").arg(&self.0).args(["daemon", "stop"]).output();
     }
 }
 
@@ -102,10 +107,8 @@ fn graph_outline_and_read_symbol_return_accurate_slices_and_savings() {
     assert!(outline_out.contains("sub"));
     assert!(outline_out.contains("tokens_saved="));
 
-    let sym_out = assert_ok(
-        &run_anvil(root, &["graph", "read-symbol", "add"]),
-        "graph read-symbol",
-    );
+    let sym_out =
+        assert_ok(&run_anvil(root, &["graph", "read-symbol", "add"]), "graph read-symbol");
     assert!(sym_out.contains("add (function) src/math.ts:"));
     assert!(sym_out.contains("import { tag } from './tag';"));
     assert!(sym_out.contains("return a + b;"));
@@ -133,10 +136,8 @@ fn anvil_check_tier1_hits_cache_on_second_run() {
     let second = assert_ok(&run_anvil(root, &["check", "--no-tests"]), "second check");
     assert!(second.contains("[Tier 1] PASS (cached)"), "expected cache hit, got: {second}");
 
-    let bypass = assert_ok(
-        &run_anvil(root, &["check", "--no-tests", "--no-cache"]),
-        "check --no-cache",
-    );
+    let bypass =
+        assert_ok(&run_anvil(root, &["check", "--no-tests", "--no-cache"]), "check --no-cache");
     assert!(!bypass.contains("PASS (cached)"), "--no-cache must bypass cache: {bypass}");
 }
 
@@ -194,7 +195,11 @@ fn pre_tool_use_token_guard_blocks_unbounded_noise_read_and_warns_heavy_file() {
         }
     });
     let deny_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &unbounded_noise.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "antigravity"],
+            &unbounded_noise.to_string(),
+        ),
         "token guard deny unbounded lockfile",
     );
     let deny_json: Value = serde_json::from_str(&deny_out).unwrap();
@@ -210,7 +215,11 @@ fn pre_tool_use_token_guard_blocks_unbounded_noise_read_and_warns_heavy_file() {
         }
     });
     let allow_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &bounded_noise.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "antigravity"],
+            &bounded_noise.to_string(),
+        ),
         "token guard allow bounded lockfile",
     );
     assert_eq!(serde_json::from_str::<Value>(&allow_out).unwrap()["decision"], json!("allow"));
@@ -225,7 +234,11 @@ fn pre_tool_use_token_guard_blocks_unbounded_noise_read_and_warns_heavy_file() {
         }
     });
     let wide_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &wide_noise.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "antigravity"],
+            &wide_noise.to_string(),
+        ),
         "token guard deny wide noise read",
     );
     assert_eq!(serde_json::from_str::<Value>(&wide_out).unwrap()["decision"], json!("deny"));
@@ -238,7 +251,8 @@ fn pre_tool_use_token_guard_blocks_heavy_source_and_allows_bounded_slice() {
     assert_ok(&run_anvil(root, &["init"]), "init");
 
     // > 800-line unbounded source file is denied with a compact graph outline suggestion.
-    let heavy = (0..820).map(|i| format!("export const v{i} = {i};")).collect::<Vec<_>>().join("\n");
+    let heavy =
+        (0..820).map(|i| format!("export const v{i} = {i};")).collect::<Vec<_>>().join("\n");
     fs::write(root.join("src/heavy.ts"), heavy).unwrap();
     let heavy_read = json!({
         "hookEventName": "PreToolUse",
@@ -249,7 +263,11 @@ fn pre_tool_use_token_guard_blocks_heavy_source_and_allows_bounded_slice() {
         }
     });
     let heavy_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &heavy_read.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "antigravity"],
+            &heavy_read.to_string(),
+        ),
         "token guard deny unbounded heavy file",
     );
     let heavy_json: Value = serde_json::from_str(&heavy_out).unwrap();
@@ -270,10 +288,17 @@ fn pre_tool_use_token_guard_blocks_heavy_source_and_allows_bounded_slice() {
         }
     });
     let bounded_heavy_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &bounded_heavy.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "antigravity"],
+            &bounded_heavy.to_string(),
+        ),
         "token guard allow bounded heavy file",
     );
-    assert_eq!(serde_json::from_str::<Value>(&bounded_heavy_out).unwrap()["decision"], json!("allow"));
+    assert_eq!(
+        serde_json::from_str::<Value>(&bounded_heavy_out).unwrap()["decision"],
+        json!("allow")
+    );
 }
 
 #[test]
@@ -283,24 +308,28 @@ fn daemon_background_start_status_query_and_stop_roundtrip() {
     assert_ok(&run_anvil(root, &["init"]), "init");
     let _guard = DaemonGuard(root.to_path_buf());
 
-    let start_out = assert_ok(&run_anvil(root, &["daemon", "start", "--background"]), "daemon start");
+    let start_out =
+        assert_ok(&run_anvil(root, &["daemon", "start", "--background"]), "daemon start");
     assert!(start_out.contains("daemon started:"));
     assert!(root.join(".harness/.state/daemon.json").is_file());
 
     let status_out = assert_ok(&run_anvil(root, &["daemon", "status"]), "daemon status");
     assert!(status_out.contains("daemon: running"));
 
-    let query_out = assert_ok(&run_anvil(root, &["graph", "query", "runApp"]), "daemon graph query");
+    let query_out =
+        assert_ok(&run_anvil(root, &["graph", "query", "runApp"]), "daemon graph query");
     assert!(query_out.contains("runApp"));
 
-    let sym_out = assert_ok(&run_anvil(root, &["graph", "read-symbol", "add"]), "daemon read-symbol");
+    let sym_out =
+        assert_ok(&run_anvil(root, &["graph", "read-symbol", "add"]), "daemon read-symbol");
     assert!(sym_out.contains("return a + b;"));
 
     let stop_out = assert_ok(&run_anvil(root, &["daemon", "stop"]), "daemon stop");
     assert!(stop_out.contains("daemon stopped"));
     assert!(!root.join(".harness/.state/daemon.json").exists());
 
-    let stopped_status = assert_ok(&run_anvil(root, &["daemon", "status"]), "daemon stopped status");
+    let stopped_status =
+        assert_ok(&run_anvil(root, &["daemon", "status"]), "daemon stopped status");
     assert!(stopped_status.contains("daemon: stopped"));
 }
 
@@ -335,7 +364,11 @@ fn claude_read_decision(root: &Path, tool_input: Value) -> (String, String) {
         "tool_input": tool_input
     });
     let out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "PreToolUse", "--adapter", "claude"], &payload.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "PreToolUse", "--adapter", "claude"],
+            &payload.to_string(),
+        ),
         "claude PreToolUse Read",
     );
     let parsed: Value = serde_json::from_str(&out).unwrap();
@@ -367,7 +400,8 @@ fn pre_tool_use_token_guard_allows_media_with_newlines_and_uses_claude_text_para
 
     let png_900 = sample_png_bytes(900);
     fs::write(root.join("falso-900.png"), &png_900).unwrap();
-    fs::write(root.join("falso-900.jpg"), [b"\xFF\xD8\xFF\xE0".as_slice(), &png_900[8..]].concat()).unwrap();
+    fs::write(root.join("falso-900.jpg"), [b"\xFF\xD8\xFF\xE0".as_slice(), &png_900[8..]].concat())
+        .unwrap();
     let mut pdf_900 = b"%PDF-1.4\n".to_vec();
     pdf_900.extend(std::iter::repeat_n(b"\x00\n", 900).flatten());
     fs::write(root.join("falso-900.pdf"), &pdf_900).unwrap();
@@ -376,7 +410,11 @@ fn pre_tool_use_token_guard_allows_media_with_newlines_and_uses_claude_text_para
     assert_eq!(claude_read_decision(root, read_abs(root, "falso-900.jpg")).0, "none");
     assert_eq!(claude_read_decision(root, read_abs(root, "falso-900.pdf")).0, "none");
     assert_eq!(
-        claude_read_decision(root, json!({ "file_path": root.join("falso-900.pdf").to_string_lossy(), "pages": "1-2" })).0,
+        claude_read_decision(
+            root,
+            json!({ "file_path": root.join("falso-900.pdf").to_string_lossy(), "pages": "1-2" })
+        )
+        .0,
         "none"
     );
 
@@ -394,7 +432,11 @@ fn pre_tool_use_token_guard_allows_media_with_newlines_and_uses_claude_text_para
     );
 }
 
-fn init_tight_binary_caps_repo(max_binary_bytes: u64, max_pdf_bytes: u64, max_pdf_pages: usize) -> TempDir {
+fn init_tight_binary_caps_repo(
+    max_binary_bytes: u64,
+    max_pdf_bytes: u64,
+    max_pdf_pages: usize,
+) -> TempDir {
     let repo = setup_git_ts_repo();
     let root = repo.path();
     assert_ok(&run_anvil(root, &["init"]), "init");
@@ -415,15 +457,21 @@ fn pre_tool_use_token_guard_enforces_image_and_binary_byte_caps() {
     let repo = init_tight_binary_caps_repo(4096, 4096, 20);
     let root = repo.path();
 
-    fs::write(root.join("grande-sin-saltos.png"), [b"\x89PNG".as_slice(), &vec![b'A'; 6000]].concat()).unwrap();
-    let (img_deny, img_reason) = claude_read_decision(root, read_abs(root, "grande-sin-saltos.png"));
+    fs::write(
+        root.join("grande-sin-saltos.png"),
+        [b"\x89PNG".as_slice(), &vec![b'A'; 6000]].concat(),
+    )
+    .unwrap();
+    let (img_deny, img_reason) =
+        claude_read_decision(root, read_abs(root, "grande-sin-saltos.png"));
     assert_eq!(img_deny, "deny");
     assert!(img_reason.contains("image"));
     assert!(img_reason.contains("KB"));
     assert!(!img_reason.contains("StartLine"));
     assert!(!img_reason.contains("anvil grep"));
 
-    fs::write(root.join("payload.bin"), [b"BIN\x00".as_slice(), &vec![0u8; 6000]].concat()).unwrap();
+    fs::write(root.join("payload.bin"), [b"BIN\x00".as_slice(), &vec![0u8; 6000]].concat())
+        .unwrap();
     let (bin_deny, bin_reason) = claude_read_decision(root, read_abs(root, "payload.bin"));
     assert_eq!(bin_deny, "deny");
     assert!(bin_reason.contains("binary file"));
@@ -434,15 +482,26 @@ fn pre_tool_use_token_guard_enforces_pdf_byte_cap_and_pages_ranges() {
     let repo = init_tight_binary_caps_repo(4096, 4096, 20);
     let root = repo.path();
 
-    fs::write(root.join("heavy.pdf"), [b"%PDF-1.7\n".as_slice(), &vec![b'B'; 6000]].concat()).unwrap();
+    fs::write(root.join("heavy.pdf"), [b"%PDF-1.7\n".as_slice(), &vec![b'B'; 6000]].concat())
+        .unwrap();
     let (pdf_deny, pdf_reason) = claude_read_decision(root, read_abs(root, "heavy.pdf"));
     assert_eq!(pdf_deny, "deny");
     assert!(pdf_reason.contains("pages"));
     assert!(!pdf_reason.contains("StartLine"));
     assert!(!pdf_reason.contains("anvil grep"));
     assert_eq!(claude_read_decision(root, json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "offset": 1, "limit": 100 })).0, "deny");
-    assert_eq!(claude_read_decision(root, json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "pages": "1-3" })).0, "none");
-    let (pages_deny, pages_reason) = claude_read_decision(root, json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "pages": "1-25" }));
+    assert_eq!(
+        claude_read_decision(
+            root,
+            json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "pages": "1-3" })
+        )
+        .0,
+        "none"
+    );
+    let (pages_deny, pages_reason) = claude_read_decision(
+        root,
+        json!({ "file_path": root.join("heavy.pdf").to_string_lossy(), "pages": "1-25" }),
+    );
     assert_eq!(pages_deny, "deny");
     assert!(pages_reason.contains("25 pages > 20"));
 }
@@ -489,7 +548,11 @@ fn pre_tool_use_token_guard_denial_does_not_leak_warning_into_post_tool_use() {
         "tool_response": { "exitCode": 0, "stdout": "hi\n" }
     });
     let post_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "PostToolUse", "--adapter", "claude"], &post_payload.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "PostToolUse", "--adapter", "claude"],
+            &post_payload.to_string(),
+        ),
         "claude PostToolUse Bash after denied Read",
     );
     assert!(!post_out.contains("exceeds 800 lines"), "unexpected stale warning leak: {post_out}");
@@ -513,7 +576,11 @@ fn pre_tool_use_token_guard_allows_qa_screenshots_endline_only_and_external_dist
         }
     });
     let qa_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &qa_payload.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "antigravity"],
+            &qa_payload.to_string(),
+        ),
         "allow qa screenshot",
     );
     assert_eq!(serde_json::from_str::<Value>(&qa_out).unwrap()["decision"], json!("allow"));
@@ -528,7 +595,11 @@ fn pre_tool_use_token_guard_allows_qa_screenshots_endline_only_and_external_dist
         }
     });
     let end_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "antigravity"], &endline_payload.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "antigravity"],
+            &endline_payload.to_string(),
+        ),
         "allow EndLine-only read",
     );
     assert_eq!(serde_json::from_str::<Value>(&end_out).unwrap()["decision"], json!("allow"));
@@ -538,7 +609,8 @@ fn pre_tool_use_token_guard_allows_qa_screenshots_endline_only_and_external_dist
     fs::create_dir_all(&external_dist).unwrap();
     let external_file = external_dist.join("notes.ts");
     fs::write(&external_file, "export const ok = true;\n").unwrap();
-    let ext_out = claude_read_decision(root, json!({ "file_path": external_file.to_string_lossy() }));
+    let ext_out =
+        claude_read_decision(root, json!({ "file_path": external_file.to_string_lossy() }));
     assert_eq!(ext_out.0, "none");
 }
 
@@ -558,17 +630,34 @@ fn pre_tool_use_token_guard_covers_unbounded_shell_dumps() {
             "tool_input": { "command": cmd }
         });
         let out = assert_ok(
-            &run_anvil_stdin(root, &["hook", "PreToolUse", "--adapter", "claude"], &payload.to_string()),
+            &run_anvil_stdin(
+                root,
+                &["hook", "PreToolUse", "--adapter", "claude"],
+                &payload.to_string(),
+            ),
             cmd,
         );
         let parsed: Value = serde_json::from_str(&out).unwrap();
         parsed["hookSpecificOutput"]["permissionDecision"].as_str().unwrap_or("none").to_owned()
     };
 
-    for cmd in ["cat heavy.txt", "cd . && cat light.txt heavy.txt", "Get-Content heavy.txt", "cat < heavy.txt", "cat heavy.txt 2>/dev/null"] {
+    for cmd in [
+        "cat heavy.txt",
+        "cd . && cat light.txt heavy.txt",
+        "Get-Content heavy.txt",
+        "cat < heavy.txt",
+        "cat heavy.txt 2>/dev/null",
+    ] {
         assert_eq!(decide(cmd), "deny", "{cmd}");
     }
-    for cmd in ["cat light.txt", "cat heavy.txt | wc -l", "cat heavy.txt > copy.txt", "sed -n '1,50p' heavy.txt", "Get-Content heavy.txt -TotalCount 20", "echo $(cat heavy.txt | head -1)"] {
+    for cmd in [
+        "cat light.txt",
+        "cat heavy.txt | wc -l",
+        "cat heavy.txt > copy.txt",
+        "sed -n '1,50p' heavy.txt",
+        "Get-Content heavy.txt -TotalCount 20",
+        "echo $(cat heavy.txt | head -1)",
+    ] {
         assert_eq!(decide(cmd), "none", "{cmd}");
     }
 

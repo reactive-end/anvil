@@ -37,10 +37,7 @@ fn git_helpers_inspect_repo_branch_commit_and_diffs() -> Result<()> {
     fs::write(dir.join("a.txt"), "hello world\n")?;
     fs::write(dir.join("b.txt"), "untracked\n")?;
     assert_eq!(changed_files(dir, DiffScope::Unstaged)?, vec!["a.txt"]);
-    assert_eq!(
-        changed_files(dir, DiffScope::WorkingTree)?,
-        vec!["a.txt", "b.txt"]
-    );
+    assert_eq!(changed_files(dir, DiffScope::WorkingTree)?, vec!["a.txt", "b.txt"]);
     assert!(file_diff(dir, "a.txt", false)?.contains("+hello world"));
 
     git(dir, &["add", "a.txt"])?;
@@ -101,20 +98,11 @@ fn working_tree_status_and_batched_diffs_handle_spaces_and_non_ascii() -> Result
     let all = changed_files(dir, DiffScope::WorkingTree)?;
     assert_eq!(
         all,
-        vec![
-            "added.txt",
-            "dir with spaces/café file.txt",
-            "to_delete.txt",
-            "untracked space.txt",
-        ]
+        vec!["added.txt", "dir with spaces/café file.txt", "to_delete.txt", "untracked space.txt",]
     );
 
     let diffs = batched_working_tree_diffs(dir)?;
-    assert!(
-        diffs
-            .get("dir with spaces/café file.txt")
-            .is_some_and(|d| d.contains("+v2"))
-    );
+    assert!(diffs.get("dir with spaces/café file.txt").is_some_and(|d| d.contains("+v2")));
     assert!(diffs.get("added.txt").is_some_and(|d| d.contains("+new")));
     assert!(diffs.get("to_delete.txt").is_some_and(|d| d.contains("-bye")));
     Ok(())

@@ -5,12 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin};
 use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
+use anyhow::Result;
 use rustc_hash::FxHashSet;
 
 use super::tests_runner::{exec_compressed, skip_output};
@@ -33,14 +33,7 @@ pub(super) fn run_kotlin_tests(
         owned_args.push(build_kotlin_test_filter(repo_root, f));
     }
     let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
-    exec_compressed(
-        repo_root,
-        &work_dir,
-        config,
-        &gradle,
-        "gradlew testDebugUnitTest",
-        &arg_refs,
-    )
+    exec_compressed(repo_root, &work_dir, config, &gradle, "gradlew testDebugUnitTest", &arg_refs)
 }
 
 fn find_gradle_root(repo_root: &Path, sample_rel: &str) -> Option<(PathBuf, PathBuf)> {
@@ -92,7 +85,14 @@ pub(super) fn run_rust_tests(
     let mut out = Vec::with_capacity(crates.len());
     for pkg in crates {
         if pkg.is_empty() {
-            out.push(exec_compressed(repo_root, repo_root, config, &cargo, "cargo test", &["test"])?);
+            out.push(exec_compressed(
+                repo_root,
+                repo_root,
+                config,
+                &cargo,
+                "cargo test",
+                &["test"],
+            )?);
         } else {
             let label = format!("cargo test -p {pkg}");
             out.push(exec_compressed(

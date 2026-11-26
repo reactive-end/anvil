@@ -71,8 +71,8 @@ pub fn should_skip_readonly_stop(root: &Path, changed: &[String]) -> bool {
     if !anvil_tasks::load_untracked_edits(root).is_empty() {
         return false;
     }
-    let Ok(stamp_mtime) = fs::metadata(root.join(".harness/.state/last-stop.stamp"))
-        .and_then(|m| m.modified())
+    let Ok(stamp_mtime) =
+        fs::metadata(root.join(".harness/.state/last-stop.stamp")).and_then(|m| m.modified())
     else {
         return false;
     };
@@ -133,20 +133,20 @@ fn needs_tasks_rebuild(root: &Path, t_root: &Path) -> bool {
 }
 
 fn is_newer(path: &Path, baseline: SystemTime) -> bool {
-    fs::metadata(path)
-        .and_then(|m| m.modified())
-        .is_ok_and(|mtime| mtime > baseline)
+    fs::metadata(path).and_then(|m| m.modified()).is_ok_and(|mtime| mtime > baseline)
 }
 
 /// Enforces LLM-curated task decisions at `Stop` with a strict anti-noise bias:
 /// - Read-only turns, pure docs edits, and `<= 12`-line single-file micro-tweaks pass automatically (`0` tasks).
 /// - Never auto-creates tasks from raw user chat messages.
 /// - On substantive diffs, asks the LLM once to record a curated task, reuse the latest task, or call `task_skip`.
-pub fn check_pending_task_summary(root: &Path, changed: &[String], lang: Lang) -> Option<HookOutcome> {
-    let project_changes: Vec<&String> = changed
-        .iter()
-        .filter(|p| !p.starts_with(".harness/") && *p != "tasks.json")
-        .collect();
+pub fn check_pending_task_summary(
+    root: &Path,
+    changed: &[String],
+    lang: Lang,
+) -> Option<HookOutcome> {
+    let project_changes: Vec<&String> =
+        changed.iter().filter(|p| !p.starts_with(".harness/") && *p != "tasks.json").collect();
     if project_changes.is_empty() {
         return None;
     }
@@ -157,7 +157,10 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String], lang: Lang) -
             return None;
         }
         if st.status == TaskStatus::InProgress && st.summary_recorded_at.is_none() {
-            return Some(HookOutcome::block_stop(super::texts::task_in_progress(lang, &st.task_id)));
+            return Some(HookOutcome::block_stop(super::texts::task_in_progress(
+                lang,
+                &st.task_id,
+            )));
         }
     }
 
@@ -169,7 +172,8 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String], lang: Lang) -
     let baseline = active
         .as_ref()
         .and_then(|st| {
-            let progress_ts = (st.status == TaskStatus::Blocked).then_some(st.last_progress_at).flatten();
+            let progress_ts =
+                (st.status == TaskStatus::Blocked).then_some(st.last_progress_at).flatten();
             st.summary_recorded_at.or(progress_ts).or(Some(st.started_at))
         })
         .map(SystemTime::from);
@@ -187,11 +191,7 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String], lang: Lang) -
         return None;
     }
 
-    Some(HookOutcome::block_stop(build_curation_prompt(
-        root,
-        fresh_changes.len(),
-        lang,
-    )))
+    Some(HookOutcome::block_stop(build_curation_prompt(root, fresh_changes.len(), lang)))
 }
 
 fn is_trivial_edit_scope(root: &Path, fresh_changes: &[&String]) -> bool {

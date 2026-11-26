@@ -131,10 +131,7 @@ pub fn fetch_quality_gate(
         url.push_str(&percent_encode(b));
     }
     let body = sonar_get_json(&url, token)?;
-    let status = body["projectStatus"]["status"]
-        .as_str()
-        .unwrap_or("UNKNOWN")
-        .to_owned();
+    let status = body["projectStatus"]["status"].as_str().unwrap_or("UNKNOWN").to_owned();
     let conditions = body["projectStatus"]["conditions"]
         .as_array()
         .map(|arr| {
@@ -190,20 +187,14 @@ pub fn fetch_new_code_issues(
 }
 
 fn sonar_get_json(url: &str, token: Option<&str>) -> Result<Value> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(10))
-        .build();
+    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(10)).build();
     let mut req = agent.get(url);
     if let Some(tok) = token.filter(|t| !t.is_empty()) {
         let encoded = base64_encode(format!("{tok}:").as_bytes());
         req = req.set("Authorization", &format!("Basic {encoded}"));
     }
-    let resp = req
-        .call()
-        .with_context(|| format!("SonarQube request failed: {url}"))?;
-    let raw = resp
-        .into_string()
-        .context("failed to read SonarQube response body")?;
+    let resp = req.call().with_context(|| format!("SonarQube request failed: {url}"))?;
+    let raw = resp.into_string().context("failed to read SonarQube response body")?;
     let val: Value =
         serde_json::from_str(&raw).context("failed to parse SonarQube JSON response")?;
     Ok(val)
@@ -377,7 +368,8 @@ fn score_indent_complexity(lines: &[&str]) -> usize {
             indent_stack.pop();
         }
         let nesting = indent_stack.len();
-        let has_branch = has_branch_keyword(t) || t.starts_with("except ") || t.starts_with("except:");
+        let has_branch =
+            has_branch_keyword(t) || t.starts_with("except ") || t.starts_with("except:");
         if has_branch {
             total += 1 + nesting;
             indent_stack.push(cur_indent);
@@ -467,10 +459,7 @@ fn skip_rust_char_literal(chars: &[char], start: usize) -> Option<usize> {
 }
 
 fn leading_indent_cols(line: &str) -> usize {
-    line.chars()
-        .take_while(|c| c.is_whitespace())
-        .map(|c| if c == '\t' { 4 } else { 1 })
-        .sum()
+    line.chars().take_while(|c| c.is_whitespace()).map(|c| if c == '\t' { 4 } else { 1 }).sum()
 }
 
 fn count_word_ops(line: &str, kw: &str) -> usize {
@@ -491,8 +480,20 @@ fn count_word_ops(line: &str, kw: &str) -> usize {
 
 fn has_branch_keyword(trimmed: &str) -> bool {
     const PREFIXES: &[&str] = &[
-        "if ", "if(", "else if", "elif ", "for ", "for(", "while ", "while(", "match ", "switch ",
-        "switch(", "catch ", "catch(", "} else if",
+        "if ",
+        "if(",
+        "else if",
+        "elif ",
+        "for ",
+        "for(",
+        "while ",
+        "while(",
+        "match ",
+        "switch ",
+        "switch(",
+        "catch ",
+        "catch(",
+        "} else if",
     ];
     PREFIXES.iter().any(|p| trimmed.starts_with(p))
 }
@@ -556,16 +557,8 @@ fn base64_encode(input: &[u8]) -> String {
         let n = (u32::from(b0) << 16) | (u32::from(b1) << 8) | u32::from(b2);
         out.push(char::from(TABLE[((n >> 18) & 63) as usize]));
         out.push(char::from(TABLE[((n >> 12) & 63) as usize]));
-        out.push(if chunk.len() > 1 {
-            char::from(TABLE[((n >> 6) & 63) as usize])
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            char::from(TABLE[(n & 63) as usize])
-        } else {
-            '='
-        });
+        out.push(if chunk.len() > 1 { char::from(TABLE[((n >> 6) & 63) as usize]) } else { '=' });
+        out.push(if chunk.len() > 2 { char::from(TABLE[(n & 63) as usize]) } else { '=' });
     }
     out
 }

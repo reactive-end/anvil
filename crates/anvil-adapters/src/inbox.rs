@@ -5,8 +5,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use anvil_core::fs_util::{atomic_write, with_file_lock};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::contract::{InboxMessage, MessageLevel};
@@ -22,10 +22,7 @@ struct InboxStore {
 
 impl Default for InboxStore {
     fn default() -> Self {
-        Self {
-            version: 1,
-            messages: Vec::new(),
-        }
+        Self { version: 1, messages: Vec::new() }
     }
 }
 
@@ -75,9 +72,7 @@ pub fn push_messages(repo_root: &Path, messages: &[InboxMessage]) -> Result<()> 
 
 fn is_duplicate(existing: &[InboxMessage], msg: &InboxMessage) -> bool {
     let target = (msg.source.as_str(), msg.file.as_deref(), msg.content.as_str());
-    existing
-        .iter()
-        .any(|e| (e.source.as_str(), e.file.as_deref(), e.content.as_str()) == target)
+    existing.iter().any(|e| (e.source.as_str(), e.file.as_deref(), e.content.as_str()) == target)
 }
 
 /// Atomically drains and clears all pending messages from `.harness/.state/inbox.json`.
@@ -198,10 +193,7 @@ fn clear_inbox_unlocked(repo_root: &Path) -> Result<()> {
 
 fn save_inbox_unlocked(repo_root: &Path, messages: Vec<InboxMessage>) -> Result<()> {
     let path = inbox_path(repo_root);
-    let store = InboxStore {
-        version: 1,
-        messages,
-    };
+    let store = InboxStore { version: 1, messages };
     let json = serde_json::to_string(&store).context("failed to serialize inbox")?;
     atomic_write(&path, json.as_bytes())
 }

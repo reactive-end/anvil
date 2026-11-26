@@ -3,11 +3,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
 use anvil_core::git::{self, DiffScope};
 use anvil_deps::{
     AuditOptions, LiveRegistryFetcher, audit_changed_files, audit_manifests, is_supported_manifest,
 };
+use anyhow::Result;
 
 use crate::commands::ExitCodeError;
 use crate::ui;

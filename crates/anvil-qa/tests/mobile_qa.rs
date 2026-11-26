@@ -25,15 +25,9 @@ fn uiautomator_detects_clipped_text_and_overlapping_clickables() {
 
     let violations = scan_uiautomator_xml(xml, 1080, 2400);
     assert_eq!(violations.len(), 2, "expected exact 2 violations: {violations:?}");
-    assert_eq!(
-        violations[0].kind,
-        QaViolationKind::MobileTruncatedOrOutOfViewport
-    );
+    assert_eq!(violations[0].kind, QaViolationKind::MobileTruncatedOrOutOfViewport);
     assert_eq!(violations[0].selector, "com.centinela:id/bad_text");
-    assert_eq!(
-        violations[1].kind,
-        QaViolationKind::MobileOverlappingInteractive
-    );
+    assert_eq!(violations[1].kind, QaViolationKind::MobileOverlappingInteractive);
     assert!(violations[1].selector.contains("confirm_btn"));
     assert!(violations[1].selector.contains("cancel_btn"));
 }
@@ -72,21 +66,18 @@ fn roborazzi_diff_and_qa_engine_compressed_report_work_end_to_end() {
         .scan_mobile_artifacts(
             Some(r#"<hierarchy><node text="Cut" bounds="[-10,10][100,50]" /></hierarchy>"#),
             (1080, 2400),
-            Some("E AndroidRuntime: FATAL EXCEPTION: main\nE ActivityManager: ANR in com.centinela"),
+            Some(
+                "E AndroidRuntime: FATAL EXCEPTION: main\nE ActivityManager: ANR in com.centinela",
+            ),
         )
         .expect("scan mobile artifacts");
 
     assert_eq!(mobile_violations.len(), 4);
-    let report = engine.finalize_report(UiPlatform::Mobile, vec![], vec![], mobile_violations, vec![]);
+    let report =
+        engine.finalize_report(UiPlatform::Mobile, vec![], vec![], mobile_violations, vec![]);
     assert!(!report.passed);
 
-    let tight = engine.format_report(
-        &report,
-        ReportBudget {
-            max_lines: 3,
-            max_tokens: 200,
-        },
-    );
+    let tight = engine.format_report(&report, ReportBudget { max_lines: 3, max_tokens: 200 });
     assert!(tight.contains("QA [FAIL] platform=mobile"));
     assert!(tight.contains("truncated)"));
 }

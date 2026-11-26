@@ -2,11 +2,11 @@
 
 use std::path::Path;
 
-use anyhow::{Result, bail};
 use anvil_adapters::claude_code::agents;
 use anvil_adapters::claude_code::mcp_servers::{self, ClaudeHome, McpServer};
 use anvil_core::config::AnvilConfig;
 use anvil_core::config::orchestrator::{OrchestratorConfig, is_tool_name};
+use anyhow::{Result, bail};
 
 use crate::commands::ExitCodeError;
 use crate::ui::prompt::{self, PromptOutcome, SelectOption};
@@ -35,17 +35,16 @@ pub fn execute(root: &Path, args: &ToolsArgs) -> Result<()> {
         pick(&servers, &current.executor_tools)?
     };
     if chosen != current.executor_tools {
-        let next = OrchestratorConfig {
-            executor_tools: chosen,
-            ..current
-        };
+        let next = OrchestratorConfig { executor_tools: chosen, ..current };
         config.orchestrator = Some(next.clone());
         config.save(root)?;
         for path in agents::sync_agents(root, &next)? {
             println!("wrote {}", path.display());
         }
         print_list(&servers, &next.executor_tools);
-        println!("Executors started from now on load this list; a running Claude Code session may keep the old one until it restarts.");
+        println!(
+            "Executors started from now on load this list; a running Claude Code session may keep the old one until it restarts."
+        );
     } else {
         print_list(&servers, &current.executor_tools);
     }
@@ -65,11 +64,8 @@ fn discovered(root: &Path) -> Vec<McpServer> {
 /// `postgres` becomes `mcp__postgres__*`; a full `mcp__…` entry is kept as written.
 fn entry(raw: &str) -> Result<String> {
     let raw = raw.trim();
-    let entry = if raw.starts_with("mcp__") {
-        raw.to_owned()
-    } else {
-        mcp_servers::tool_pattern(raw)
-    };
+    let entry =
+        if raw.starts_with("mcp__") { raw.to_owned() } else { mcp_servers::tool_pattern(raw) };
     if !is_tool_name(&entry) {
         bail!("`{raw}` is not an MCP server name or an `mcp__<server>__*` entry");
     }
@@ -78,11 +74,8 @@ fn entry(raw: &str) -> Result<String> {
 
 fn edit(current: &[String], add: &[String], remove: &[String]) -> Result<Vec<String>> {
     let removed: Vec<String> = remove.iter().map(|raw| entry(raw)).collect::<Result<_>>()?;
-    let mut tools: Vec<String> = current
-        .iter()
-        .filter(|tool| !removed.contains(tool))
-        .cloned()
-        .collect();
+    let mut tools: Vec<String> =
+        current.iter().filter(|tool| !removed.contains(tool)).cloned().collect();
     for raw in add {
         let added = entry(raw)?;
         if !tools.contains(&added) {
@@ -94,10 +87,8 @@ fn edit(current: &[String], add: &[String], remove: &[String]) -> Result<Vec<Str
 
 /// A checklist of the discovered servers plus configured ones no file names any more.
 fn pick(servers: &[McpServer], current: &[String]) -> Result<Vec<String>> {
-    let mut rows: Vec<(String, String, String)> = servers
-        .iter()
-        .map(|s| (s.name.clone(), s.source.clone(), s.tool_pattern()))
-        .collect();
+    let mut rows: Vec<(String, String, String)> =
+        servers.iter().map(|s| (s.name.clone(), s.source.clone(), s.tool_pattern())).collect();
     for tool in current {
         let server = tool.strip_prefix("mcp__").and_then(|rest| rest.strip_suffix("__*"));
         if let Some(name) = server.filter(|_| rows.iter().all(|(_, _, t)| t != tool)) {
@@ -125,11 +116,8 @@ fn pick(servers: &[McpServer], current: &[String]) -> Result<Vec<String>> {
         PromptOutcome::Cancelled => return Err(ExitCodeError::silent(130).into()),
     };
     let offered: Vec<&String> = rows.iter().map(|(_, _, tool)| tool).collect();
-    let mut tools: Vec<String> = current
-        .iter()
-        .filter(|tool| !offered.contains(tool))
-        .cloned()
-        .collect();
+    let mut tools: Vec<String> =
+        current.iter().filter(|tool| !offered.contains(tool)).cloned().collect();
     let picked = rows.iter().zip(selected).filter(|(_, on)| *on);
     tools.extend(picked.map(|((_, _, tool), _)| tool.clone()));
     Ok(tools)
@@ -145,7 +133,9 @@ fn print_list(servers: &[McpServer], tools: &[String]) {
     for tool in tools.iter().filter(|tool| !known.contains(tool)) {
         println!("  [x] {tool:<32} added by name");
     }
-    println!("Servers the desktop app adds by itself are in no config file; add them with `--add <name>`.");
+    println!(
+        "Servers the desktop app adds by itself are in no config file; add them with `--add <name>`."
+    );
 }
 
 #[cfg(test)]

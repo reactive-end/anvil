@@ -120,12 +120,8 @@ fn probe_gradle_subprojects(
     pkg_path: &str,
     sym: &str,
 ) -> Option<NodeId> {
-    const SRC_ROOTS: &[&str] = &[
-        "src/main/kotlin",
-        "src/commonMain/kotlin",
-        "src/main/java",
-        "src",
-    ];
+    const SRC_ROOTS: &[&str] =
+        &["src/main/kotlin", "src/commonMain/kotlin", "src/main/java", "src"];
     for sub_rel in subprojects.values() {
         for src_root in SRC_ROOTS {
             let candidate = format!("{sub_rel}/{src_root}/{pkg_path}/{sym}.kt");

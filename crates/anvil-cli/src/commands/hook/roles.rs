@@ -18,9 +18,8 @@ use super::payload::{
 use super::roles_shell;
 use super::shell::targets::is_scratch_path;
 
-const EXECUTOR_FORBIDDEN_TOOLS: &[&str] = &[
-    "Agent", "Task", "Workflow", "task_start", "task_done", "task_skip", "task_record",
-];
+const EXECUTOR_FORBIDDEN_TOOLS: &[&str] =
+    &["Agent", "Task", "Workflow", "task_start", "task_done", "task_skip", "task_record"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Role {
@@ -37,7 +36,9 @@ pub fn check_roles(root: &Path, input: &NormalizedHookInput) -> Option<HookOutco
     let home = enabled_root(root, input)?;
     match role_of(input) {
         Role::Executor => check_executor(&home, input),
-        Role::Orchestrator => check_delegation(&home, input).or_else(|| check_read_only(&home, input)),
+        Role::Orchestrator => {
+            check_delegation(&home, input).or_else(|| check_read_only(&home, input))
+        }
         Role::Researcher => check_read_only(&home, input),
     }
 }
@@ -68,11 +69,7 @@ fn role_of(input: &NormalizedHookInput) -> Role {
         return Role::Orchestrator;
     }
     let kind = input.agent_type.as_deref().unwrap_or_default();
-    if kind.rsplit(':').next() == Some(EXECUTOR_AGENT) {
-        Role::Executor
-    } else {
-        Role::Researcher
-    }
+    if kind.rsplit(':').next() == Some(EXECUTOR_AGENT) { Role::Executor } else { Role::Researcher }
 }
 
 /// Requires a bounded scope on every brief and keeps the configured executor model and effort.
@@ -81,10 +78,7 @@ fn check_delegation(root: &Path, input: &NormalizedHookInput) -> Option<HookOutc
     let args = input.tool_input.as_ref()?.as_object()?;
     let session = input.session_id.as_deref().unwrap_or("default");
     let text = |key: &str| args.get(key).and_then(Value::as_str).unwrap_or_default();
-    let dir = subagents_dir(
-        input.transcript_path.as_deref(),
-        input.session_id.as_deref(),
-    );
+    let dir = subagents_dir(input.transcript_path.as_deref(), input.session_id.as_deref());
     if tool == "SendMessage" {
         let Ok(paths) = parse_scope(text("message")) else {
             return None;
@@ -111,9 +105,8 @@ fn check_delegation(root: &Path, input: &NormalizedHookInput) -> Option<HookOutc
         }
     };
     let call = input.tool_use_id.as_deref();
-    if let Some(clash) = dir
-        .as_deref()
-        .and_then(|d| find_clash(root, d, session, &paths, None, call))
+    if let Some(clash) =
+        dir.as_deref().and_then(|d| find_clash(root, d, session, &paths, None, call))
     {
         return Some(clash);
     }
@@ -185,19 +178,16 @@ fn check_executor(root: &Path, input: &NormalizedHookInput) -> Option<HookOutcom
         }
         let path_input = serde_json::json!({ "file_path": abs.to_string_lossy() });
         let rel = extract_rel_file(root, Some(&path_input)).unwrap_or_default();
-        let is_build_output = rel.split('/').any(|seg| {
-            matches!(seg, "target" | "dist" | "build" | "node_modules" | "coverage")
-        });
+        let is_build_output = rel
+            .split('/')
+            .any(|seg| matches!(seg, "target" | "dist" | "build" | "node_modules" | "coverage"));
         (!is_build_output && !scope_allows(&scope, &rel)).then(|| out_of_scope(&rel, &scope))
     })
 }
 
 /// The executor's own latest brief; the session's delegated paths when its transcript is unreadable.
 fn executor_scope(root: &Path, input: &NormalizedHookInput) -> Vec<String> {
-    let dir = subagents_dir(
-        input.transcript_path.as_deref(),
-        input.session_id.as_deref(),
-    );
+    let dir = subagents_dir(input.transcript_path.as_deref(), input.session_id.as_deref());
     dir.zip(input.agent_id.as_deref())
         .and_then(|(dir, agent)| brief_scope(&dir, agent))
         .unwrap_or_else(|| granted_scope(root, input.session_id.as_deref().unwrap_or("default")))
@@ -220,10 +210,7 @@ fn find_clash(
             e.running && !target.is_some_and(|t| t == e.agent_id || e.name.as_deref() == Some(t))
         })
         .filter_map(|e| {
-            Some((
-                format!("executor `{}`", e.agent_id),
-                brief_scope(dir, &e.agent_id)?,
-            ))
+            Some((format!("executor `{}`", e.agent_id), brief_scope(dir, &e.agent_id)?))
         });
     let starting = recent_spawns(root, session).into_iter().filter(|(id, _)| {
         Some(id.as_str()) != call && !known.iter().any(|e| e.tool_use_id.as_deref() == Some(id))
@@ -239,11 +226,7 @@ fn find_clash(
 }
 
 fn out_of_scope(rel: &str, scope: &[String]) -> HookOutcome {
-    let allowed = if scope.is_empty() {
-        "nothing".to_owned()
-    } else {
-        scope.join(", ")
-    };
+    let allowed = if scope.is_empty() { "nothing".to_owned() } else { scope.join(", ") };
     HookOutcome::deny(format!(
         "Orchestrator mode: `{rel}` is outside the delegated scope ({allowed}). Do not work around this; report to the orchestrator what you need and why."
     ))

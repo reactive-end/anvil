@@ -48,21 +48,59 @@ fn extracts_rust_symbols() {
     assert!(facts.symbols.iter().any(|s| s.name == "Greeter" && s.kind == SymbolKind::Interface));
     assert!(facts.symbols.iter().any(|s| s.name == "User" && s.kind == SymbolKind::Class));
     assert!(facts.symbols.iter().any(|s| s.name == "helper_fn" && s.kind == SymbolKind::Function));
-    assert!(facts.symbols.iter().any(|s| s.qualified_name == "User::greet" && s.kind == SymbolKind::Method));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|s| s.qualified_name == "User::greet" && s.kind == SymbolKind::Method)
+    );
     assert!(facts.symbols.iter().any(|s| s.name == "impl Greeter for User"));
 }
 
 #[test]
 fn extracts_rust_edges_and_calls() {
     let facts = analyze_file(Path::new("src/user.rs"), RUST_SAMPLE, &cfg()).expect("rust");
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "std::collections::HashMap"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "crate::core::Config"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "crate::core::Runner"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "helpers"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Implements && e.source_symbol.as_deref() == Some("User") && e.target_path_or_symbol == "Greeter"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "helper_fn"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "self.inner_call"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "step_two"));
+    assert!(
+        facts.edges.iter().any(|e| e.kind == EdgeKind::Imports
+            && e.target_path_or_symbol == "std::collections::HashMap")
+    );
+    assert!(
+        facts.edges.iter().any(
+            |e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "crate::core::Config"
+        )
+    );
+    assert!(
+        facts.edges.iter().any(
+            |e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "crate::core::Runner"
+        )
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "helpers")
+    );
+    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Implements
+        && e.source_symbol.as_deref() == Some("User")
+        && e.target_path_or_symbol == "Greeter"));
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "helper_fn")
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "self.inner_call")
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Calls && e.target_path_or_symbol == "step_two")
+    );
     assert!(facts.edges.iter().filter(|e| e.kind == EdgeKind::Calls).all(|e| !e.target_path_or_symbol.contains('\n') && e.target_path_or_symbol.len() <= 80));
 }
 
@@ -143,13 +181,14 @@ fn biome_ignore_and_python_type_ignore_blocked_unless_allowed() {
     assert_eq!(r3.diagnostics.len(), 1);
     assert_eq!(r3.diagnostics[0].rule, "no-escape-hatches");
 
-    let py_type_ok = "# anvil-allow(no-type-ignore): third-party stub [PY-9]\nx: int = 'oops'  # type: ignore\n";
+    let py_type_ok =
+        "# anvil-allow(no-type-ignore): third-party stub [PY-9]\nx: int = 'oops'  # type: ignore\n";
     let r4 = analyze_file(Path::new("app/t.py"), py_type_ok, &cfg()).expect("py ok");
     assert!(r4.diagnostics.is_empty());
 }
 
 #[test]
-fn tsx_skips_dom_props_sanitizes_multiline_calls_and_parses_decorators_via_ast() {
+fn tsx_skips_dom_props_and_sanitizes_multiline_calls() {
     let tsx = r#"
 export function View() {
   const data = fetch('/api/orders')
@@ -168,10 +207,27 @@ export function View() {
 }
 "#;
     let facts = analyze_file(Path::new("src/View.tsx"), tsx, &cfg()).expect("tsx");
-    assert!(!facts.edges.iter().any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol.starts_with("div.")));
-    assert!(!facts.edges.iter().any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol.starts_with("span.")));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "CheckoutButton.variant"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "Form.Input.label"));
+    assert!(
+        !facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol.starts_with("div."))
+    );
+    assert!(
+        !facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol.starts_with("span."))
+    );
+    assert!(facts.edges.iter().any(
+        |e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "CheckoutButton.variant"
+    ));
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::UsesProp && e.target_path_or_symbol == "Form.Input.label")
+    );
 
     let calls: Vec<&str> = facts
         .edges
@@ -185,7 +241,10 @@ export function View() {
     assert!(calls.contains(&"res.json"));
     assert!(calls.contains(&"catch"));
     assert!(calls.contains(&"console.error"));
+}
 
+#[test]
+fn parses_angular_decorators_via_ast_ignoring_comments() {
     let ng = r#"
 @Component({
   // selector: 'comment-fake',
@@ -195,9 +254,14 @@ export function View() {
 export class RealCardComponent {}
 "#;
     let ng_facts = analyze_file(Path::new("src/real.ts"), ng, &cfg()).expect("ng ast");
-    assert!(ng_facts.symbols.iter().any(|s| s.name == "real-card" && s.kind == SymbolKind::Component));
+    assert!(
+        ng_facts.symbols.iter().any(|s| s.name == "real-card" && s.kind == SymbolKind::Component)
+    );
     assert!(!ng_facts.symbols.iter().any(|s| s.name == "comment-fake"));
-    assert!(ng_facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate && e.target_path_or_symbol == "./real-card.html"));
+    assert!(
+        ng_facts.edges.iter().any(|e| e.kind == EdgeKind::RendersTemplate
+            && e.target_path_or_symbol == "./real-card.html")
+    );
 }
 
 #[test]
@@ -217,16 +281,32 @@ pub fn cfg_allowed(x: i32) {}
 pub struct CleanStruct;
 "#;
     let facts = analyze_file(Path::new("src/lib.rs"), src, &cfg()).expect("rust lib");
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "crate::internal::Secret"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::ReExports && e.target_path_or_symbol == "crate::core::Config"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::ReExports && e.target_path_or_symbol == "crate::core::Runner"));
-    assert!(facts.edges.iter().any(|e| e.kind == EdgeKind::ReExports && e.target_path_or_symbol == "crate::utils"));
+    assert!(facts.edges.iter().any(
+        |e| e.kind == EdgeKind::Imports && e.target_path_or_symbol == "crate::internal::Secret"
+    ));
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::ReExports
+                && e.target_path_or_symbol == "crate::core::Config")
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::ReExports
+                && e.target_path_or_symbol == "crate::core::Runner")
+    );
+    assert!(
+        facts
+            .edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::ReExports && e.target_path_or_symbol == "crate::utils")
+    );
 
-    let escape_diags: Vec<_> = facts
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule == "no-escape-hatches")
-        .collect();
+    let escape_diags: Vec<_> =
+        facts.diagnostics.iter().filter(|d| d.rule == "no-escape-hatches").collect();
     assert_eq!(escape_diags.len(), 2, "diags: {:?}", facts.diagnostics);
     assert_eq!(escape_diags[0].line, 6);
     assert_eq!(escape_diags[1].line, 9);

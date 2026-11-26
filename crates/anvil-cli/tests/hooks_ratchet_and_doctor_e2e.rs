@@ -1,7 +1,7 @@
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
-use std::io::Write;
 
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -41,13 +41,25 @@ fn setup_git_ts_repo() -> TempDir {
     let root = dir.path();
 
     Command::new("git").args(["init"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.name", "Test User"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
 
     fs::write(root.join("package.json"), r#"{"name":"sample","version":"1.0.0"}"#).unwrap();
     fs::write(root.join("tsconfig.json"), r#"{"compilerOptions":{"strict":true}}"#).unwrap();
     fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  return x * 2;\n}\n").unwrap();
+    fs::write(
+        root.join("src/core.ts"),
+        "export function compute(x: number): number {\n  return x * 2;\n}\n",
+    )
+    .unwrap();
     dir
 }
 
@@ -74,15 +86,28 @@ fn post_tool_use_read_skips_ast_and_memory_invalidation() {
         &run_anvil(
             root,
             &[
-                "mem", "save", "--kind", "decision", "--title", "Bad file note",
-                "--what", "Track bad.ts", "--why", "Test read hook isolation",
-                "--where", "src/bad.ts", "--learned", "Reads must not stale memory",
-                "--files", "src/bad.ts",
+                "mem",
+                "save",
+                "--kind",
+                "decision",
+                "--title",
+                "Bad file note",
+                "--what",
+                "Track bad.ts",
+                "--why",
+                "Test read hook isolation",
+                "--where",
+                "src/bad.ts",
+                "--learned",
+                "Reads must not stale memory",
+                "--files",
+                "src/bad.ts",
             ],
         ),
         "mem save",
     );
-    let obs_id = save_out.split_whitespace().find_map(|t| t.strip_prefix("id=")).unwrap().to_owned();
+    let obs_id =
+        save_out.split_whitespace().find_map(|t| t.strip_prefix("id=")).unwrap().to_owned();
 
     // Fire PostToolUse for Read -> must emit {} and keep memory Fresh.
     let read_post = json!({
@@ -92,7 +117,11 @@ fn post_tool_use_read_skips_ast_and_memory_invalidation() {
         "tool_input": { "file_path": "src/bad.ts" }
     });
     let post_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "claude"], &read_post.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "post-tool-use", "--adapter", "claude"],
+            &read_post.to_string(),
+        ),
         "claude post-tool-use Read",
     );
     assert_eq!(serde_json::from_str::<Value>(&post_out).unwrap(), json!({}));
@@ -115,17 +144,23 @@ fn ratchet_test_and_promoted_rule_live_in_anvil_check() {
         &run_anvil(
             root,
             &[
-                "ratchet", "log",
-                "--rule", "no-console-log",
-                "--description", "Avoid console.log in production TypeScript",
-                "--pattern", r"console\.log\(",
-                "--lang", "ts",
+                "ratchet",
+                "log",
+                "--rule",
+                "no-console-log",
+                "--description",
+                "Avoid console.log in production TypeScript",
+                "--pattern",
+                r"console\.log\(",
+                "--lang",
+                "ts",
                 "--high-impact",
             ],
         ),
         "ratchet log",
     );
-    let cand_id = log_out.split_whitespace().find_map(|t| t.strip_prefix("id=")).unwrap().to_owned();
+    let cand_id =
+        log_out.split_whitespace().find_map(|t| t.strip_prefix("id=")).unwrap().to_owned();
 
     let test_out = assert_ok(&run_anvil(root, &["ratchet", "test", &cand_id]), "ratchet test");
     assert!(test_out.contains("scanned=1"));
@@ -138,7 +173,11 @@ fn ratchet_test_and_promoted_rule_live_in_anvil_check() {
     assert_ok(&run_anvil(root, &["ratchet", "promote", &cand_id]), "ratchet promote");
 
     // Modify a TS file to violate the promoted rule and run `anvil check`.
-    fs::write(root.join("src/core.ts"), "export function compute(x: number): number {\n  console.log(x);\n  return x;\n}\n").unwrap();
+    fs::write(
+        root.join("src/core.ts"),
+        "export function compute(x: number): number {\n  console.log(x);\n  return x;\n}\n",
+    )
+    .unwrap();
     let check_out = assert_ok(&run_anvil(root, &["check", "--tier", "0"]), "anvil check");
     assert!(check_out.contains("no-console-log"));
 }
@@ -178,7 +217,11 @@ fn hook_pre_tool_use_skips_wrapping_commands_with_shell_metacharacters() {
         "tool_input": { "command": "tsc --noEmit && echo done" }
     });
     let out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-tool-use", "--adapter", "claude"], &piped.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-tool-use", "--adapter", "claude"],
+            &piped.to_string(),
+        ),
         "pre-tool-use metachar",
     );
     let parsed: Value = serde_json::from_str(&out).unwrap();
@@ -201,12 +244,20 @@ fn post_tool_use_matches_namespaced_mutating_tool_and_stop_allows_non_idle_swarm
         }
     });
     assert_ok(
-        &run_anvil_stdin(root, &["hook", "post-tool-use", "--adapter", "antigravity"], &post.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "post-tool-use", "--adapter", "antigravity"],
+            &post.to_string(),
+        ),
         "namespaced edit_file post-tool-use",
     );
     let pre_inv = json!({ "hookEventName": "PreInvocation", "cwd": root.to_string_lossy() });
     let inv_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "pre-invocation", "--adapter", "antigravity"], &pre_inv.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "pre-invocation", "--adapter", "antigravity"],
+            &pre_inv.to_string(),
+        ),
         "drain namespaced diagnostic",
     );
     assert!(inv_out.contains("TODO"));
@@ -218,7 +269,11 @@ fn post_tool_use_matches_namespaced_mutating_tool_and_stop_allows_non_idle_swarm
         "fullyIdle": false
     });
     let stop_out = assert_ok(
-        &run_anvil_stdin(root, &["hook", "stop", "--adapter", "antigravity"], &stop_non_idle.to_string()),
+        &run_anvil_stdin(
+            root,
+            &["hook", "stop", "--adapter", "antigravity"],
+            &stop_non_idle.to_string(),
+        ),
         "stop allows non-idle swarm turn",
     );
     assert_eq!(serde_json::from_str::<Value>(&stop_out).unwrap()["decision"], json!("allow"));
@@ -259,7 +314,11 @@ fn check_full_scans_entire_repo_even_when_dirty() {
     Command::new("git").args(["commit", "-m", "initial"]).current_dir(root).output().unwrap();
 
     // Dirty only src/core.ts while src/unmodified_bad.ts stays clean in git.
-    fs::write(root.join("src/core.ts"), "export function compute(x: number): number { return x + 1; }\n").unwrap();
+    fs::write(
+        root.join("src/core.ts"),
+        "export function compute(x: number): number { return x + 1; }\n",
+    )
+    .unwrap();
     let full_out = run_anvil(root, &["check", "--full", "--tier", "0"]);
     assert!(!full_out.status.success(), "expected check --full to fail on unmodified_bad.ts");
     let stdout = String::from_utf8_lossy(&full_out.stdout);
@@ -281,7 +340,8 @@ fn impact_typecheck_exits_nonzero_and_qa_run_respects_phase_and_skip() {
     {
         use std::os::unix::fs::PermissionsExt;
         let p = root.join("node_modules/.bin/tsc");
-        fs::write(&p, "#!/bin/sh\necho 'src/core.ts(1,1): error TS2322: bad type'\nexit 2\n").unwrap();
+        fs::write(&p, "#!/bin/sh\necho 'src/core.ts(1,1): error TS2322: bad type'\nexit 2\n")
+            .unwrap();
         fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
     }
     assert_ok(&run_anvil(root, &["init"]), "init");
@@ -362,7 +422,11 @@ fn tier1_runs_node_test_when_configured_in_package_json() {
     let repo = TempDir::new().unwrap();
     let root = repo.path();
     Command::new("git").args(["init"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
     Command::new("git").args(["config", "user.name", "Tester"]).current_dir(root).output().unwrap();
 
     fs::create_dir_all(root.join("src")).unwrap();
@@ -372,11 +436,8 @@ fn tier1_runs_node_test_when_configured_in_package_json() {
         "{\"name\":\"node-test-demo\",\"type\":\"module\",\"scripts\":{\"test\":\"node --test\"}}\n",
     )
     .unwrap();
-    fs::write(
-        root.join("src/math.mjs"),
-        "export function add(a, b) {\n  return a + b;\n}\n",
-    )
-    .unwrap();
+    fs::write(root.join("src/math.mjs"), "export function add(a, b) {\n  return a + b;\n}\n")
+        .unwrap();
     fs::write(
         root.join("tests/math.test.mjs"),
         "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add } from '../src/math.mjs';\n\ntest('add sums two numbers', () => {\n  assert.equal(add(2, 3), 5);\n});\n",
@@ -400,11 +461,8 @@ fn tier1_runs_node_test_when_configured_in_package_json() {
     assert!(!out.contains("SKIP (vitest/jest)"), "unexpected vitest/jest skip in:\n{out}");
 
     // Break src/math.mjs and verify Tier 1 actually fails via `node --test`.
-    fs::write(
-        root.join("src/math.mjs"),
-        "export function add(a, b) {\n  return a - b;\n}\n",
-    )
-    .unwrap();
+    fs::write(root.join("src/math.mjs"), "export function add(a, b) {\n  return a - b;\n}\n")
+        .unwrap();
     let fail_out = run_anvil(root, &["check", "--tier", "1", "--no-cache"]);
     assert!(!fail_out.status.success(), "expected broken math.mjs to fail node --test");
     let combined = format!(
@@ -412,7 +470,10 @@ fn tier1_runs_node_test_when_configured_in_package_json() {
         String::from_utf8_lossy(&fail_out.stdout),
         String::from_utf8_lossy(&fail_out.stderr)
     );
-    assert!(combined.contains("FAIL (node)") || combined.contains("add sums two numbers"), "expected failure details: {combined}");
+    assert!(
+        combined.contains("FAIL (node)") || combined.contains("add sums two numbers"),
+        "expected failure details: {combined}"
+    );
 }
 
 #[test]
@@ -420,12 +481,20 @@ fn staged_check_detects_git_mv_renames_without_false_tampering() {
     let repo = setup_git_ts_repo();
     let root = repo.path();
     fs::create_dir_all(root.join("tests")).unwrap();
-    let test_fixture = concat!("import { strict as assert } from 'assert';\nconst marker = \"it.", "skip", "('x', () => {});\";\nassert.ok(marker.length > 0);\n");
+    let test_fixture = concat!(
+        "import { strict as assert } from 'assert';\nconst marker = \"it.",
+        "skip",
+        "('x', () => {});\";\nassert.ok(marker.length > 0);\n"
+    );
     fs::write(root.join("tests/old_name.test.ts"), test_fixture).unwrap();
 
     assert_ok(&run_anvil(root, &["init"]), "init");
     Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
-    Command::new("git").args(["commit", "-m", "add test fixture"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "add test fixture"])
+        .current_dir(root)
+        .output()
+        .unwrap();
 
     let mv = Command::new("git")
         .args(["mv", "tests/old_name.test.ts", "tests/new_name.test.ts"])
@@ -440,4 +509,3 @@ fn staged_check_detects_git_mv_renames_without_false_tampering() {
     );
     assert!(out.contains("anvil check: PASS"), "expected staged tier 0 pass: {out}");
 }
-

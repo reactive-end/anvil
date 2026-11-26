@@ -25,11 +25,7 @@ fn init_git_repo(dir: &Path, user_name: &str) {
         &["config", "user.name", user_name][..],
         &["config", "user.email", "dev@example.com"][..],
     ] {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .output()
-            .expect("git executes");
+        let out = Command::new("git").args(args).current_dir(dir).output().expect("git executes");
         assert!(out.status.success(), "git {:?} failed", args);
     }
 }
@@ -89,10 +85,7 @@ fn concurrent_ensure_task_for_prompt_serializes_via_file_lock() {
         }));
     }
 
-    let results: Vec<_> = handles
-        .into_iter()
-        .map(|h| h.join().expect("thread joined"))
-        .collect();
+    let results: Vec<_> = handles.into_iter().map(|h| h.join().expect("thread joined")).collect();
 
     let created_count = results.iter().filter(|(_, created)| *created).count();
     assert_eq!(created_count, 1, "exactly one worker should create the task");
@@ -126,11 +119,7 @@ fn concurrent_mark_summary_recorded_never_corrupts_active_task() {
             let barrier = Arc::clone(&barrier);
             thread::spawn(move || {
                 barrier.wait();
-                let status = if i % 2 == 0 {
-                    TaskStatus::Done
-                } else {
-                    TaskStatus::InProgress
-                };
+                let status = if i % 2 == 0 { TaskStatus::Done } else { TaskStatus::InProgress };
                 mark_summary_recorded(&repo, &task_id, status).expect("locked mark summary");
             })
         })
@@ -140,9 +129,7 @@ fn concurrent_mark_summary_recorded_never_corrupts_active_task() {
         h.join().expect("join");
     }
 
-    let final_state = load_active_task(tmp.path())
-        .expect("load active")
-        .expect("present");
+    let final_state = load_active_task(tmp.path()).expect("load active").expect("present");
     assert_eq!(final_state.task_id, *task_id);
     assert!(final_state.summary_recorded_at.is_some());
     anvil_core::fs_util::with_file_lock(&active_task_lock_path(tmp.path()), 50, || Ok(()))
@@ -170,11 +157,8 @@ fn resolve_merge_never_resurrects_deleted_tasks() {
     fs::remove_dir_all(task_dir(repo, &deleted.task_id)).expect("delete task from .harness/tasks");
     let after_delete = build_root_tasks_json(repo).expect("rebuild after delete");
     let after_index = TasksIndexFile::from(&after_delete);
-    fs::write(
-        &theirs_path,
-        serde_json::to_string_pretty(&after_index).expect("serialize theirs"),
-    )
-    .expect("write theirs");
+    fs::write(&theirs_path, serde_json::to_string_pretty(&after_index).expect("serialize theirs"))
+        .expect("write theirs");
 
     let merged = resolve_merge(&base_path, &ours_path, &theirs_path, repo).expect("resolve_merge");
     let parsed: TasksIndexFile =

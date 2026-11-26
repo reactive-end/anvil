@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
 use anvil_core::git::{self, DiffScope};
@@ -11,6 +10,7 @@ use anvil_graph::CodeGraphEngine;
 use anvil_graph::query::{ExplainResult, FileOutline};
 use anvil_memory::MemoryEngine;
 use anvil_memory::model::SearchHit;
+use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -36,18 +36,12 @@ fn handle_impact(server: &mut McpServer, args: &Value) -> Result<Value> {
     if files.is_empty() {
         files = git::changed_files(server.repo_root(), DiffScope::WorkingTree).unwrap_or_default();
     }
-    let depth = args
-        .get("depth")
-        .and_then(Value::as_u64)
-        .map_or(2, |d| d as usize);
-    let run_typecheck = args
-        .get("typecheck")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let depth = args.get("depth").and_then(Value::as_u64).map_or(2, |d| d as usize);
+    let run_typecheck = args.get("typecheck").and_then(Value::as_bool).unwrap_or(false);
 
     if run_typecheck {
-        let limit = AnvilConfig::load_or_default(server.repo_root())
-            .map_or(3, |c| c.circuit_breaker_limit);
+        let limit =
+            AnvilConfig::load_or_default(server.repo_root()).map_or(3, |c| c.circuit_breaker_limit);
         if let Ok(st) = CircuitBreaker::new(server.repo_root(), limit).status()
             && st.is_open()
         {
@@ -90,10 +84,7 @@ fn handle_origin(server: &mut McpServer, args: &Value) -> Result<Value> {
 
 fn handle_query(server: &mut McpServer, args: &Value) -> Result<Value> {
     let term = required_str(args, "term")?;
-    let limit = args
-        .get("limit")
-        .and_then(Value::as_u64)
-        .map_or(10, |l| l.clamp(1, 100) as usize);
+    let limit = args.get("limit").and_then(Value::as_u64).map_or(10, |l| l.clamp(1, 100) as usize);
     let engine = server.ensure_graph()?;
     let hits = engine.query(term, limit);
     Ok(json!({
@@ -123,10 +114,7 @@ fn handle_explain(server: &mut McpServer, args: &Value) -> Result<Value> {
 
 fn handle_read_symbol(server: &mut McpServer, args: &Value) -> Result<Value> {
     let symbol = required_str(args, "symbol")?;
-    let include_imports = args
-        .get("include_imports")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
+    let include_imports = args.get("include_imports").and_then(Value::as_bool).unwrap_or(true);
     let repo_root = server.repo_root().to_path_buf();
     let engine = server.ensure_graph()?;
     match engine.read_symbol(symbol, include_imports)? {
@@ -134,9 +122,7 @@ fn handle_read_symbol(server: &mut McpServer, args: &Value) -> Result<Value> {
             if slice.estimated_tokens_saved > 0 {
                 let _ = record_event(
                     &repo_root,
-                    StatsEvent::SymbolReadSaved {
-                        tokens_saved: slice.estimated_tokens_saved,
-                    },
+                    StatsEvent::SymbolReadSaved { tokens_saved: slice.estimated_tokens_saved },
                 );
             }
             Ok(json!({ "found": true, "slice": slice }))
@@ -146,11 +132,8 @@ fn handle_read_symbol(server: &mut McpServer, args: &Value) -> Result<Value> {
 }
 
 fn handle_outline(server: &mut McpServer, args: &Value) -> Result<Value> {
-    let target = args
-        .get("target")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let target =
+        args.get("target").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
     let max_tokens = args
         .get("max_tokens")
         .and_then(Value::as_u64)
@@ -161,9 +144,7 @@ fn handle_outline(server: &mut McpServer, args: &Value) -> Result<Value> {
     if outline.estimated_tokens_saved > 0 {
         let _ = record_event(
             &repo_root,
-            StatsEvent::OutlineSaved {
-                tokens_saved: outline.estimated_tokens_saved,
-            },
+            StatsEvent::OutlineSaved { tokens_saved: outline.estimated_tokens_saved },
         );
     }
     Ok(json!({ "outline": outline }))
@@ -241,12 +222,7 @@ fn collect_graph_context(
         outlines.extend(engine.outline(Some(file), outline_budget).files);
     }
 
-    GraphContext {
-        resolved_files,
-        outlines,
-        edges,
-        related_tests: blast.related_tests,
-    }
+    GraphContext { resolved_files, outlines, edges, related_tests: blast.related_tests }
 }
 
 fn push_explain_edges(exp: &ExplainResult, edges: &mut Vec<String>, seen: &mut HashSet<String>) {

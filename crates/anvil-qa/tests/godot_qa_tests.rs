@@ -58,14 +58,8 @@ fn audit_godot_scene_tree_flags_missing_camera_lighting_and_collision_shape() {
     assert!(kinds.contains(&QaViolationKind::Godot3dMissingCamera));
     assert!(kinds.contains(&QaViolationKind::Godot3dMissingLighting));
     assert!(kinds.contains(&QaViolationKind::GodotMissingCollisionShape));
-    assert_eq!(
-        QaViolationKind::Godot3dMissingCamera.as_str(),
-        "godot-3d-missing-camera"
-    );
-    assert_eq!(
-        QaViolationKind::Godot3dMissingLighting.as_str(),
-        "godot-3d-missing-lighting"
-    );
+    assert_eq!(QaViolationKind::Godot3dMissingCamera.as_str(), "godot-3d-missing-camera");
+    assert_eq!(QaViolationKind::Godot3dMissingLighting.as_str(), "godot-3d-missing-lighting");
     assert_eq!(
         QaViolationKind::GodotMissingCollisionShape.as_str(),
         "godot-missing-collision-shape"
@@ -98,10 +92,7 @@ fn audit_godot_scene_tree_passes_well_formed_3d_scene_and_qa_engine_delegates() 
     let engine = QaEngine::new(".");
     assert!(engine.audit_godot_scene(clean_3d, "scenes/level.tscn").is_empty());
 
-    let godot_cfg = AnvilConfig {
-        stacks: vec![StackKind::Godot],
-        ..Default::default()
-    };
+    let godot_cfg = AnvilConfig { stacks: vec![StackKind::Godot], ..Default::default() };
     assert_eq!(detect_ui_platform(&godot_cfg), UiPlatform::None);
 }
 

@@ -40,7 +40,10 @@ fn tools_lists_configured_servers_and_writes_the_executor_allowlist() {
 
     let add = ["orchestrator", "tools", "--add", "postgres,chrome-devtools"];
     let added = ok(&anvil(&repo, &claude, &add), "add");
-    assert!(added.contains("[x] postgres") && added.contains("[x] mcp__chrome-devtools__*"), "{added}");
+    assert!(
+        added.contains("[x] postgres") && added.contains("[x] mcp__chrome-devtools__*"),
+        "{added}"
+    );
     let executor = repo.join(".claude/agents/anvil-executor.md");
     let tools_line = |path: &Path| {
         let text = fs::read_to_string(path).unwrap();

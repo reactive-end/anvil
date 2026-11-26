@@ -93,9 +93,7 @@ pub(crate) fn percent_encode_component(input: &str) -> String {
 
 /// Parses an RFC 3339 / ISO 8601 timestamp into UTC.
 pub(crate) fn parse_rfc3339_utc(raw: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(raw.trim())
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
+    DateTime::parse_from_rfc3339(raw.trim()).ok().map(|dt| dt.with_timezone(&Utc))
 }
 
 #[cfg(test)]
@@ -111,11 +109,7 @@ mod tests {
         let t0 = Instant::now();
         assert_eq!(next_throttle_delay(None, t0, Duration::from_secs(1)), None);
         assert_eq!(
-            next_throttle_delay(
-                Some(t0),
-                t0 + Duration::from_millis(250),
-                Duration::from_secs(1)
-            ),
+            next_throttle_delay(Some(t0), t0 + Duration::from_millis(250), Duration::from_secs(1)),
             Some(Duration::from_millis(750))
         );
         assert_eq!(

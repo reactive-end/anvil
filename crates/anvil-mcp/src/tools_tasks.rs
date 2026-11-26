@@ -2,14 +2,13 @@
 
 use std::path::Path;
 
-use anyhow::{Result, bail};
 use anvil_tasks::{
     ProgressUpdate, TaskStatus, TaskTarget, activate_task_from_meta, begin_existing_task,
     build_resume_brief, clear_untracked_edits, collect_task_files, consolidate_repo_tasks,
-    read_single_task, record_curated_task_in_group, record_task_progress,
-    record_task_skip, resolve_author_fast, start_task_in_group, task_progress_rel_path,
-    validate_curated_task_title,
+    read_single_task, record_curated_task_in_group, record_task_progress, record_task_skip,
+    resolve_author_fast, start_task_in_group, task_progress_rel_path, validate_curated_task_title,
 };
+use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
 use crate::McpServer;
@@ -139,11 +138,7 @@ fn handle_task_record(root: &Path, args: &Value) -> Result<Value> {
         summary,
         status,
         &explicit_files,
-        TaskTarget {
-            author: None,
-            group,
-            task_id: explicit_id,
-        },
+        TaskTarget { author: None, group, task_id: explicit_id },
     )?;
     Ok(json!({
         "task_id": meta.task_id,
@@ -208,11 +203,8 @@ fn handle_task_list(root: &Path, args: &Value) -> Result<Value> {
         Some(other) => bail!("invalid task status filter `{other}`"),
         None => None,
     };
-    let group_filter = args
-        .get("group")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let group_filter =
+        args.get("group").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
     let consolidated = consolidate_repo_tasks(root)?;
     let slice: Vec<Value> = consolidated
         .tasks
@@ -220,9 +212,7 @@ fn handle_task_list(root: &Path, args: &Value) -> Result<Value> {
         .filter(|t| status_filter.is_none_or(|s| t.status == s))
         .filter(|t| {
             group_filter.is_none_or(|g| {
-                t.task_id
-                    .split_once('/')
-                    .is_some_and(|(pfx, _)| pfx.eq_ignore_ascii_case(g))
+                t.task_id.split_once('/').is_some_and(|(pfx, _)| pfx.eq_ignore_ascii_case(g))
                     || t.project.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(g))
             })
         })
@@ -262,10 +252,7 @@ fn handle_task_resume(root: &Path, args: &Value) -> Result<Value> {
 }
 
 fn opt_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+    args.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())
 }
 
 fn req_str<'a>(args: &'a Value, key: &str) -> Result<&'a str> {

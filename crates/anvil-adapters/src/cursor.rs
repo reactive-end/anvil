@@ -51,7 +51,9 @@ pub fn sync_rules_with_template(repo_root: &Path, template: &str) -> Result<bool
     let path = rules_path(repo_root);
     let existing = read_optional_string(&path)?;
     let merged = match existing.as_deref() {
-        Some(current) if !current.trim().is_empty() => merge_managed_markdown(Some(current), template),
+        Some(current) if !current.trim().is_empty() => {
+            merge_managed_markdown(Some(current), template)
+        }
         _ => format!("{CURSOR_RULES_FRONTMATTER}{template}"),
     };
     write_if_changed(&path, &merged)

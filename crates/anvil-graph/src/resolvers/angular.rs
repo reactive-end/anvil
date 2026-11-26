@@ -25,30 +25,18 @@ pub fn resolve_angular_edge(
 fn resolve_render_target(edge: &EdgeRef, graph: &CodeGraph) -> Option<NodeId> {
     let target = edge.target_path_or_symbol.trim();
     if target.ends_with(".html") || target.ends_with(".htm") || target.starts_with('.') {
-        let base_dir = edge
-            .source_file
-            .rsplit_once('/')
-            .map(|(d, _)| d)
-            .unwrap_or("");
+        let base_dir = edge.source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         let resolved = normalize_join_rel(base_dir, target);
         if graph.file_hashes.contains_key(&resolved) {
-            return graph
-                .node_by_id(&CodeGraph::file_node_id(&resolved))
-                .map(|(id, _)| id);
+            return graph.node_by_id(&CodeGraph::file_node_id(&resolved)).map(|(id, _)| id);
         }
     }
     graph.angular_selectors.get(target).copied()
 }
 
-fn resolve_html_call(
-    edge: &EdgeRef,
-    file_imports: &[String],
-    graph: &CodeGraph,
-) -> Option<NodeId> {
-    let clean = edge
-        .target_path_or_symbol
-        .strip_prefix("this.")
-        .unwrap_or(&edge.target_path_or_symbol);
+fn resolve_html_call(edge: &EdgeRef, file_imports: &[String], graph: &CodeGraph) -> Option<NodeId> {
+    let clean =
+        edge.target_path_or_symbol.strip_prefix("this.").unwrap_or(&edge.target_path_or_symbol);
     let method = clean.rsplit('.').next().unwrap_or(clean);
 
     if let Some(ts_file) = companion_ts_file(&edge.source_file)

@@ -21,11 +21,7 @@ pub fn clean_callee(node: Node<'_>, state: &ExtractState<'_>) -> Option<String> 
                 && let Some(obj_name) = clean_member_object(obj, state)
             {
                 let combined = format!("{obj_name}.{prop_name}");
-                if combined.len() <= 80 {
-                    combined
-                } else {
-                    prop_name.to_owned()
-                }
+                if combined.len() <= 80 { combined } else { prop_name.to_owned() }
             } else {
                 prop_name.to_owned()
             }

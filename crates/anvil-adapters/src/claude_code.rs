@@ -79,11 +79,7 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
 /// Renders a normalized `HookOutcome` into Claude Code's stdout JSON contract.
 ///
 /// For `PostToolUse`, returns `additionalContext` directly and clears `.harness/.state/inbox.json`.
-pub fn render_output(
-    repo_root: &Path,
-    event: HookEvent,
-    outcome: &HookOutcome,
-) -> Result<Value> {
+pub fn render_output(repo_root: &Path, event: HookEvent, outcome: &HookOutcome) -> Result<Value> {
     match event {
         HookEvent::PreToolUse => Ok(render_pre_tool_use(outcome)),
         HookEvent::PostToolUse => {
@@ -113,20 +109,11 @@ fn render_pre_tool_use(outcome: &HookOutcome) -> Value {
         PermissionAction::Deny => Some("deny"),
         PermissionAction::Ask => Some("ask"),
     };
-    specific.insert(
-        "hookEventName".to_owned(),
-        Value::String("PreToolUse".to_owned()),
-    );
+    specific.insert("hookEventName".to_owned(), Value::String("PreToolUse".to_owned()));
     if let Some(decision) = decision {
-        specific.insert(
-            "permissionDecision".to_owned(),
-            Value::String(decision.to_owned()),
-        );
+        specific.insert("permissionDecision".to_owned(), Value::String(decision.to_owned()));
         if let Some(reason) = &outcome.reason {
-            specific.insert(
-                "permissionDecisionReason".to_owned(),
-                Value::String(reason.clone()),
-            );
+            specific.insert("permissionDecisionReason".to_owned(), Value::String(reason.clone()));
         }
     } else {
         let Some(updated) = &outcome.updated_input else {

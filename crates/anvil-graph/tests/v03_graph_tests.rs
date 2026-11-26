@@ -24,11 +24,7 @@ fn write_repo_file(root: &Path, rel: &str, content: &str) {
 fn create_mock_bin(work_dir: &Path, name: &str) {
     let bin_dir = work_dir.join("node_modules").join(".bin");
     fs::create_dir_all(&bin_dir).expect("create .bin dir");
-    let file_name = if cfg!(windows) {
-        format!("{name}.cmd")
-    } else {
-        name.to_owned()
-    };
+    let file_name = if cfg!(windows) { format!("{name}.cmd") } else { name.to_owned() };
     let path = bin_dir.join(file_name);
     fs::write(&path, "@echo off\r\nexit /b 0\r\n").expect("write mock bin");
     #[cfg(unix)]
@@ -69,7 +65,10 @@ fn read_symbol_returns_exact_span_imports_and_positive_tokens_saved() {
         .read_symbol("src/billing.ts::calculateTotal", true)
         .expect("read_symbol ok")
         .expect("symbol found");
-    assert_eq!((slice.file.as_str(), slice.symbol.as_str(), slice.kind.as_str()), ("src/billing.ts", "calculateTotal", "function"));
+    assert_eq!(
+        (slice.file.as_str(), slice.symbol.as_str(), slice.kind.as_str()),
+        ("src/billing.ts", "calculateTotal", "function")
+    );
     assert_eq!((slice.start_line, slice.end_line), (4, 7));
     assert!(slice.total_file_lines > 100 && slice.imports.len() == 2);
     assert!(slice.imports[0].contains("TaxRate"));
@@ -101,7 +100,8 @@ fn read_symbol_caps_huge_bodies_at_250_lines() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path();
 
-    let mut huge = String::from("export function hugePipeline(n: number): number {\n  let acc = n;\n");
+    let mut huge =
+        String::from("export function hugePipeline(n: number): number {\n  let acc = n;\n");
     for i in 0..280 {
         huge.push_str(&format!("  acc += {i};\n"));
     }
@@ -109,10 +109,7 @@ fn read_symbol_caps_huge_bodies_at_250_lines() {
     write_repo_file(root, "src/huge.ts", &huge);
 
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("build");
-    let slice = engine
-        .read_symbol("hugePipeline", false)
-        .expect("read_symbol")
-        .expect("found");
+    let slice = engine.read_symbol("hugePipeline", false).expect("read_symbol").expect("found");
     assert!(slice.end_line > 280);
     assert!(slice.body.contains("truncated"));
     assert!(slice.body.lines().count() <= 252);
@@ -224,13 +221,12 @@ fn cross_repo_http_route_blast_radius_connects_nestjs_and_frontend() {
     let back = CodeGraphEngine::build(back_dir.path(), AnvilConfig::default()).expect("back");
     let front = CodeGraphEngine::build(front_dir.path(), AnvilConfig::default()).expect("front");
 
-    let merged = merge_graphs(&[
-        ("fliiper-backend", &back.graph),
-        ("fliiper-front", &front.graph),
-    ]);
+    let merged = merge_graphs(&[("fliiper-backend", &back.graph), ("fliiper-front", &front.graph)]);
 
     assert!(
-        merged.node_by_id("route:GET /orders/:param").is_some_and(|(_, n)| n.kind == NodeKind::Semantic),
+        merged
+            .node_by_id("route:GET /orders/:param")
+            .is_some_and(|(_, n)| n.kind == NodeKind::Semantic),
         "expected unprefixed route:GET /orders/:param semantic node in merged graph"
     );
 
@@ -323,14 +319,10 @@ fn run_impacted_typecheck_retries_plain_no_emit_when_incremental_rejected() {
         }
     }
 
-    let cfg = AnvilConfig {
-        stacks: vec![StackKind::TypeScript],
-        ..Default::default()
-    };
+    let cfg = AnvilConfig { stacks: vec![StackKind::TypeScript], ..Default::default() };
     let engine = CodeGraphEngine::build(root, cfg).expect("build");
-    let outputs = engine
-        .run_impacted_typecheck(&["src/app.ts".to_owned()])
-        .expect("run_impacted_typecheck");
+    let outputs =
+        engine.run_impacted_typecheck(&["src/app.ts".to_owned()]).expect("run_impacted_typecheck");
     assert_eq!(outputs.len(), 1);
     assert!(outputs[0].passed, "expected fallback --noEmit to pass: {:?}", outputs[0]);
     assert_eq!(outputs[0].exit_code, 0);

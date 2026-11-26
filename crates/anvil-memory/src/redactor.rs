@@ -13,8 +13,7 @@ fn compile_regex(pattern: &str) -> Option<Regex> {
 
 fn private_block_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"(?is)<private>.*?</private>"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"(?is)<private>.*?</private>")).as_ref()
 }
 
 fn pem_private_key_re() -> Option<&'static Regex> {
@@ -29,14 +28,12 @@ fn pem_private_key_re() -> Option<&'static Regex> {
 
 fn conn_password_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"(?i)([a-z][a-z0-9+.-]*://[^:/\s@]*:)([^@\s]+)(@)"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"(?i)([a-z][a-z0-9+.-]*://[^:/\s@]*:)([^@\s]+)(@)")).as_ref()
 }
 
 fn bearer_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"(?i)\bBearer\s+[A-Za-z0-9\-._~+/]+=*"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"(?i)\bBearer\s+[A-Za-z0-9\-._~+/]+=*")).as_ref()
 }
 
 fn jwt_re() -> Option<&'static Regex> {
@@ -57,32 +54,27 @@ fn github_token_re() -> Option<&'static Regex> {
 
 fn aws_key_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")).as_ref()
 }
 
 fn gcp_key_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"\bAIza[0-9A-Za-z\-_]{35}\b"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"\bAIza[0-9A-Za-z\-_]{35}\b")).as_ref()
 }
 
 fn stripe_key_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b")).as_ref()
 }
 
 fn slack_token_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")).as_ref()
 }
 
 fn api_key_prefix_re() -> Option<&'static Regex> {
     static RE: OnceLock<Option<Regex>> = OnceLock::new();
-    RE.get_or_init(|| compile_regex(r"\bsk-[A-Za-z0-9_\-]{20,}\b"))
-        .as_ref()
+    RE.get_or_init(|| compile_regex(r"\bsk-[A-Za-z0-9_\-]{20,}\b")).as_ref()
 }
 
 fn secret_kv_re() -> Option<&'static Regex> {

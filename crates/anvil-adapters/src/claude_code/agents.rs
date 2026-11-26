@@ -6,8 +6,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
 use anvil_core::config::orchestrator::{OrchestratorConfig, is_tool_name};
+use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
 use crate::antigravity::config::read_json_object;
@@ -28,14 +28,8 @@ const MANAGED_MARKER: &str = "<!-- anvil:managed:agent -->";
 pub fn sync_agents(repo_root: &Path, config: &OrchestratorConfig) -> Result<Vec<PathBuf>> {
     let claude = repo_root.join(".claude");
     let targets = [
-        (
-            claude.join("agents").join("anvil-orchestrator.md"),
-            templates::ORCHESTRATOR_AGENT_MD,
-        ),
-        (
-            claude.join("agents").join("anvil-executor.md"),
-            templates::EXECUTOR_AGENT_MD,
-        ),
+        (claude.join("agents").join("anvil-orchestrator.md"), templates::ORCHESTRATOR_AGENT_MD),
+        (claude.join("agents").join("anvil-executor.md"), templates::EXECUTOR_AGENT_MD),
         (
             claude.join("skills").join("orchestrate").join("SKILL.md"),
             templates::ORCHESTRATE_SKILL_MD,
@@ -89,8 +83,17 @@ pub fn set_default_agent(repo_root: &Path, enabled: bool) -> Result<bool> {
 /// What an executor needs to search, edit, build, test, and read docs; nothing else is loaded,
 /// which keeps every executor's starting context small.
 const EXECUTOR_TOOLS: &[&str] = &[
-    "Read", "Edit", "Write", "NotebookEdit", "Grep", "Glob", "Bash", "PowerShell", "WebFetch",
-    "WebSearch", "mcp__anvil__*",
+    "Read",
+    "Edit",
+    "Write",
+    "NotebookEdit",
+    "Grep",
+    "Glob",
+    "Bash",
+    "PowerShell",
+    "WebFetch",
+    "WebSearch",
+    "mcp__anvil__*",
 ];
 
 /// The default tools plus the valid extra ones from the config, without repeats.

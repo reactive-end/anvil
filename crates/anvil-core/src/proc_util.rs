@@ -28,9 +28,7 @@ pub struct TimedOutput {
 /// and a hard wall-clock `timeout`. On timeout, kills the whole process tree and returns exit
 /// code `124` with the output captured so far.
 pub fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<TimedOutput> {
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut child = cmd.spawn().context("failed to spawn subprocess")?;
     let stdout_reader = PipeReader::spawn(child.stdout.take());
@@ -63,15 +61,8 @@ pub fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<
     kill_process_tree(&mut child);
     let stdout = stdout_reader.finish(Some(KILLED_PIPE_GRACE));
     let mut stderr = stderr_reader.finish(Some(KILLED_PIPE_GRACE));
-    stderr.extend_from_slice(
-        format!("\n{TIMEOUT_MARKER}{}ms\n", timeout.as_millis()).as_bytes(),
-    );
-    Ok(TimedOutput {
-        status_code: TIMEOUT_EXIT_CODE,
-        stdout,
-        stderr,
-        timed_out: true,
-    })
+    stderr.extend_from_slice(format!("\n{TIMEOUT_MARKER}{}ms\n", timeout.as_millis()).as_bytes());
+    Ok(TimedOutput { status_code: TIMEOUT_EXIT_CODE, stdout, stderr, timed_out: true })
 }
 
 /// Kills the child and every descendant so builds and test runners do not outlive the timeout.

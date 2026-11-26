@@ -8,15 +8,16 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail};
 use anvil_codemode::{CodeModePolicy, ToolDispatcher, execute_script};
 use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_memory::redactor::redact_text;
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::transport::{
-    INTERNAL_ERROR, INVALID_PARAMS, JsonRpcRequest, JsonRpcResponse, METHOD_NOT_FOUND, run_stdio_loop,
+    INTERNAL_ERROR, INVALID_PARAMS, JsonRpcRequest, JsonRpcResponse, METHOD_NOT_FOUND,
+    run_stdio_loop,
 };
 
 const PROXY_CONFIG_REL: &str = ".harness/mcp-proxy.json";
@@ -57,89 +58,24 @@ const STRICT_MUTATING_TOKENS: &[&str] = &[
 ];
 
 const MUTATION_TOKENS: &[&str] = &[
-    "add",
-    "apply",
-    "approve",
-    "archive",
-    "cancel",
-    "clear",
-    "close",
-    "comment",
-    "disable",
-    "done",
-    "enable",
-    "invoke",
-    "move",
-    "post",
-    "put",
-    "rank",
-    "rebase",
-    "record",
-    "reject",
-    "rename",
-    "restart",
-    "revert",
-    "run",
-    "save",
-    "set",
-    "skip",
-    "start",
-    "stop",
-    "trigger",
+    "add", "apply", "approve", "archive", "cancel", "clear", "close", "comment", "disable", "done",
+    "enable", "invoke", "move", "post", "put", "rank", "rebase", "record", "reject", "rename",
+    "restart", "revert", "run", "save", "set", "skip", "start", "stop", "trigger",
 ];
 
 const PURE_READ_VERBS: &[&str] = &[
-    "check",
-    "count",
-    "describe",
-    "explain",
-    "fetch",
-    "find",
-    "get",
-    "inspect",
-    "list",
-    "query",
-    "read",
-    "search",
-    "show",
-    "view",
+    "check", "count", "describe", "explain", "fetch", "find", "get", "inspect", "list", "query",
+    "read", "search", "show", "view",
 ];
 
 const NOUN_READ_PREFIXES: &[&str] = &[
-    "context",
-    "diff",
-    "health",
-    "help",
-    "impact",
-    "log",
-    "logs",
-    "origin",
-    "outline",
-    "path",
-    "ping",
-    "stat",
-    "stats",
-    "status",
-    "timeline",
-    "version",
+    "context", "diff", "health", "help", "impact", "log", "logs", "origin", "outline", "path",
+    "ping", "stat", "stats", "status", "timeline", "version",
 ];
 
 const UNAMBIGUOUS_TAIL_MUTATIONS: &[&str] = &[
-    "apply",
-    "approve",
-    "archive",
-    "cancel",
-    "clear",
-    "disable",
-    "enable",
-    "invoke",
-    "rebase",
-    "reject",
-    "rename",
-    "restart",
-    "revert",
-    "save",
-    "trigger",
+    "apply", "approve", "archive", "cancel", "clear", "disable", "enable", "invoke", "rebase",
+    "reject", "rename", "restart", "revert", "save", "trigger",
 ];
 
 /// Configuration file schema loaded from `.harness/mcp-proxy.json`.
@@ -200,22 +136,12 @@ impl UpstreamClient {
             .spawn()
             .with_context(|| format!("failed to spawn upstream MCP server `{}`", spec.command))?;
         let stdin = BufWriter::new(
-            child
-                .stdin
-                .take()
-                .ok_or_else(|| anyhow::anyhow!("missing upstream stdin"))?,
+            child.stdin.take().ok_or_else(|| anyhow::anyhow!("missing upstream stdin"))?,
         );
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("missing upstream stdout"))?;
+        let stdout =
+            child.stdout.take().ok_or_else(|| anyhow::anyhow!("missing upstream stdout"))?;
         let rx = spawn_stdout_reader(stdout);
-        let mut client = Self {
-            child,
-            stdin,
-            rx,
-            next_id: 1,
-        };
+        let mut client = Self { child, stdin, rx, next_id: 1 };
         let _ = client.request(
             "initialize",
             json!({
@@ -383,7 +309,13 @@ impl ProxyGateway {
         let outcome = match name {
             "proxy_search" => self.handle_search(args),
             "proxy_exec" => self.handle_exec(args),
-            other => return JsonRpcResponse::err(id, METHOD_NOT_FOUND, format!("unknown tool: {other}")),
+            other => {
+                return JsonRpcResponse::err(
+                    id,
+                    METHOD_NOT_FOUND,
+                    format!("unknown tool: {other}"),
+                );
+            }
         };
         match outcome {
             Ok(payload) => match serde_json::to_string(&payload) {
@@ -404,12 +336,8 @@ impl ProxyGateway {
         if self.catalog_loaded {
             return Ok(());
         }
-        let specs: Vec<(String, ProxyServerSpec)> = self
-            .config
-            .servers
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let specs: Vec<(String, ProxyServerSpec)> =
+            self.config.servers.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         let mut catalog = Vec::new();
         for (name, spec) in specs {
             self.ensure_client(&name, &spec)?;
@@ -456,15 +384,9 @@ impl ProxyGateway {
 
     fn handle_search(&mut self, args: &Value) -> Result<Value> {
         self.ensure_catalog()?;
-        let query = args
-            .get("query")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        let limit = args
-            .get("limit")
-            .and_then(Value::as_u64)
-            .map_or(15, |v| (v as usize).clamp(1, 50));
+        let query = args.get("query").and_then(Value::as_str).unwrap_or("").to_ascii_lowercase();
+        let limit =
+            args.get("limit").and_then(Value::as_u64).map_or(15, |v| (v as usize).clamp(1, 50));
 
         let matches: Vec<Value> = self
             .catalog
@@ -498,7 +420,8 @@ impl ProxyGateway {
             "const proxy = {{ call: (server, tool, params) => anvil.call('proxy_call', {{ server, tool, arguments: params || {{}} }}) }};\n{script}"
         );
         let mut dispatcher = ProxyDispatcher(self);
-        let res = execute_script(&wrapped, &["proxy_call"], &mut dispatcher, &CodeModePolicy::default())?;
+        let res =
+            execute_script(&wrapped, &["proxy_call"], &mut dispatcher, &CodeModePolicy::default())?;
         Ok(json!({
             "result": res.value,
             "calls_executed": res.calls_executed,
@@ -518,16 +441,20 @@ impl ProxyGateway {
             );
         }
         let client = self.ensure_client(server, &spec)?;
-        let res = match client.request("tools/call", json!({ "name": tool, "arguments": arguments })) {
-            Ok(v) => v,
-            Err(err) => {
-                let msg = err.to_string();
-                if msg.contains("closed stdout") || msg.contains("timed out") || msg.contains("broken pipe") {
-                    self.clients.remove(server);
+        let res =
+            match client.request("tools/call", json!({ "name": tool, "arguments": arguments })) {
+                Ok(v) => v,
+                Err(err) => {
+                    let msg = err.to_string();
+                    if msg.contains("closed stdout")
+                        || msg.contains("timed out")
+                        || msg.contains("broken pipe")
+                    {
+                        self.clients.remove(server);
+                    }
+                    return Err(err);
                 }
-                return Err(err);
-            }
-        };
+            };
         if res.get("isError").and_then(Value::as_bool) == Some(true) {
             let msg = res["content"]
                 .as_array()
@@ -625,10 +552,7 @@ pub fn is_mutating_tool_name(tool: &str) -> bool {
     let bare = tool.rsplit(['.', ':']).next().unwrap_or(tool);
     let bare_tokens = tokenize_tool_name(bare);
     let all_tokens = tokenize_tool_name(tool);
-    if all_tokens
-        .iter()
-        .any(|t| STRICT_MUTATING_TOKENS.contains(&t.as_str()))
-    {
+    if all_tokens.iter().any(|t| STRICT_MUTATING_TOKENS.contains(&t.as_str())) {
         return true;
     }
     if let Some(lead) = bare_tokens.first().map(String::as_str) {
@@ -639,14 +563,10 @@ pub fn is_mutating_tool_name(tool: &str) -> bool {
             return tail_action;
         }
         if NOUN_READ_PREFIXES.contains(&lead) {
-            return all_tokens
-                .iter()
-                .any(|t| MUTATION_TOKENS.contains(&t.as_str()));
+            return all_tokens.iter().any(|t| MUTATION_TOKENS.contains(&t.as_str()));
         }
     }
-    all_tokens
-        .iter()
-        .any(|t| MUTATION_TOKENS.contains(&t.as_str()))
+    all_tokens.iter().any(|t| MUTATION_TOKENS.contains(&t.as_str()))
 }
 
 fn tokenize_tool_name(tool: &str) -> Vec<String> {
@@ -675,11 +595,9 @@ pub fn redact_json_secrets(value: Value) -> Value {
     match value {
         Value::String(s) => Value::String(redact_text(&s)),
         Value::Array(items) => Value::Array(items.into_iter().map(redact_json_secrets).collect()),
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .map(|(k, v)| (k, redact_json_secrets(v)))
-                .collect(),
-        ),
+        Value::Object(map) => {
+            Value::Object(map.into_iter().map(|(k, v)| (k, redact_json_secrets(v))).collect())
+        }
         other => other,
     }
 }

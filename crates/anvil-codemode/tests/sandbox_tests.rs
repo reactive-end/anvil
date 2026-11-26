@@ -1,5 +1,5 @@
-use anyhow::{Result, bail};
 use anvil_codemode::{CodeModePolicy, ToolDispatcher, execute_script};
+use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
 struct MockDispatcher {
@@ -50,10 +50,7 @@ fn enforces_loop_call_output_and_allowlist_limits() {
         "while (true) {}",
         &["list_items"],
         &mut disp,
-        &CodeModePolicy {
-            max_loop_iterations: 500,
-            ..Default::default()
-        },
+        &CodeModePolicy { max_loop_iterations: 500, ..Default::default() },
     );
     assert!(loop_err.is_err());
 
@@ -61,10 +58,7 @@ fn enforces_loop_call_output_and_allowlist_limits() {
         "for (let i = 0; i < 5; i++) { anvil.list_items({}); } return 1;",
         &["list_items"],
         &mut disp,
-        &CodeModePolicy {
-            max_calls: 3,
-            ..Default::default()
-        },
+        &CodeModePolicy { max_calls: 3, ..Default::default() },
     );
     assert!(call_err.is_err());
 

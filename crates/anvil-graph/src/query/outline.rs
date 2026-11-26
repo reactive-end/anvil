@@ -70,12 +70,7 @@ pub fn outline(
 
     let estimated_tokens_saved =
         estimate_tokens(raw_bytes).saturating_sub(estimate_tokens(outline_bytes));
-    RepoOutline {
-        files,
-        files_total,
-        truncated,
-        estimated_tokens_saved,
-    }
+    RepoOutline { files, files_total, truncated, estimated_tokens_saved }
 }
 
 fn collect_matching_files(graph: &CodeGraph, target: Option<&str>) -> Vec<(String, NodeId)> {
@@ -126,11 +121,7 @@ fn build_file_outline(graph: &CodeGraph, rel_path: &str, file_nid: NodeId) -> Fi
     symbols.sort_by(|a, b| a.line.cmp(&b.line).then_with(|| a.name.cmp(&b.name)));
 
     let routes = collect_file_routes(graph, file_nid, nids);
-    FileOutline {
-        file: rel_path.to_owned(),
-        symbols,
-        routes,
-    }
+    FileOutline { file: rel_path.to_owned(), symbols, routes }
 }
 
 fn select_outline_symbols<'a>(all_syms: &[&'a GraphNode]) -> Vec<&'a GraphNode> {
@@ -141,16 +132,9 @@ fn select_outline_symbols<'a>(all_syms: &[&'a GraphNode]) -> Vec<&'a GraphNode> 
     let top_level: Vec<&GraphNode> = all_syms
         .iter()
         .copied()
-        .filter(|n| {
-            n.id.split_once("::")
-                .is_some_and(|(_, qname)| !qname.contains('.'))
-        })
+        .filter(|n| n.id.split_once("::").is_some_and(|(_, qname)| !qname.contains('.')))
         .collect();
-    if !top_level.is_empty() {
-        top_level
-    } else {
-        all_syms.to_vec()
-    }
+    if !top_level.is_empty() { top_level } else { all_syms.to_vec() }
 }
 
 fn collect_file_routes(graph: &CodeGraph, file_nid: NodeId, nids: &[NodeId]) -> Vec<String> {
@@ -179,8 +163,5 @@ fn file_byte_size(repo_root: &Path, graph: &CodeGraph, rel_path: &str) -> usize 
     if let Ok(meta) = fs::metadata(repo_root.join(rel_path)) {
         return usize::try_from(meta.len()).unwrap_or(usize::MAX);
     }
-    graph
-        .file_stats
-        .get(rel_path)
-        .map_or(0, |&(_, len)| usize::try_from(len).unwrap_or(usize::MAX))
+    graph.file_stats.get(rel_path).map_or(0, |&(_, len)| usize::try_from(len).unwrap_or(usize::MAX))
 }

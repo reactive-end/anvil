@@ -12,10 +12,7 @@ fn cfg() -> AnvilConfig {
 }
 
 fn has_diag(facts: &FileAstFacts, rule: &str, line: u32, needle: &str) -> bool {
-    facts
-        .diagnostics
-        .iter()
-        .any(|d| d.rule == rule && d.line == line && d.message.contains(needle))
+    facts.diagnostics.iter().any(|d| d.rule == rule && d.line == line && d.message.contains(needle))
 }
 
 fn has_edge(facts: &FileAstFacts, kind: EdgeKind, target: &str, line: u32) -> bool {
@@ -60,12 +57,7 @@ await fetch('/api/v1/orders', { method: 'GET' })
     let facts = analyze_file(Path::new("src/OrdersView.vue"), src, &cfg()).expect("analyze vue");
     assert_eq!(facts.language, Language::TypeScript);
     assert!(has_edge(&facts, EdgeKind::Imports, "@/api/client", 6));
-    assert!(has_edge(
-        &facts,
-        EdgeKind::CallsRoute,
-        "route:GET /api/v1/orders",
-        9
-    ));
+    assert!(has_edge(&facts, EdgeKind::CallsRoute, "route:GET /api/v1/orders", 9));
     assert!(has_diag(&facts, "no-todo-comments", 2, "TODO"));
     assert!(has_diag(&facts, "no-escape-hatches", 7, "@ts-ignore"));
     assert!(has_diag(&facts, "no-explicit-any", 8, "any"));
@@ -144,18 +136,8 @@ const raw: any = await fetch('/api/v1/health', { method: 'GET' })
     let astro =
         analyze_file(Path::new("src/pages/index.astro"), astro_src, &cfg()).expect("analyze astro");
     assert_eq!(astro.language, Language::TypeScript);
-    assert!(has_edge(
-        &astro,
-        EdgeKind::Imports,
-        "@/layouts/Base.astro",
-        2
-    ));
-    assert!(has_edge(
-        &astro,
-        EdgeKind::CallsRoute,
-        "route:GET /api/v1/health",
-        3
-    ));
+    assert!(has_edge(&astro, EdgeKind::Imports, "@/layouts/Base.astro", 2));
+    assert!(has_edge(&astro, EdgeKind::CallsRoute, "route:GET /api/v1/health", 3));
     assert!(has_diag(&astro, "no-explicit-any", 3, "any"));
     assert!(has_diag(&astro, "no-todo-comments", 6, "TODO"));
 }
@@ -182,7 +164,6 @@ export const título = 'Año © 🚀';
     assert_eq!(svelte.language, Language::TypeScript);
 
     let astro_src = "---\nexport const msg = 'hola ñ 🚀';\n---\n<h1>Diseño ©</h1>\n";
-    let astro =
-        analyze_file(Path::new("src/Utf8.astro"), astro_src, &cfg()).expect("astro utf8");
+    let astro = analyze_file(Path::new("src/Utf8.astro"), astro_src, &cfg()).expect("astro utf8");
     assert_eq!(astro.language, Language::TypeScript);
 }

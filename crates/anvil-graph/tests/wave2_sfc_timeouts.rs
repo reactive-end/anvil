@@ -63,10 +63,7 @@ fn collect_source_files_includes_sfc_and_ignores_build_dirs() {
         !rels.iter().any(|r| r.starts_with(".svelte-kit/")),
         ".svelte-kit must be ignored: {rels:?}"
     );
-    assert!(
-        !rels.iter().any(|r| r.starts_with(".astro/")),
-        ".astro must be ignored: {rels:?}"
-    );
+    assert!(!rels.iter().any(|r| r.starts_with(".astro/")), ".astro must be ignored: {rels:?}");
 }
 
 #[test]
@@ -91,14 +88,10 @@ fn vue_tsc_selected_for_vue_package_json_and_mock_bin() {
     assert_eq!(args, vec!["--noEmit".to_owned()]);
 
     // End-to-end StackKind::Vue routes through run_ts_typecheck using vue-tsc
-    let cfg = AnvilConfig {
-        stacks: vec![StackKind::Vue],
-        ..Default::default()
-    };
+    let cfg = AnvilConfig { stacks: vec![StackKind::Vue], ..Default::default() };
     let engine = CodeGraphEngine::build(root, cfg).expect("build vue graph");
-    let outputs = engine
-        .run_impacted_typecheck(&["src/App.vue".to_owned()])
-        .expect("run vue typecheck");
+    let outputs =
+        engine.run_impacted_typecheck(&["src/App.vue".to_owned()]).expect("run vue typecheck");
     assert_eq!(outputs.len(), 1);
     assert!(outputs[0].passed, "expected vue-tsc pass: {:?}", outputs[0]);
     assert_eq!(outputs[0].exit_code, 0);

@@ -44,10 +44,7 @@ pub fn check_security_guard(root: &Path, input: &NormalizedHookInput) -> Option<
 
 /// Returns `true` when any git invocation reachable from `cmd` disables repository hooks.
 pub fn bypasses_git_hooks(cmd: &str) -> bool {
-    expand::expand(cmd)
-        .invocations
-        .iter()
-        .any(destructive::bypasses_git_hooks)
+    expand::expand(cmd).invocations.iter().any(destructive::bypasses_git_hooks)
 }
 
 fn describe_risky_command(root: &Path, cmd: &str) -> Option<&'static str> {
@@ -66,18 +63,13 @@ fn describe_risky_command(root: &Path, cmd: &str) -> Option<&'static str> {
 
 fn is_file_read_tool(tool_name: Option<&str>) -> bool {
     strip_tool_namespace(tool_name).is_some_and(|bare| {
-        matches!(
-            bare,
-            "read_file" | "Read" | "view_file" | "Grep" | "grep_search"
-        )
+        matches!(bare, "read_file" | "Read" | "view_file" | "Grep" | "grep_search")
     })
 }
 
 fn is_godot_generated_file(rel: &str) -> bool {
     let lower = rel.replace('\\', "/").to_ascii_lowercase();
-    lower.starts_with(".godot/")
-        || lower.contains("/.godot/")
-        || lower.ends_with(".import")
+    lower.starts_with(".godot/") || lower.contains("/.godot/") || lower.ends_with(".import")
 }
 
 #[cfg(test)]
@@ -94,10 +86,7 @@ mod tests {
     }
 
     fn assert_routine(cmds: &[&str]) {
-        let noisy: Vec<_> = cmds
-            .iter()
-            .filter_map(|cmd| risk(cmd).map(|why| (cmd, why)))
-            .collect();
+        let noisy: Vec<_> = cmds.iter().filter_map(|cmd| risk(cmd).map(|why| (cmd, why))).collect();
         assert!(noisy.is_empty(), "expected guard to ignore: {noisy:#?}");
     }
 

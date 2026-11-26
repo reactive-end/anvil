@@ -97,12 +97,7 @@ pub fn is_comment_kind(kind: &str) -> bool {
 /// `anvil-allow(<rule>): <reason> [<ref>]` marker inside a real AST comment node
 /// whose `<rule>` matches `rule_id` (or `all`).
 pub fn has_anvil_allow(state: &RuleState<'_>, line_1based: u32, rule_id: &str) -> bool {
-    if !state
-        .config
-        .allowed_escapes
-        .iter()
-        .any(|item| item == "anvil-allow")
-    {
+    if !state.config.allowed_escapes.iter().any(|item| item == "anvil-allow") {
         return false;
     }
 
@@ -152,10 +147,8 @@ fn rule_matches(allowed_raw: &str, expected_raw: &str) -> bool {
     {
         return true;
     }
-    if matches!(
-        expected.as_str(),
-        "no-todo-comments" | "no-narrative-comments"
-    ) && allowed == "comments"
+    if matches!(expected.as_str(), "no-todo-comments" | "no-narrative-comments")
+        && allowed == "comments"
     {
         return true;
     }

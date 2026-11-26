@@ -2,12 +2,12 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_core::git::{self, DiffScope};
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::impact::BlastRadiusReport;
 use anvil_graph::model::CodeGraph;
+use anyhow::Result;
 
 use crate::commands::ExitCodeError;
 use crate::ui;
@@ -33,10 +33,7 @@ pub fn execute(
     let target_files: Vec<String> = if files.is_empty() {
         git::changed_files(root, DiffScope::WorkingTree).unwrap_or_default()
     } else {
-        files
-            .iter()
-            .map(|f| CodeGraph::normalize_rel_path(f))
-            .collect()
+        files.iter().map(|f| CodeGraph::normalize_rel_path(f)).collect()
     };
 
     if target_files.is_empty() {
@@ -66,16 +63,9 @@ fn print_blast_report(report: &BlastRadiusReport) {
     if !report.impacted_files.is_empty() {
         ui::print_section("Impacted Files");
         for item in &report.impacted_files {
-            let badge = format!(
-                "[d={}{}]",
-                item.depth,
-                if item.is_screen { ",screen" } else { "" }
-            );
-            let styled_badge = if item.is_screen {
-                ui::yellow(&badge)
-            } else {
-                ui::dim(&badge)
-            };
+            let badge =
+                format!("[d={}{}]", item.depth, if item.is_screen { ",screen" } else { "" });
+            let styled_badge = if item.is_screen { ui::yellow(&badge) } else { ui::dim(&badge) };
             println!(
                 "  {styled_badge} {} {}",
                 ui::cyan(&item.file),

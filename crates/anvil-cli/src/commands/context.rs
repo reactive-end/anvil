@@ -3,12 +3,12 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::model::CodeGraph;
 use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author_fast;
+use anyhow::Result;
 use rustc_hash::FxHashSet;
 
 use crate::cli::subcmds::ContextSubcmd;
@@ -16,10 +16,9 @@ use crate::cli::subcmds::ContextSubcmd;
 /// Executes `anvil context pack <targets...> [--max-tokens N]`.
 pub fn execute(root: &Path, sub: ContextSubcmd) -> Result<()> {
     match sub {
-        ContextSubcmd::Pack {
-            targets,
-            max_tokens,
-        } => build_and_print_packet(root, &targets, max_tokens),
+        ContextSubcmd::Pack { targets, max_tokens } => {
+            build_and_print_packet(root, &targets, max_tokens)
+        }
     }
 }
 

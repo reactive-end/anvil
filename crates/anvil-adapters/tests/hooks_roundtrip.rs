@@ -5,9 +5,7 @@ use tempfile::tempdir;
 
 use anvil_adapters::antigravity;
 use anvil_adapters::claude_code;
-use anvil_adapters::contract::{
-    AdapterKind, HookEvent, HookOutcome, InboxMessage, MessageLevel,
-};
+use anvil_adapters::contract::{AdapterKind, HookEvent, HookOutcome, InboxMessage, MessageLevel};
 use anvil_adapters::inbox;
 
 #[test]
@@ -33,9 +31,8 @@ fn antigravity_session_start_and_stop_roundtrip() {
         )]),
     )
     .expect("render SessionStart");
-    let msg = out["injectSteps"][0]["systemMessage"]["systemMessage"]
-        .as_str()
-        .expect("systemMessage");
+    let msg =
+        out["injectSteps"][0]["systemMessage"]["systemMessage"].as_str().expect("systemMessage");
     assert!(msg.contains("Active task T-1"));
 
     assert_eq!(
@@ -202,7 +199,8 @@ fn claude_code_pre_tool_use_decisions_and_updated_input() {
     let dir = tempdir().expect("tempdir");
     let root = dir.path();
 
-    let pre_in = r#"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"pytest"}}"#;
+    let pre_in =
+        r#"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"pytest"}}"#;
     let parsed_pre = claude_code::parse_input(pre_in, None).expect("parse PreToolUse");
     assert_eq!(parsed_pre.tool_name.as_deref(), Some("Bash"));
 
@@ -265,12 +263,7 @@ fn claude_code_post_tool_use_returns_additional_context_and_clears_inbox() {
 
     inbox::push_messages(
         root,
-        &[InboxMessage::new(
-            "stale",
-            MessageLevel::Warning,
-            "Prior pending notice",
-            None,
-        )],
+        &[InboxMessage::new("stale", MessageLevel::Warning, "Prior pending notice", None)],
     )
     .expect("seed inbox");
 
@@ -295,9 +288,8 @@ fn claude_code_post_tool_use_returns_additional_context_and_clears_inbox() {
     )
     .expect("render PostToolUse");
 
-    let ctx = post_out["hookSpecificOutput"]["additionalContext"]
-        .as_str()
-        .expect("additionalContext");
+    let ctx =
+        post_out["hookSpecificOutput"]["additionalContext"].as_str().expect("additionalContext");
     assert!(ctx.contains("Prior pending notice"));
     assert!(ctx.contains("Avoid narrative comment"));
     assert!(inbox::load_inbox(root).expect("inbox cleared").is_empty());
@@ -308,11 +300,13 @@ fn user_prompt_and_last_user_input_roundtrip() {
     let dir = tempdir().expect("tempdir");
     let root = dir.path();
 
-    let agy_in = r#"{"hookEventName":"PreInvocation","cwd":"/repo","lastUserInput":"Add dark mode toggle"}"#;
+    let agy_in =
+        r#"{"hookEventName":"PreInvocation","cwd":"/repo","lastUserInput":"Add dark mode toggle"}"#;
     let parsed_agy = antigravity::parse_input(agy_in, None).expect("parse agy PreInvocation");
     assert_eq!(parsed_agy.user_prompt.as_deref(), Some("Add dark mode toggle"));
 
-    let claude_in = r#"{"hook_event_name":"UserPromptSubmit","cwd":"/repo","prompt":"Add user profile page"}"#;
+    let claude_in =
+        r#"{"hook_event_name":"UserPromptSubmit","cwd":"/repo","prompt":"Add user profile page"}"#;
     let parsed_claude = claude_code::parse_input(claude_in, None).expect("parse UserPromptSubmit");
     assert_eq!(parsed_claude.event, HookEvent::UserPromptSubmit);
     assert_eq!(parsed_claude.user_prompt.as_deref(), Some("Add user profile page"));

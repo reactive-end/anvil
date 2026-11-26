@@ -3,12 +3,12 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::Result;
 use anvil_core::ratchet::{
     CandidateInput, CandidateOptions, evaluate_candidate, list_candidates, list_rules,
     log_candidate_with_options, promote_candidate_with_severity, test_candidate,
 };
 use anvil_core::traits::Severity;
+use anyhow::Result;
 
 use crate::cli::subcmds::RatchetSubcmd;
 use crate::commands::ExitCodeError;
@@ -40,11 +40,7 @@ pub fn execute(root: &Path, sub: RatchetSubcmd) -> Result<()> {
                     estimated_runtime_ms: runtime_ms,
                     example,
                 },
-                CandidateOptions {
-                    file_globs: glob,
-                    severity: sev,
-                    ..Default::default()
-                },
+                CandidateOptions { file_globs: glob, severity: sev, ..Default::default() },
             )?;
             println!(
                 "logged candidate id={} rule={} recurrence={}",

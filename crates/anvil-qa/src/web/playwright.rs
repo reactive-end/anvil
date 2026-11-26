@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::proc_util::run_command_with_timeout;
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use super::{DOM_AUDIT_SCRIPT, RawDomAudit, build_capture};

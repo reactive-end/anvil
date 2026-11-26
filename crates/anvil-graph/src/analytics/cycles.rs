@@ -15,11 +15,8 @@ pub fn detect_cycles(graph: &CodeGraph, max_cycles: usize) -> Vec<Vec<String>> {
         .map(|n| n.file.clone())
         .collect();
     files.sort();
-    let idx_map: FxHashMap<&str, usize> = files
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (f.as_str(), i))
-        .collect();
+    let idx_map: FxHashMap<&str, usize> =
+        files.iter().enumerate().map(|(i, f)| (f.as_str(), i)).collect();
 
     let mut node_to_file_idx = vec![usize::MAX; graph.nodes.len()];
     for (nid, node) in graph.nodes.iter().enumerate() {
@@ -122,7 +119,11 @@ fn tarjan_scc(adj: &[Vec<usize>]) -> Vec<Vec<usize>> {
     sccs
 }
 
-fn extract_cycle_in_scc(adj: &[Vec<usize>], scc: &[usize], files: &[String]) -> Option<Vec<String>> {
+fn extract_cycle_in_scc(
+    adj: &[Vec<usize>],
+    scc: &[usize],
+    files: &[String],
+) -> Option<Vec<String>> {
     let members: FxHashSet<usize> = scc.iter().copied().collect();
     let start = *scc.iter().min()?;
     let mut parent: FxHashMap<usize, usize> = FxHashMap::default();

@@ -21,10 +21,8 @@ pub fn parse_pyproject_toml(manifest_path: &str, content: &str) -> Result<Vec<De
         collect_pep621_deps(project, manifest_path, &mut seen, &mut specs);
     }
 
-    if let Some(poetry) = root
-        .get("tool")
-        .and_then(|t| t.get("poetry"))
-        .and_then(TomlValue::as_table)
+    if let Some(poetry) =
+        root.get("tool").and_then(|t| t.get("poetry")).and_then(TomlValue::as_table)
     {
         collect_poetry_deps(poetry, manifest_path, &mut seen, &mut specs);
     }
@@ -75,32 +73,22 @@ pub fn fetch_pypi(package: &str) -> Result<PackageHealthInfo> {
 
 /// Parses a PyPI JSON API response into [`PackageHealthInfo`].
 pub fn parse_pypi_registry_json(package: &str, body: &str) -> Result<PackageHealthInfo> {
-    let root: JsonValue = serde_json::from_str(body)
-        .with_context(|| format!("invalid PyPI JSON for `{package}`"))?;
+    let root: JsonValue =
+        serde_json::from_str(body).with_context(|| format!("invalid PyPI JSON for `{package}`"))?;
     let info = root.get("info");
 
-    let latest_version = info
-        .and_then(|i| i.get("version"))
-        .and_then(JsonValue::as_str)
-        .map(str::to_owned);
+    let latest_version =
+        info.and_then(|i| i.get("version")).and_then(JsonValue::as_str).map(str::to_owned);
 
-    let yanked = info
-        .and_then(|i| i.get("yanked"))
-        .and_then(JsonValue::as_bool)
-        .unwrap_or(false);
+    let yanked = info.and_then(|i| i.get("yanked")).and_then(JsonValue::as_bool).unwrap_or(false);
 
-    let classifiers_inactive = info
-        .and_then(|i| i.get("classifiers"))
-        .and_then(JsonValue::as_array)
-        .is_some_and(|arr| {
-            arr.iter()
-                .filter_map(JsonValue::as_str)
-                .any(|c| c.contains("7 - Inactive"))
+    let classifiers_inactive =
+        info.and_then(|i| i.get("classifiers")).and_then(JsonValue::as_array).is_some_and(|arr| {
+            arr.iter().filter_map(JsonValue::as_str).any(|c| c.contains("7 - Inactive"))
         });
 
-    let last_publish = latest_version
-        .as_deref()
-        .and_then(|ver| latest_release_timestamp(&root, ver));
+    let last_publish =
+        latest_version.as_deref().and_then(|ver| latest_release_timestamp(&root, ver));
 
     let repository_url = info
         .and_then(|i| i.get("home_page").or_else(|| i.get("package_url")))
@@ -132,10 +120,7 @@ fn collect_pep621_deps(
             push_pep508(item, manifest_path, seen, specs);
         }
     }
-    if let Some(opt) = project
-        .get("optional-dependencies")
-        .and_then(TomlValue::as_table)
-    {
+    if let Some(opt) = project.get("optional-dependencies").and_then(TomlValue::as_table) {
         for group in opt.values().filter_map(TomlValue::as_array) {
             for item in group.iter().filter_map(TomlValue::as_str) {
                 push_pep508(item, manifest_path, seen, specs);
@@ -176,11 +161,10 @@ fn push_poetry_table(
         }
         let norm = name.trim().to_ascii_lowercase();
         if !norm.is_empty() && seen.insert(norm.clone()) {
-            let version_req = val.as_str().map(str::to_owned).or_else(|| {
-                val.get("version")
-                    .and_then(TomlValue::as_str)
-                    .map(str::to_owned)
-            });
+            let version_req = val
+                .as_str()
+                .map(str::to_owned)
+                .or_else(|| val.get("version").and_then(TomlValue::as_str).map(str::to_owned));
             specs.push(DependencySpec {
                 ecosystem: Ecosystem::Pypi,
                 name: norm,
@@ -221,10 +205,7 @@ fn push_pep508(
 }
 
 fn latest_release_timestamp(root: &JsonValue, version: &str) -> Option<DateTime<Utc>> {
-    let files = root
-        .get("releases")
-        .and_then(|r| r.get(version))
-        .and_then(JsonValue::as_array)?;
+    let files = root.get("releases").and_then(|r| r.get(version)).and_then(JsonValue::as_array)?;
     files
         .iter()
         .filter_map(|file| {

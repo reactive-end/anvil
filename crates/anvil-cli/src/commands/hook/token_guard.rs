@@ -65,10 +65,7 @@ fn is_blocked_noise_target(rel: &str, kind: FileKind) -> bool {
     norm == ".harness/.state"
         || norm.starts_with(".harness/.state/")
         || norm.split('/').any(|seg| {
-            matches!(
-                seg,
-                "node_modules" | "target" | "dist" | ".next" | ".godot" | "vendor"
-            )
+            matches!(seg, "node_modules" | "target" | "dist" | ".next" | ".godot" | "vendor")
         })
 }
 
@@ -106,11 +103,8 @@ fn check_pdf_read(
     input: &NormalizedHookInput,
     tg: &TokenGuardConfig,
 ) -> Option<HookOutcome> {
-    if let Some(pages_spec) = input
-        .tool_input
-        .as_ref()
-        .and_then(|v| v.get("pages"))
-        .and_then(Value::as_str)
+    if let Some(pages_spec) =
+        input.tool_input.as_ref().and_then(|v| v.get("pages")).and_then(Value::as_str)
         && let Some(page_count) = parse_pdf_page_count(pages_spec)
     {
         if page_count <= tg.max_pdf_pages {
@@ -238,13 +232,9 @@ fn record_text_block(root: &Path, rel: &str) {
 }
 
 fn fetch_compact_outline(root: &Path, rel: &str) -> String {
-    if let Some(DaemonResponse::OutlineResult { outline }) = try_request(
-        root,
-        DaemonRequest::Outline {
-            target: Some(rel.to_owned()),
-            max_tokens: 450,
-        },
-    ) {
+    if let Some(DaemonResponse::OutlineResult { outline }) =
+        try_request(root, DaemonRequest::Outline { target: Some(rel.to_owned()), max_tokens: 450 })
+    {
         return format_outline_lines(&outline);
     }
     if anvil_graph::store::default_bin_path(root).is_file()

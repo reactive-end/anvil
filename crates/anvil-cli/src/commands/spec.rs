@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::fs_util::resolve_local_or_path_bin;
 use anvil_core::proc_util::run_command_with_timeout;
+use anyhow::{Context, Result, bail};
 
 use crate::cli::subcmds::SpecSubcmd;
 use crate::commands::ExitCodeError;
@@ -58,10 +58,7 @@ fn list_specs(root: &Path) -> Result<()> {
         return Ok(());
     }
     for path in specs {
-        println!(
-            "  - {}",
-            ui::cyan(&path.file_stem().unwrap_or_default().to_string_lossy())
-        );
+        println!("  - {}", ui::cyan(&path.file_stem().unwrap_or_default().to_string_lossy()));
     }
     Ok(())
 }
@@ -77,17 +74,17 @@ fn check_specs(root: &Path, name: Option<&str>) -> Result<()> {
         verify_single_spec(root, spec, &mut failures)?;
     }
     if failures.is_empty() {
-        println!(
-            "{} verified {} spec(s)",
-            ui::green("✓ spec check: PASS"),
-            specs.len()
-        );
+        println!("{} verified {} spec(s)", ui::green("✓ spec check: PASS"), specs.len());
         return Ok(());
     }
     for f in &failures {
         println!("  {} {f}", ui::error_badge());
     }
-    Err(ExitCodeError::with_message(1, format!("spec check failed ({} failure(s))", failures.len())).into())
+    Err(ExitCodeError::with_message(
+        1,
+        format!("spec check failed ({} failure(s))", failures.len()),
+    )
+    .into())
 }
 
 fn verify_single_spec(root: &Path, spec_path: &Path, failures: &mut Vec<String>) -> Result<()> {
@@ -153,9 +150,7 @@ fn evaluate_must_contain(root: &Path, spec_name: &str, item: &str, failures: &mu
         failures.push(format!("[{spec_name}] path `{rel}` escapes repository root"));
         return;
     };
-    let ok = fs::read_to_string(&abs)
-        .map(|c| c.contains(needle))
-        .unwrap_or(false);
+    let ok = fs::read_to_string(&abs).map(|c| c.contains(needle)).unwrap_or(false);
     if !ok {
         failures.push(format!("[{spec_name}] `{rel}` must contain `{needle}`"));
     }

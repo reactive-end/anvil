@@ -76,9 +76,7 @@ fn extract_last_xml_tag(xml: &str, tag: &str) -> Option<String> {
 fn parse_maven_timestamp(raw: &str) -> Option<DateTime<Utc>> {
     let trimmed = raw.trim();
     if trimmed.len() == 14 {
-        NaiveDateTime::parse_from_str(trimmed, "%Y%m%d%H%M%S")
-            .ok()
-            .map(|dt| dt.and_utc())
+        NaiveDateTime::parse_from_str(trimmed, "%Y%m%d%H%M%S").ok().map(|dt| dt.and_utc())
     } else if trimmed.len() == 8 {
         NaiveDateTime::parse_from_str(&format!("{trimmed}000000"), "%Y%m%d%H%M%S")
             .ok()

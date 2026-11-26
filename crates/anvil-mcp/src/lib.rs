@@ -14,11 +14,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use anyhow::Result;
 use anvil_core::config::AnvilConfig;
 use anvil_graph::{CodeGraphEngine, store};
 use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author_fast;
+use anyhow::Result;
 
 use crate::transport::{JsonRpcRequest, JsonRpcResponse};
 
@@ -91,9 +91,7 @@ impl McpServer {
             self.graph = Some(engine);
         }
 
-        self.graph
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("code graph failed to initialize"))
+        self.graph.as_mut().ok_or_else(|| anyhow::anyhow!("code graph failed to initialize"))
     }
 
     /// Lazily opens `MemoryEngine` and syncs only when `.harness/memory/chunks/` mtime changed.

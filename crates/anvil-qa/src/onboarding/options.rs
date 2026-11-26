@@ -6,15 +6,12 @@ use std::path::Path;
 
 use anvil_core::config::{AnvilConfig, ToolKind};
 
-use crate::model::DriverOption;
 use super::ToolAvailability;
+use crate::model::DriverOption;
 
 pub(super) fn probe_tools(repo_root: &Path, config: &AnvilConfig) -> ToolAvailability {
     let has_roborazzi_tool = config.tools.contains(&ToolKind::Roborazzi)
-        || config
-            .subrepos
-            .iter()
-            .any(|sub| sub.tools.contains(&ToolKind::Roborazzi))
+        || config.subrepos.iter().any(|sub| sub.tools.contains(&ToolKind::Roborazzi))
         || repo_mentions_roborazzi(repo_root);
 
     ToolAvailability {
@@ -109,11 +106,7 @@ fn has_playwright(repo_root: &Path) -> bool {
 }
 
 fn repo_mentions_roborazzi(repo_root: &Path) -> bool {
-    for rel in [
-        "build.gradle.kts",
-        "app/build.gradle.kts",
-        "gradle/libs.versions.toml",
-    ] {
+    for rel in ["build.gradle.kts", "app/build.gradle.kts", "gradle/libs.versions.toml"] {
         let candidate = repo_root.join(rel);
         if let Ok(text) = fs::read_to_string(candidate)
             && text.to_ascii_lowercase().contains("roborazzi")
@@ -128,11 +121,7 @@ fn command_in_path(bin: &str) -> bool {
     let Some(path_var) = env::var_os("PATH") else {
         return false;
     };
-    let exts: &[&str] = if cfg!(windows) {
-        &["", ".exe", ".cmd", ".bat"]
-    } else {
-        &[""]
-    };
+    let exts: &[&str] = if cfg!(windows) { &["", ".exe", ".cmd", ".bat"] } else { &[""] };
     for dir in env::split_paths(&path_var) {
         for ext in exts {
             if dir.join(format!("{bin}{ext}")).is_file() {

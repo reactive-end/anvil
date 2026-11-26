@@ -3,12 +3,12 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::Result;
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::{resolve_local_or_path_bin, resolve_php_bin, resolve_php_vendor_script};
 use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::traits::CompressedOutput;
+use anyhow::Result;
 
 use super::typecheck_filter::filter_typecheck_output;
 

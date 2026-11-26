@@ -1,7 +1,7 @@
 //! MCP tool handlers for `anvil-memory`: save, search, timeline, get, and context.
 
-use anyhow::{Context, Result, bail};
 use anvil_memory::{MemoryKind, ObservationInput};
+use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use crate::McpServer;
@@ -23,7 +23,8 @@ fn handle_save(server: &mut McpServer, args: &Value) -> Result<Value> {
     let kind: MemoryKind = kind_raw.parse()?;
     let related_files = string_array_arg(args, "related_files");
     let mut related_symbols = string_array_arg(args, "related_symbols");
-    if related_symbols.is_empty() && !related_files.is_empty()
+    if related_symbols.is_empty()
+        && !related_files.is_empty()
         && let Ok(engine) = server.ensure_graph()
     {
         related_symbols = engine.exported_symbols_for_files(&related_files, 8);
@@ -61,10 +62,7 @@ fn handle_search(server: &mut McpServer, args: &Value) -> Result<Value> {
         Some(raw) => Some(raw.parse::<MemoryKind>()?),
         None => None,
     };
-    let limit = args
-        .get("limit")
-        .and_then(Value::as_u64)
-        .map_or(10, |l| l.clamp(1, 100) as usize);
+    let limit = args.get("limit").and_then(Value::as_u64).map_or(10, |l| l.clamp(1, 100) as usize);
 
     let mem = server.ensure_memory()?;
     let hits = mem.search(query, kind, limit)?;
@@ -76,14 +74,8 @@ fn handle_search(server: &mut McpServer, args: &Value) -> Result<Value> {
 
 fn handle_timeline(server: &mut McpServer, args: &Value) -> Result<Value> {
     let id_or_topic = required_str(args, "id_or_topic")?;
-    let before = args
-        .get("before")
-        .and_then(Value::as_u64)
-        .map_or(5, |n| n.min(50) as usize);
-    let after = args
-        .get("after")
-        .and_then(Value::as_u64)
-        .map_or(5, |n| n.min(50) as usize);
+    let before = args.get("before").and_then(Value::as_u64).map_or(5, |n| n.min(50) as usize);
+    let after = args.get("after").and_then(Value::as_u64).map_or(5, |n| n.min(50) as usize);
 
     let mem = server.ensure_memory()?;
     let entries = mem.timeline(id_or_topic, before, after)?;
@@ -107,10 +99,8 @@ fn handle_get(server: &mut McpServer, args: &Value) -> Result<Value> {
 }
 
 fn handle_context(server: &mut McpServer, args: &Value) -> Result<Value> {
-    let max_tokens = args
-        .get("max_tokens")
-        .and_then(Value::as_u64)
-        .map_or(800, |t| t.min(8000) as usize);
+    let max_tokens =
+        args.get("max_tokens").and_then(Value::as_u64).map_or(800, |t| t.min(8000) as usize);
     let mem = server.ensure_memory()?;
     let hits = mem.session_context(max_tokens)?;
     Ok(json!({
@@ -129,10 +119,7 @@ fn required_str<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
 }
 
 fn optional_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+    args.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())
 }
 
 fn string_array_arg(args: &Value, key: &str) -> Vec<String> {

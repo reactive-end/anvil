@@ -3,13 +3,13 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{Context, Result, bail};
 use anvil_core::compressor::compress_output;
 use anvil_core::config::AnvilConfig;
 use anvil_core::fs_util::resolve_sonar_bin;
 use anvil_core::git;
 use anvil_core::proc_util::run_command_with_timeout;
 use anvil_core::sonar::{fetch_new_code_issues, fetch_quality_gate, parse_sonar_properties};
+use anyhow::{Context, Result, bail};
 
 use crate::cli::subcmds::SonarSubcmd;
 use crate::commands::ExitCodeError;
@@ -19,24 +19,12 @@ use crate::ui;
 pub fn execute(root: &Path, sub: SonarSubcmd) -> Result<()> {
     let config = AnvilConfig::load_or_default(root)?;
     match sub {
-        SonarSubcmd::Status {
-            host,
-            project,
-            branch,
-        } => cmd_status(root, &config, host.as_deref(), project.as_deref(), branch.as_deref()),
-        SonarSubcmd::Issues {
-            host,
-            project,
-            branch,
-            limit,
-        } => cmd_issues(
-            root,
-            &config,
-            host.as_deref(),
-            project.as_deref(),
-            branch.as_deref(),
-            limit,
-        ),
+        SonarSubcmd::Status { host, project, branch } => {
+            cmd_status(root, &config, host.as_deref(), project.as_deref(), branch.as_deref())
+        }
+        SonarSubcmd::Issues { host, project, branch, limit } => {
+            cmd_issues(root, &config, host.as_deref(), project.as_deref(), branch.as_deref(), limit)
+        }
         SonarSubcmd::Analyze { args } => cmd_analyze(root, &config, &args),
     }
 }
@@ -95,20 +83,14 @@ fn cmd_status(
 ) -> Result<()> {
     let (host_url, project_key, token) =
         require_endpoint(root, config, host_override, project_override)?;
-    let branch = branch_override
-        .map(str::to_owned)
-        .or_else(|| git::current_branch(root).ok());
+    let branch = branch_override.map(str::to_owned).or_else(|| git::current_branch(root).ok());
     let report = fetch_quality_gate(&host_url, &project_key, branch.as_deref(), token.as_deref())?;
 
     println!(
         "{} project={} status={}",
         ui::accent("anvil sonar status:"),
         ui::cyan(&project_key),
-        if report.status == "OK" {
-            ui::green(&report.status)
-        } else {
-            ui::red(&report.status)
-        }
+        if report.status == "OK" { ui::green(&report.status) } else { ui::red(&report.status) }
     );
     for cond in &report.conditions {
         println!(
@@ -132,9 +114,7 @@ fn cmd_issues(
 ) -> Result<()> {
     let (host_url, project_key, token) =
         require_endpoint(root, config, host_override, project_override)?;
-    let branch = branch_override
-        .map(str::to_owned)
-        .or_else(|| git::current_branch(root).ok());
+    let branch = branch_override.map(str::to_owned).or_else(|| git::current_branch(root).ok());
     let issues =
         fetch_new_code_issues(&host_url, &project_key, branch.as_deref(), token.as_deref(), limit)?;
 
@@ -155,7 +135,9 @@ fn cmd_issues(
 
 fn cmd_analyze(root: &Path, config: &AnvilConfig, extra_args: &[String]) -> Result<()> {
     let Some(bin) = resolve_sonar_bin() else {
-        bail!("SonarQube scanner binary (`sonar` / `sonar-scanner`) not found on PATH or SONAR_SCANNER_BIN");
+        bail!(
+            "SonarQube scanner binary (`sonar` / `sonar-scanner`) not found on PATH or SONAR_SCANNER_BIN"
+        );
     };
     let (host, project, token) = resolve_sonar_endpoint(root, config, None, None);
     let mut cmd = Command::new(&bin);
@@ -217,9 +199,7 @@ pub(crate) fn resolve_sonar_endpoint(
         .map(str::to_owned)
         .or_else(|| config.sonar.project_key.clone())
         .or_else(|| props.and_then(|p| p.project_key));
-    let token = std::env::var(&config.sonar.token_env)
-        .ok()
-        .filter(|s| !s.trim().is_empty());
+    let token = std::env::var(&config.sonar.token_env).ok().filter(|s| !s.trim().is_empty());
     (host, project, token)
 }
 

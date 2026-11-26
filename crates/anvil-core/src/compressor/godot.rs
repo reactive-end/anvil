@@ -18,20 +18,11 @@ impl OutputParser for GodotParser {
     fn parse(&self, _command: &str, exit_code: i32, raw_output: &str) -> CompressedOutput {
         let diag_lines = collect_godot_diagnostic_lines(raw_output);
         if exit_code == 0 && diag_lines.is_empty() {
-            return pass_output(
-                self.name(),
-                exit_code,
-                "PASS (godot): checks passed".to_owned(),
-            );
+            return pass_output(self.name(), exit_code, "PASS (godot): checks passed".to_owned());
         }
 
         let lines = if diag_lines.is_empty() {
-            raw_output
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .map(str::to_owned)
-                .collect()
+            raw_output.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()
         } else {
             diag_lines
         };

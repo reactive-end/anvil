@@ -2,11 +2,11 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
 
+use anvil_core::duplication::check_added_duplication;
+use anvil_core::git::AddedLines;
 use anvil_core::sonar::{
     check_cognitive_complexity, fetch_new_code_issues, fetch_quality_gate, parse_sonar_properties,
 };
-use anvil_core::duplication::check_added_duplication;
-use anvil_core::git::AddedLines;
 use tempfile::TempDir;
 
 #[test]
@@ -68,12 +68,22 @@ fn duplication_detects_repeated_block_across_changed_files() {
         .join("\n");
     let dir = TempDir::new().unwrap();
     let files = [
-        ("src/a.ts", format!("export function f1() {{
+        (
+            "src/a.ts",
+            format!(
+                "export function f1() {{
 {block}
-}}")),
-        ("src/b.ts", format!("export function f2() {{
+}}"
+            ),
+        ),
+        (
+            "src/b.ts",
+            format!(
+                "export function f2() {{
 {block}
-}}")),
+}}"
+            ),
+        ),
     ];
     let mut repo_files = Vec::new();
     let mut added = AddedLines::default();
