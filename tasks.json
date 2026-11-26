@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 41,
-  "updated_at": "2026-11-26T14:34:50.101400300Z",
+  "task_count": 42,
+  "updated_at": "2026-11-26T14:55:30.481557600Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -765,6 +765,25 @@
       "progress_file": ".harness/tasks/T-041/progress.md",
       "created_at": "2026-11-26T14:10:27.235943700Z",
       "updated_at": "2026-11-26T14:34:50.101400300Z"
+    },
+    {
+      "task_id": "T-042",
+      "request": "Memory recall: partial-match search and onboarding records in context",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Memory recall fixed:\n- mem_search joins terms with OR after dropping English and Spanish stopwords, so BM25 ranks fuller matches first and natural queries no longer return 0 hits.\n- session_context takes the newest record of each kind in turn (domain, decision, gotcha, session), so rules and follow-ups reach mem_context and SessionStart.\n- An MCP test now asserts that the teammate chunk ranks first, instead of an exact count that relied on AND semantics.\n- Verified by 3 new r...",
+      "evidence": "recall_tests 3/3 (fail on old code); 468 workspace tests; clippy -D warnings, fmt, anvil check PASS; isolated subagent retest via anvil mem CLI",
+      "entry_count": 5,
+      "files_count": 3,
+      "progress_file": ".harness/tasks/T-042/progress.md",
+      "created_at": "2026-11-26T14:45:29.278193300Z",
+      "updated_at": "2026-11-26T14:55:30.481557600Z"
     }
   ]
 }

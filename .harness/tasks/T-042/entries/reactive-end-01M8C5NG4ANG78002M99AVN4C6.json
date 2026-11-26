@@ -1,0 +1,15 @@
+{
+  "entry_id": "01M8C5NG4ANG78002M99AVN4C6",
+  "task_id": "T-042",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Memory recall fixed:\n- mem_search joins terms with OR after dropping English and Spanish stopwords, so BM25 ranks fuller matches first and natural queries no longer return 0 hits.\n- session_context takes the newest record of each kind in turn (domain, decision, gotcha, session), so rules and follow-ups reach mem_context and SessionStart.\n- An MCP test now asserts that the teammate chunk ranks first, instead of an exact count that relied on AND semantics.\n- Verified by 3 new recall tests and an isolated-agent CLI retest: context answered 6 of 7 questions and a full-sentence query hit first.",
+  "evidence": "recall_tests 3/3 (fail on old code); 468 workspace tests; clippy -D warnings, fmt, anvil check PASS; isolated subagent retest via anvil mem CLI",
+  "files_touched": [
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "crates/anvil-memory/src/query.rs",
+    "crates/anvil-memory/tests/recall_tests.rs"
+  ],
+  "timestamp": "2026-11-26T14:55:30.481557600Z"
+}

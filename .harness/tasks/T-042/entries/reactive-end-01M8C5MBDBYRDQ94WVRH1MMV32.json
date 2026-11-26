@@ -1,0 +1,20 @@
+{
+  "entry_id": "01M8C5MBDBYRDQ94WVRH1MMV32",
+  "task_id": "T-042",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "The search and context fixes are in and pass 468 tests, clippy, fmt and anvil check. The new binary is installed and `anvil mem context` now shows rules, follow-ups and gotchas. Waiting for an isolated-agent recall retest through the CLI.",
+  "files_touched": [
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "crates/anvil-memory/src/query.rs",
+    "crates/anvil-memory/tests/recall_tests.rs"
+  ],
+  "next_steps": [
+    "read retest result",
+    "task_done",
+    "commit"
+  ],
+  "blocker": "Waiting for the isolated recall retest subagent to report",
+  "timestamp": "2026-11-26T14:54:52.881408600Z"
+}

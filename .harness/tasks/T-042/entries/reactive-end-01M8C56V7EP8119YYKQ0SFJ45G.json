@@ -1,0 +1,13 @@
+{
+  "entry_id": "01M8C56V7EP8119YYKQ0SFJ45G",
+  "task_id": "T-042",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "mem_search now joins query terms with OR after dropping English and Spanish stopwords, so BM25 ranks fuller matches first. session_context round-robins kinds (domain, decision, gotcha, session) by recency within the budget. 3 new recall tests pass; they would fail on the old code.",
+  "files_touched": [
+    "crates/anvil-memory/src/query.rs",
+    "crates/anvil-memory/tests/recall_tests.rs"
+  ],
+  "timestamp": "2026-11-26T14:47:30.332460200Z"
+}

@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8C5365C1ZSAN77NMP649KZB",
+  "task_id": "T-042",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "mem_search requires every query word to match, so natural queries return 0 hits. mem_context and the SessionStart memory line show only decision records. Make search rank partial matches, and surface user working rules, gotchas and open follow-ups to fresh agents.",
+  "files_touched": [],
+  "timestamp": "2026-11-26T14:45:30.451402Z"
+}
