@@ -1,0 +1,23 @@
+{
+  "entry_id": "01M8B40T2MYGN8V5PEW5A23WVH",
+  "task_id": "T-034",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Stop systemMessage and block reasons now read \"Anvil · <sentence>\" without [level][source] tags, in Spanish or English (config.language, ANVIL_LANG, Claude language setting, LC_*/LANG, OS UI language).",
+  "evidence": "cargo test --workspace 82 binaries ok (with and without ANVIL_LANG=en); clippy clean; anvil check PASS; live Stop hook probe prints the Spanish task message.",
+  "files_touched": [
+    "crates/anvil-adapters/src/claude_code.rs",
+    "crates/anvil-adapters/src/inbox.rs",
+    "crates/anvil-adapters/tests/hooks_roundtrip.rs",
+    "crates/anvil-adapters/tests/inbox_and_stop_hardening.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/task_auto.rs",
+    "crates/anvil-cli/src/commands/hook/texts.rs",
+    "crates/anvil-core/Cargo.toml",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/lib.rs",
+    "crates/anvil-core/src/locale.rs"
+  ],
+  "timestamp": "2026-11-26T05:07:29.527876Z"
+}

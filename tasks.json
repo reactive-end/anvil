@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 33,
-  "updated_at": "2026-11-26T04:40:33.015594700Z",
+  "task_count": 34,
+  "updated_at": "2026-11-26T05:07:29.527876Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -615,6 +615,25 @@
       "progress_file": ".harness/tasks/T-033/progress.md",
       "created_at": "2026-11-26T04:26:05.247951700Z",
       "updated_at": "2026-11-26T04:40:33.015594700Z"
+    },
+    {
+      "task_id": "T-034",
+      "request": "Readable, localized Stop hook messages for the user",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Stop systemMessage and block reasons now read \"Anvil · <sentence>\" without [level][source] tags, in Spanish or English (config.language, ANVIL_LANG, Claude language setting, LC_*/LANG, OS UI language).",
+      "evidence": "cargo test --workspace 82 binaries ok (with and without ANVIL_LANG=en); clippy clean; anvil check PASS; live Stop hook probe prints the Spanish task message.",
+      "entry_count": 3,
+      "files_count": 11,
+      "progress_file": ".harness/tasks/T-034/progress.md",
+      "created_at": "2026-11-26T05:00:16.243099700Z",
+      "updated_at": "2026-11-26T05:07:29.527876Z"
     }
   ]
 }
