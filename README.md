@@ -83,6 +83,7 @@ anvil code exec "return anvil.graph_query({ term: 'init', limit: 5 });"
 # Claude Code: pair a planning model with a cheaper execution model (model + effort each)
 anvil orchestrator setup
 anvil orchestrator on               # enforce roles: the orchestrator judges, executors write within SCOPE
+anvil orchestrator tools            # choose which of your MCP servers executors load (or --add postgres,chrome-devtools)
 
 # Executor model and effort selector above the Claude Code prompt (the orchestrator uses the native picker)
 anvil plugin install
@@ -104,7 +105,7 @@ Tier 1 has a latency target (`tier_budgets.tier1_secs`) and a separate hard limi
 
 ## Orchestrator Mode
 
-While the mode is on, Anvil hooks enforce the roles in Claude Code. The main thread inspects, verifies, and delegates, but cannot edit files or write through the shell. `anvil-executor` is the only role that writes, limited to the `SCOPE:` paths of its own latest brief, and cannot commit, manage tasks, or spawn agents. Several executors can run at once: each one's scope is read from its own Claude Code transcript, a brief whose scope overlaps a running or starting executor is refused, and `anvil check --scope <paths>` verifies one executor's files. Agents cannot turn the mode off. File tools and visible shell writes are checked; a program the executor runs can still write elsewhere, so the orchestrator reviews the diff. Executors load only the tools they need to search, edit, build, test, and read docs, plus the Anvil MCP tools, which keeps each one's starting context small; add a project's own MCP server with `orchestrator.executor_tools` in `.harness/config.json` (for example `["mcp__godot__*"]`) and run `anvil sync`. The mode is enforced in Claude Code only; other tools working in the same repository are not affected.
+While the mode is on, Anvil hooks enforce the roles in Claude Code. The main thread inspects, verifies, and delegates, but cannot edit files or write through the shell. `anvil-executor` is the only role that writes, limited to the `SCOPE:` paths of its own latest brief, and cannot commit, manage tasks, or spawn agents. Several executors can run at once: each one's scope is read from its own Claude Code transcript, a brief whose scope overlaps a running or starting executor is refused, and `anvil check --scope <paths>` verifies one executor's files. Agents cannot turn the mode off. File tools and visible shell writes are checked; a program the executor runs can still write elsewhere, so the orchestrator reviews the diff. Executors load only the tools they need to search, edit, build, test, and read docs, plus the Anvil MCP tools, which keeps each one's starting context small; `anvil orchestrator tools` lists the MCP servers Claude Code is configured with (project, local, user, and enabled plugins) and stores the ones you pick in `orchestrator.executor_tools`; `--add` also takes servers the desktop app adds by itself. The mode is enforced in Claude Code only; other tools working in the same repository are not affected.
 
 ## License
 

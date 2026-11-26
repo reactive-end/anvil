@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod config;
+pub mod mcp_servers;
 pub mod plugin;
 
 use std::path::Path;

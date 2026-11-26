@@ -414,6 +414,18 @@ pub enum OrchestratorSubcmd {
     },
     /// Stop enforcing the roles and stop starting sessions as the orchestrator.
     Off,
+    /// Choose which MCP servers executors load (a checklist without flags).
+    Tools {
+        /// Servers to add: a name such as `postgres`, or a full `mcp__<server>__*` entry.
+        #[arg(long, value_delimiter = ',')]
+        add: Vec<String>,
+        /// Servers to remove (same forms as `--add`).
+        #[arg(long, value_delimiter = ',')]
+        remove: Vec<String>,
+        /// Only list the configured servers and which ones executors load.
+        #[arg(long)]
+        list: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

@@ -1,5 +1,7 @@
 //! `anvil orchestrator`: pair a planning model with an execution model for Claude Code.
 
+mod tools;
+
 use std::path::Path;
 
 use anyhow::Result;
@@ -38,6 +40,9 @@ pub fn execute(root: &Path, sub: OrchestratorSubcmd) -> Result<()> {
         OrchestratorSubcmd::Status { json } => cmd_status(root, json),
         OrchestratorSubcmd::On { default_agent } => cmd_on(root, default_agent),
         OrchestratorSubcmd::Off => cmd_off(root),
+        OrchestratorSubcmd::Tools { add, remove, list } => {
+            tools::execute(root, &tools::ToolsArgs { add, remove, list })
+        }
     }
 }
 
