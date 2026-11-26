@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 40,
-  "updated_at": "2026-11-26T14:09:02.086176500Z",
+  "task_count": 41,
+  "updated_at": "2026-11-26T14:34:50.101400300Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -746,6 +746,25 @@
       "progress_file": ".harness/tasks/T-040/progress.md",
       "created_at": "2026-11-26T14:04:31.369787600Z",
       "updated_at": "2026-11-26T14:09:02.086176500Z"
+    },
+    {
+      "task_id": "T-041",
+      "request": "no-swallowed-errors: block empty catch/except handlers across languages",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "New Tier 0 rule no-swallowed-errors. It flags an empty or comment-only catch in TS/JS/PHP/Kotlin/Dart, `.catch(() => {})`, `except: pass` or `...`, and an unguarded Rust `Err(..) => {}` or `()` arm. Per the user's choice it applies to newly added lines only, through NEW_CODE_ONLY_RULES and retain_new_code_findings in anvil check and both hook gates; when added lines are unknown every finding is kept. The benchmark has 43 cases: no-swallowed-errors caught 6, 0 false positives,...",
+      "evidence": "6 rule unit tests incl. new-code filter; slop_bench 43 cases ok; 465 workspace tests; clippy -D warnings, fmt, anvil check PASS; calibration over local repos (Anvil 1, Fliiper 89, Orbit Labs 37, ElMio 53, Catclysm 8 handlers)",
+      "entry_count": 6,
+      "files_count": 21,
+      "progress_file": ".harness/tasks/T-041/progress.md",
+      "created_at": "2026-11-26T14:10:27.235943700Z",
+      "updated_at": "2026-11-26T14:34:50.101400300Z"
     }
   ]
 }

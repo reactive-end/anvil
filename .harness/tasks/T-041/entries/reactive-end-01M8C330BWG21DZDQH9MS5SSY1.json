@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8C330BWG21DZDQH9MS5SSY1",
+  "task_id": "T-041",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "New Tier 0 rule no-swallowed-errors. It flags handlers that drop an error silently: an empty or comment-only catch in TS/JS/PHP/Kotlin/Dart, `.catch(() => {})` in TS/JS, `except ...: pass` or `...` in Python, and an `Err(_) => {}` or `()` match arm in Rust. Allowed only via structured anvil-allow. Calibrated with slop benchmark cases plus clean counter-cases (rethrow, logging, a handled fallback).",
+  "files_touched": [],
+  "timestamp": "2026-11-26T14:10:27.366654Z"
+}

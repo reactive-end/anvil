@@ -1,0 +1,31 @@
+{
+  "entry_id": "01M8C3V8VSBZSRSE28A0ARQ69V",
+  "task_id": "T-041",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "Waiting for the user to choose the rule's scope: newly added lines only, or every changed file. The temporary calibration test was removed. The two gap cases were promoted to expect cases.",
+  "files_touched": [
+    "crates/anvil-ast/src/rules.rs",
+    "crates/anvil-ast/src/rules/swallowed_errors.rs",
+    "crates/anvil-ast/tests/tmp_calibrate.rs",
+    "crates/anvil-cli/slop_bench/clean_py_except_handles.case",
+    "crates/anvil-cli/slop_bench/clean_rust_err_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_rethrows.case",
+    "crates/anvil-cli/slop_bench/clean_ts_promise_catch_logs.case",
+    "crates/anvil-cli/slop_bench/gap_py_bare_except.case",
+    "crates/anvil-cli/slop_bench/gap_ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/php_empty_catch.case",
+    "crates/anvil-cli/slop_bench/py_bare_except.case",
+    "crates/anvil-cli/slop_bench/rust_ignored_err_arm.case",
+    "crates/anvil-cli/slop_bench/ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/ts_empty_promise_catch.case"
+  ],
+  "next_steps": [
+    "apply the chosen scope",
+    "verify + commit"
+  ],
+  "blocker": "User decision: no-swallowed-errors applies to newly added lines only, or to every changed file.",
+  "timestamp": "2026-11-26T14:23:42.494220200Z"
+}

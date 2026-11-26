@@ -1,0 +1,26 @@
+{
+  "entry_id": "01M8C47EKPW3V28V2RZG6TJQ7B",
+  "task_id": "T-041",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "The user chose newly added lines only. Added NEW_CODE_ONLY_RULES with retain_new_code_findings in anvil-ast. Next: apply it in anvil check and in both hook gates.",
+  "files_touched": [
+    "crates/anvil-ast/src/rules.rs",
+    "crates/anvil-ast/src/rules/swallowed_errors.rs",
+    "crates/anvil-ast/tests/tmp_calibrate.rs",
+    "crates/anvil-cli/slop_bench/clean_py_except_handles.case",
+    "crates/anvil-cli/slop_bench/clean_rust_err_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_rethrows.case",
+    "crates/anvil-cli/slop_bench/clean_ts_promise_catch_logs.case",
+    "crates/anvil-cli/slop_bench/gap_py_bare_except.case",
+    "crates/anvil-cli/slop_bench/gap_ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/php_empty_catch.case",
+    "crates/anvil-cli/slop_bench/py_bare_except.case",
+    "crates/anvil-cli/slop_bench/rust_ignored_err_arm.case",
+    "crates/anvil-cli/slop_bench/ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/ts_empty_promise_catch.case"
+  ],
+  "timestamp": "2026-11-26T14:30:21.595803100Z"
+}

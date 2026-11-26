@@ -1,0 +1,33 @@
+{
+  "entry_id": "01M8C4FMTBHANJDFKGJBVSPTGH",
+  "task_id": "T-041",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "New Tier 0 rule no-swallowed-errors. It flags an empty or comment-only catch in TS/JS/PHP/Kotlin/Dart, `.catch(() => {})`, `except: pass` or `...`, and an unguarded Rust `Err(..) => {}` or `()` arm. Per the user's choice it applies to newly added lines only, through NEW_CODE_ONLY_RULES and retain_new_code_findings in anvil check and both hook gates; when added lines are unknown every finding is kept. The benchmark has 43 cases: no-swallowed-errors caught 6, 0 false positives, and 1 known gap (a handler emptied by deleting its only statement).",
+  "evidence": "6 rule unit tests incl. new-code filter; slop_bench 43 cases ok; 465 workspace tests; clippy -D warnings, fmt, anvil check PASS; calibration over local repos (Anvil 1, Fliiper 89, Orbit Labs 37, ElMio 53, Catclysm 8 handlers)",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-ast/src/rules.rs",
+    "crates/anvil-ast/src/rules/swallowed_errors.rs",
+    "crates/anvil-ast/tests/tmp_calibrate.rs",
+    "crates/anvil-cli/slop_bench/clean_py_except_handles.case",
+    "crates/anvil-cli/slop_bench/clean_rust_err_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_rethrows.case",
+    "crates/anvil-cli/slop_bench/clean_ts_old_empty_catch_untouched.case",
+    "crates/anvil-cli/slop_bench/clean_ts_promise_catch_logs.case",
+    "crates/anvil-cli/slop_bench/gap_py_bare_except.case",
+    "crates/anvil-cli/slop_bench/gap_ts_catch_emptied_by_deletion.case",
+    "crates/anvil-cli/slop_bench/gap_ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/php_empty_catch.case",
+    "crates/anvil-cli/slop_bench/py_bare_except.case",
+    "crates/anvil-cli/slop_bench/rust_ignored_err_arm.case",
+    "crates/anvil-cli/slop_bench/ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/ts_empty_promise_catch.case",
+    "crates/anvil-cli/slop_bench/ts_new_catch_next_to_old.case",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/hook/gates.rs"
+  ],
+  "timestamp": "2026-11-26T14:34:50.101400300Z"
+}

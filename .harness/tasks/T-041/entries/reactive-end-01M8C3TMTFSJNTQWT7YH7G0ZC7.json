@@ -1,0 +1,31 @@
+{
+  "entry_id": "01M8C3TMTFSJNTQWT7YH7G0ZC7",
+  "task_id": "T-041",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "The no-swallowed-errors rule is implemented for TS/JS, PHP, Kotlin, Dart, Python and Rust, with 5 unit tests and 8 new benchmark cases. The 2 former gaps are now caught: 40 cases, 5 caught, 0 false positives. Calibration on local repos found 1 hit in Anvil (daemon accept loop), 89 in Fliiper, 37 in Orbit Labs, 53 in ElMio and 8 in Catclysm. Almost all are comment-only catches, some legitimately intentional and some real slop.",
+  "files_touched": [
+    "crates/anvil-ast/src/rules.rs",
+    "crates/anvil-ast/src/rules/swallowed_errors.rs",
+    "crates/anvil-ast/tests/tmp_calibrate.rs",
+    "crates/anvil-cli/slop_bench/clean_py_except_handles.case",
+    "crates/anvil-cli/slop_bench/clean_rust_err_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_fallback.case",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_rethrows.case",
+    "crates/anvil-cli/slop_bench/clean_ts_promise_catch_logs.case",
+    "crates/anvil-cli/slop_bench/gap_py_bare_except.case",
+    "crates/anvil-cli/slop_bench/gap_ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/php_empty_catch.case",
+    "crates/anvil-cli/slop_bench/py_bare_except.case",
+    "crates/anvil-cli/slop_bench/rust_ignored_err_arm.case",
+    "crates/anvil-cli/slop_bench/ts_empty_catch.case",
+    "crates/anvil-cli/slop_bench/ts_empty_promise_catch.case"
+  ],
+  "next_steps": [
+    "apply chosen scope",
+    "verify + commit"
+  ],
+  "blocker": "User decision: block every catch without code (comment-only ignores need anvil-allow) everywhere in changed files, or only in newly added lines.",
+  "timestamp": "2026-11-26T14:23:21.970292500Z"
+}
