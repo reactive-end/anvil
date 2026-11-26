@@ -10,8 +10,14 @@ use serde::{Deserialize, Serialize};
 use crate::fs_util::{atomic_write, with_file_lock};
 use crate::ratchet::glob_matches;
 
+mod overlap;
+
+pub use overlap::overlapping_entry;
+
 const LOCK_TIMEOUT_MS: u64 = 2_000;
 const SCOPE_TTL_MINUTES: i64 = 120;
+/// How long a started executor counts as starting before its own transcript shows up.
+const SPAWN_TTL_MINUTES: i64 = 10;
 
 /// A file or glob the orchestrator handed to executors.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,11 +27,21 @@ struct ScopeGrant {
     granted_at: DateTime<Utc>,
 }
 
+/// An executor the orchestrator started, keyed by the id of the `Agent` call that started it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct SpawnGrant {
+    session: String,
+    tool_use_id: String,
+    paths: Vec<String>,
+    granted_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 struct ModeState {
     enabled: bool,
     scopes: Vec<ScopeGrant>,
+    spawns: Vec<SpawnGrant>,
 }
 
 /// Returns `true` when orchestrator mode is on for this working copy.
@@ -38,7 +54,35 @@ pub fn set_enabled(root: &Path, enabled: bool) -> Result<()> {
     update_state(root, |state| {
         state.enabled = enabled;
         state.scopes.clear();
+        state.spawns.clear();
     })
+}
+
+/// Remembers the scope of an executor started by the `Agent` call `tool_use_id`.
+pub fn record_spawn(root: &Path, session: &str, tool_use_id: &str, paths: &[String]) -> Result<()> {
+    update_state(root, |state| {
+        let now = Utc::now();
+        state
+            .spawns
+            .retain(|g| g.tool_use_id != tool_use_id && is_recent(g.granted_at, now));
+        state.spawns.push(SpawnGrant {
+            session: session.to_owned(),
+            tool_use_id: tool_use_id.to_owned(),
+            paths: paths.to_vec(),
+            granted_at: now,
+        });
+    })
+}
+
+/// Executors started in `session` during the last few minutes, as `(tool_use_id, paths)`.
+pub fn recent_spawns(root: &Path, session: &str) -> Vec<(String, Vec<String>)> {
+    let now = Utc::now();
+    read_state(root)
+        .spawns
+        .into_iter()
+        .filter(|g| g.session == session && is_recent(g.granted_at, now))
+        .map(|g| (g.tool_use_id, g.paths))
+        .collect()
 }
 
 /// Extracts the paths of every `SCOPE:` line in a delegation brief.
@@ -123,6 +167,10 @@ fn is_unbounded(path: &str) -> bool {
     escapes || path == "." || first.chars().all(|c| c == '*')
 }
 
+fn is_recent(at: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+    now - at < Duration::minutes(SPAWN_TTL_MINUTES)
+}
+
 fn is_live(grant: &ScopeGrant, now: DateTime<Utc>) -> bool {
     now - grant.granted_at < Duration::minutes(SCOPE_TTL_MINUTES)
 }
@@ -156,16 +204,30 @@ mod tests {
 
     #[test]
     fn parses_bounded_scopes_and_rejects_unbounded_ones() {
-        let paths = parse_scope("Goal: x\n- SCOPE: `src/a.rs`, ./src/ui/, docs/*.md\nDone").unwrap();
+        let paths =
+            parse_scope("Goal: x\n- SCOPE: `src/a.rs`, ./src/ui/, docs/*.md\nDone").unwrap();
         assert_eq!(paths, vec!["src/a.rs", "src/ui", "docs/*.md"]);
-        for bad in ["no scope", "SCOPE:", "SCOPE: .", "SCOPE: **/*.rs", "SCOPE: /etc", "SCOPE: ../x", "SCOPE: C:/x"] {
+        for bad in [
+            "no scope",
+            "SCOPE:",
+            "SCOPE: .",
+            "SCOPE: **/*.rs",
+            "SCOPE: /etc",
+            "SCOPE: ../x",
+            "SCOPE: C:/x",
+        ] {
             assert!(parse_scope(bad).is_err(), "{bad}");
         }
     }
 
     #[test]
     fn scope_matches_files_directories_and_globs() {
-        let scope = vec!["src/a.rs".to_owned(), "src/ui".to_owned(), "docs/*.md".to_owned(), "*.toml".to_owned()];
+        let scope = vec![
+            "src/a.rs".to_owned(),
+            "src/ui".to_owned(),
+            "docs/*.md".to_owned(),
+            "*.toml".to_owned(),
+        ];
         for ok in ["src/a.rs", "./src/ui/x/y.rs", "docs/a.md", "Cargo.toml"] {
             assert!(scope_allows(&scope, ok), "{ok}");
         }
@@ -187,5 +249,21 @@ mod tests {
         assert!(granted_scope(root, "s2").is_empty());
         set_enabled(root, false).unwrap();
         assert!(granted_scope(root, "s1").is_empty());
+    }
+
+    #[test]
+    fn spawns_are_kept_per_session_and_replaced_by_call_id() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join(".harness/.state")).unwrap();
+        record_spawn(root, "s1", "toolu_1", &["src/a".to_owned()]).unwrap();
+        record_spawn(root, "s1", "toolu_1", &["src/b".to_owned()]).unwrap();
+        record_spawn(root, "s2", "toolu_2", &["src/c".to_owned()]).unwrap();
+        assert_eq!(
+            recent_spawns(root, "s1"),
+            vec![("toolu_1".to_owned(), vec!["src/b".to_owned()])]
+        );
+        set_enabled(root, false).unwrap();
+        assert!(recent_spawns(root, "s2").is_empty());
     }
 }

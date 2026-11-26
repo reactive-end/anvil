@@ -71,6 +71,8 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         session_id: raw.session_id,
         agent_id: None,
         agent_type: None,
+        transcript_path: None,
+        tool_use_id: None,
         tool_name: tool_call.tool_name.or(raw.tool_name),
         tool_input,
         tool_output,

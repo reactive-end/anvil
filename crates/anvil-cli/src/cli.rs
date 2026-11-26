@@ -111,6 +111,9 @@ pub enum Command {
         /// Skip SonarQube checks even when `sonar.enabled` is true in config.
         #[arg(long)]
         no_sonar: bool,
+        /// Check only changes inside these files or directories (an executor's `SCOPE:`).
+        #[arg(long, value_delimiter = ',')]
+        scope: Vec<String>,
     },
     /// Analyze reverse-BFS blast radius and upstream origin via `anvil-graph`.
     Impact {

@@ -91,18 +91,10 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Doctor => doctor::execute(&root),
         Command::Hook { event, adapter } => hook::execute(&root, &event, &adapter),
         Command::Run { cmd } => run::execute(&root, &cmd),
-        Command::Check {
-            full,
-            tier,
-            no_tests,
-            no_cache,
-            staged,
-            sonar,
-            no_sonar,
-        } => check::execute(
-            &root,
-            check::CheckOptions { full, tier_override: tier, no_tests, no_cache, staged, sonar, no_sonar },
-        ),
+        Command::Check { full, tier, no_tests, no_cache, staged, sonar, no_sonar, scope } => {
+            let opts = check::CheckOptions { full, tier_override: tier, no_tests, no_cache, staged, sonar, no_sonar };
+            check::execute(&root, opts, &scope)
+        }
         Command::Impact { files, depth, origin, typecheck } => {
             impact::execute(&root, &files, depth, origin.as_deref(), typecheck)
         }

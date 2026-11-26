@@ -104,7 +104,7 @@ Tier 1 has a latency target (`tier_budgets.tier1_secs`) and a separate hard limi
 
 ## Orchestrator Mode
 
-While the mode is on, Anvil hooks enforce the roles in Claude Code. The main thread inspects, verifies, and delegates, but cannot edit files or write through the shell. `anvil-executor` is the only role that writes, limited to the `SCOPE:` paths of its brief, and cannot commit, manage tasks, or spawn agents. Agents cannot turn the mode off. File tools and visible shell writes are checked; a program the executor runs can still write elsewhere, so the orchestrator reviews the diff. The mode is enforced in Claude Code only; other tools working in the same repository are not affected.
+While the mode is on, Anvil hooks enforce the roles in Claude Code. The main thread inspects, verifies, and delegates, but cannot edit files or write through the shell. `anvil-executor` is the only role that writes, limited to the `SCOPE:` paths of its own latest brief, and cannot commit, manage tasks, or spawn agents. Several executors can run at once: each one's scope is read from its own Claude Code transcript, a brief whose scope overlaps a running or starting executor is refused, and `anvil check --scope <paths>` verifies one executor's files. Agents cannot turn the mode off. File tools and visible shell writes are checked; a program the executor runs can still write elsewhere, so the orchestrator reviews the diff. The mode is enforced in Claude Code only; other tools working in the same repository are not affected.
 
 ## License
 

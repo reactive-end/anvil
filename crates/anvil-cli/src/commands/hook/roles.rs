@@ -3,12 +3,14 @@
 use std::path::{Path, PathBuf};
 
 use anvil_adapters::claude_code::agents::EXECUTOR_AGENT;
-use anvil_adapters::contract::{
-    HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput,
+use anvil_adapters::contract::{HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput};
+use anvil_core::orchestrator_mode::{
+    self, grant_scope, granted_scope, overlapping_entry, parse_scope, recent_spawns, record_spawn,
+    scope_allows,
 };
-use anvil_core::orchestrator_mode::{self, grant_scope, granted_scope, parse_scope, scope_allows};
 use serde_json::Value;
 
+use super::executors::{self, brief_scope, subagents_dir};
 use super::payload::{
     extract_command_field, extract_rel_file, extract_target_file_path, is_mutating_file_tool,
     is_within_root, resolve_hook_root, strip_tool_namespace,
@@ -79,10 +81,21 @@ fn check_delegation(root: &Path, input: &NormalizedHookInput) -> Option<HookOutc
     let args = input.tool_input.as_ref()?.as_object()?;
     let session = input.session_id.as_deref().unwrap_or("default");
     let text = |key: &str| args.get(key).and_then(Value::as_str).unwrap_or_default();
+    let dir = subagents_dir(
+        input.transcript_path.as_deref(),
+        input.session_id.as_deref(),
+    );
     if tool == "SendMessage" {
-        if let Ok(paths) = parse_scope(text("message")) {
-            let _ = grant_scope(root, session, &paths);
+        let Ok(paths) = parse_scope(text("message")) else {
+            return None;
+        };
+        if let Some(clash) = dir
+            .as_deref()
+            .and_then(|d| find_clash(root, d, session, &paths, Some(text("to")), None))
+        {
+            return Some(clash);
         }
+        let _ = grant_scope(root, session, &paths);
         return None;
     }
     let is_executor = text("subagent_type").rsplit(':').next() == Some(EXECUTOR_AGENT);
@@ -97,7 +110,16 @@ fn check_delegation(root: &Path, input: &NormalizedHookInput) -> Option<HookOutc
             )));
         }
     };
-    if let Err(err) = grant_scope(root, session, &paths) {
+    let call = input.tool_use_id.as_deref();
+    if let Some(clash) = dir
+        .as_deref()
+        .and_then(|d| find_clash(root, d, session, &paths, None, call))
+    {
+        return Some(clash);
+    }
+    let recorded = grant_scope(root, session, &paths)
+        .and_then(|()| call.map_or(Ok(()), |id| record_spawn(root, session, id, &paths)));
+    if let Err(err) = recorded {
         return Some(HookOutcome::deny(format!(
             "Orchestrator mode: could not record the executor scope ({err})."
         )));
@@ -141,7 +163,7 @@ fn check_executor(root: &Path, input: &NormalizedHookInput) -> Option<HookOutcom
             "Orchestrator mode: `{tool}` belongs to the orchestrator. Finish your step and report back."
         )));
     }
-    let scope = granted_scope(root, input.session_id.as_deref().unwrap_or("default"));
+    let scope = executor_scope(root, input);
     if is_mutating_file_tool(Some(tool)) {
         let abs = extract_target_file_path(input.tool_input.as_ref(), root)?;
         if !is_within_root(root, &abs) && is_scratch_path(&abs.to_string_lossy()) {
@@ -170,8 +192,58 @@ fn check_executor(root: &Path, input: &NormalizedHookInput) -> Option<HookOutcom
     })
 }
 
+/// The executor's own latest brief; the session's delegated paths when its transcript is unreadable.
+fn executor_scope(root: &Path, input: &NormalizedHookInput) -> Vec<String> {
+    let dir = subagents_dir(
+        input.transcript_path.as_deref(),
+        input.session_id.as_deref(),
+    );
+    dir.zip(input.agent_id.as_deref())
+        .and_then(|(dir, agent)| brief_scope(&dir, agent))
+        .unwrap_or_else(|| granted_scope(root, input.session_id.as_deref().unwrap_or("default")))
+}
+
+/// Refuses a brief whose scope may touch a file a running or just-started executor can edit.
+/// `target` is the executor being briefed again, `call` the `Agent` call starting a new one.
+fn find_clash(
+    root: &Path,
+    dir: &Path,
+    session: &str,
+    paths: &[String],
+    target: Option<&str>,
+    call: Option<&str>,
+) -> Option<HookOutcome> {
+    let known = executors::executors(dir);
+    let running = known
+        .iter()
+        .filter(|e| {
+            e.running && !target.is_some_and(|t| t == e.agent_id || e.name.as_deref() == Some(t))
+        })
+        .filter_map(|e| {
+            Some((
+                format!("executor `{}`", e.agent_id),
+                brief_scope(dir, &e.agent_id)?,
+            ))
+        });
+    let starting = recent_spawns(root, session).into_iter().filter(|(id, _)| {
+        Some(id.as_str()) != call && !known.iter().any(|e| e.tool_use_id.as_deref() == Some(id))
+    });
+    let starting =
+        starting.map(|(id, scope)| (format!("the executor being started by `{id}`"), scope));
+    running.chain(starting).find_map(|(who, scope)| {
+        let (mine, theirs) = overlapping_entry(paths, &scope)?;
+        Some(HookOutcome::deny(format!(
+            "Orchestrator mode: `{mine}` in this brief overlaps `{theirs}`, which {who} may still edit. Executors that run at the same time must not share files: give the shared file to one of them, or wait for it to finish."
+        )))
+    })
+}
+
 fn out_of_scope(rel: &str, scope: &[String]) -> HookOutcome {
-    let allowed = if scope.is_empty() { "nothing".to_owned() } else { scope.join(", ") };
+    let allowed = if scope.is_empty() {
+        "nothing".to_owned()
+    } else {
+        scope.join(", ")
+    };
     HookOutcome::deny(format!(
         "Orchestrator mode: `{rel}` is outside the delegated scope ({allowed}). Do not work around this; report to the orchestrator what you need and why."
     ))

@@ -24,6 +24,10 @@ struct RawClaudeInput {
     agent_id: Option<String>,
     #[serde(alias = "agentType")]
     agent_type: Option<String>,
+    #[serde(alias = "transcriptPath")]
+    transcript_path: Option<String>,
+    #[serde(alias = "toolUseId")]
+    tool_use_id: Option<String>,
     #[serde(alias = "toolName")]
     tool_name: Option<String>,
     #[serde(alias = "toolInput")]
@@ -61,6 +65,8 @@ pub fn parse_input(raw_json: &str, event_hint: Option<HookEvent>) -> Result<Norm
         session_id: raw.session_id,
         agent_id: raw.agent_id,
         agent_type: raw.agent_type,
+        transcript_path: raw.transcript_path,
+        tool_use_id: raw.tool_use_id,
         tool_name: raw.tool_name,
         tool_input: raw.tool_input,
         tool_output: raw.tool_response,

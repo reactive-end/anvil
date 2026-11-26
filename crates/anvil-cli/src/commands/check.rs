@@ -11,8 +11,9 @@ use anvil_ast::analyze_files_parallel;
 use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, DiffClassification, classify_files};
 use anvil_core::git::{self, AddedLines, DiffScope};
-use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
+use anvil_core::orchestrator_mode::scope_allows;
 use anvil_core::duplication::check_added_duplication;
+use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
 use anvil_core::sonar::check_cognitive_complexity;
 use anvil_core::stats::record_check_outcome;
 use anvil_core::test_tampering::{check_test_tampering_diff, is_test_file};
@@ -38,17 +39,21 @@ pub struct CheckOptions {
 }
 
 /// Executes `anvil check [--full] [--tier 0|1|2] [--no-tests] [--no-cache] [--staged] [--sonar] [--no-sonar]`.
-pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
+///
+/// A non-empty `scope` limits the check to changes inside those files or directories.
+pub fn execute(root: &Path, opts: CheckOptions, scope: &[String]) -> Result<()> {
     ui::print_banner_if_tty("Tiered Verification Pipeline");
     let config = AnvilConfig::load_or_default(root)?;
     let any_sonar = config.sonar.enabled || config.subrepos.iter().any(|s| s.sonar_enabled);
     let run_sonar = (any_sonar || opts.sonar) && !opts.no_sonar;
+    let keep = |path: &str| scope.is_empty() || scope_allows(scope, path);
     let (changed_paths, added_paths, classification) = if opts.staged {
-        classify_staged_diff(root)
+        classify_staged_diff(root, &keep)
     } else {
-        classify_repo_diff(root)
+        classify_repo_diff(root, &keep)
     };
-    let added_lines = git::added_line_ranges(root, opts.staged).unwrap_or_default();
+    let mut added_lines = git::added_line_ranges(root, opts.staged).unwrap_or_default();
+    added_lines.retain(|path, _| keep(path));
     let effective_tier = resolve_tier(opts.full, opts.tier_override, classification.minimum_tier);
 
     println!(
@@ -128,7 +133,10 @@ fn finish_check(tier0_errors: usize, tier1_failed: bool, tier2_failed: bool) -> 
     Ok(())
 }
 
-fn classify_repo_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassification) {
+fn classify_repo_diff(
+    root: &Path,
+    keep: &dyn Fn(&str) -> bool,
+) -> (Vec<String>, Vec<String>, DiffClassification) {
     let status = git::working_tree_status(root).unwrap_or_default();
     let mut unique = FxHashSet::default();
     let mut paths = Vec::new();
@@ -139,7 +147,7 @@ fn classify_repo_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassificat
         .chain(&status.deleted)
         .chain(&status.untracked)
     {
-        if unique.insert(p.clone()) {
+        if keep(p) && unique.insert(p.clone()) {
             paths.push(p.clone());
         }
     }
@@ -147,7 +155,12 @@ fn classify_repo_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassificat
 
     let mut added_set = FxHashSet::default();
     let mut added_paths = Vec::new();
-    for p in status.added.iter().chain(&status.untracked) {
+    for p in status
+        .added
+        .iter()
+        .chain(&status.untracked)
+        .filter(|p| keep(p))
+    {
         let norm = CodeGraph::normalize_rel_path(p);
         if added_set.insert(norm.clone()) {
             added_paths.push(norm);
@@ -166,8 +179,12 @@ fn classify_repo_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassificat
     (paths, added_paths, classification)
 }
 
-fn classify_staged_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassification) {
+fn classify_staged_diff(
+    root: &Path,
+    keep: &dyn Fn(&str) -> bool,
+) -> (Vec<String>, Vec<String>, DiffClassification) {
     let mut paths = git::changed_files(root, DiffScope::Staged).unwrap_or_default();
+    paths.retain(|p| keep(p));
     paths.sort();
     paths.dedup();
     let diffs = git::batched_staged_diffs(root).unwrap_or_default();

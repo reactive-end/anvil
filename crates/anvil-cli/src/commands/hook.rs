@@ -1,6 +1,7 @@
 //! `anvil hook`: unified Antigravity & Claude Code hook dispatcher.
 
 mod error_log;
+mod executors;
 mod gates;
 pub mod git_install;
 mod payload;
@@ -18,8 +19,8 @@ mod token_guard_shell;
 use std::io::{self, Read};
 use std::path::Path;
 use std::time::Instant;
-
 use anyhow::Result;
+
 use anvil_adapters::contract::{
     AdapterKind, HookEvent, HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput,
     PermissionAction,

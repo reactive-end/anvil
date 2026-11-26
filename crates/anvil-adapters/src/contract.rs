@@ -79,6 +79,12 @@ pub struct NormalizedHookInput {
     pub agent_id: Option<String>,
     /// Agent type of the subagent, or of a main thread started with `--agent`.
     pub agent_type: Option<String>,
+    /// Transcript of the main session (`<dir>/<session_id>.jsonl`); subagents keep theirs beside it.
+    #[serde(default)]
+    pub transcript_path: Option<String>,
+    /// Id of this tool call; an `Agent` call's id names the subagent it starts.
+    #[serde(default)]
+    pub tool_use_id: Option<String>,
     pub tool_name: Option<String>,
     pub tool_input: Option<Value>,
     pub tool_output: Option<Value>,
