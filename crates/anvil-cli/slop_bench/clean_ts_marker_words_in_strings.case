@@ -1,0 +1,24 @@
+# Marker words inside strings and names are not escapes.
+@@ before src/math.ts
+export function total(items: number[]): number {
+  let sum = 0;
+  for (const item of items) {
+    sum += item;
+  }
+  return sum;
+}
+@@ before src/main.ts
+import { total } from "./math";
+
+export function run(): number {
+  return total([1, 2, 3]);
+}
+@@ after src/main.ts
+import { total } from "./math";
+
+export function run(): number {
+  const hint = "never use @ts-ignore or TODO notes";
+  const company = "anybody";
+  return total([1, 2, 3]) + hint.length + company.length;
+}
+@@ expect

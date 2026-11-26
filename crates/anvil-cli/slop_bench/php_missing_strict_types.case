@@ -1,0 +1,45 @@
+# A changed PHP file drops `declare(strict_types=1)`.
+@@ before app/Services/ReportService.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+final class ReportService
+{
+    public function read(string $path): string
+    {
+        return (string) file_get_contents($path);
+    }
+}
+@@ before app/Http/ReportController.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use App\Services\ReportService;
+
+final class ReportController
+{
+    public function show(ReportService $reports): string
+    {
+        return $reports->read('report.txt');
+    }
+}
+@@ after app/Services/ReportService.php
+<?php
+
+namespace App\Services;
+
+final class ReportService
+{
+    public function read(string $path): string
+    {
+        return (string) file_get_contents($path);
+    }
+}
+@@ expect
+error require-strict-types app/Services/ReportService.php

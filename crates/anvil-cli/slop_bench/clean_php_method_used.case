@@ -1,0 +1,67 @@
+# A new PHP method used by the controller.
+@@ before app/Services/ReportService.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+final class ReportService
+{
+    public function read(string $path): string
+    {
+        return (string) file_get_contents($path);
+    }
+}
+@@ before app/Http/ReportController.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use App\Services\ReportService;
+
+final class ReportController
+{
+    public function show(ReportService $reports): string
+    {
+        return $reports->read('report.txt');
+    }
+}
+@@ after app/Services/ReportService.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+final class ReportService
+{
+    public function read(string $path): string
+    {
+        return (string) file_get_contents($path);
+    }
+
+    public function exists(string $path): bool
+    {
+        return is_file($path);
+    }
+}
+@@ after app/Http/ReportController.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use App\Services\ReportService;
+
+final class ReportController
+{
+    public function show(ReportService $reports): string
+    {
+        return $reports->exists('report.txt') ? $reports->read('report.txt') : '';
+    }
+}
+@@ expect

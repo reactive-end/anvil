@@ -1,0 +1,63 @@
+# A new function copies an existing body line for line.
+@@ before src/report.ts
+export interface Order {
+  id: string;
+  amount: number;
+  paid: boolean;
+}
+
+export function summarize(orders: Order[]): string {
+  const paid = orders.filter((order) => order.paid);
+  const amounts = paid.map((order) => order.amount);
+  const sum = amounts.reduce((acc, value) => acc + value, 0);
+  const average = paid.length === 0 ? 0 : sum / paid.length;
+  const largest = amounts.length === 0 ? 0 : Math.max(...amounts);
+  const lines = [`paid: ${paid.length}`, `sum: ${sum}`];
+  lines.push(`average: ${average.toFixed(2)}`);
+  lines.push(`largest: ${largest}`);
+  return lines.join("\n");
+}
+@@ before src/main.ts
+import { summarize, type Order } from "./report";
+
+export function printOrders(orders: Order[]): string {
+  return summarize(orders);
+}
+@@ after src/report.ts
+export interface Order {
+  id: string;
+  amount: number;
+  paid: boolean;
+}
+
+export function summarize(orders: Order[]): string {
+  const paid = orders.filter((order) => order.paid);
+  const amounts = paid.map((order) => order.amount);
+  const sum = amounts.reduce((acc, value) => acc + value, 0);
+  const average = paid.length === 0 ? 0 : sum / paid.length;
+  const largest = amounts.length === 0 ? 0 : Math.max(...amounts);
+  const lines = [`paid: ${paid.length}`, `sum: ${sum}`];
+  lines.push(`average: ${average.toFixed(2)}`);
+  lines.push(`largest: ${largest}`);
+  return lines.join("\n");
+}
+
+export function summarizeRefunds(orders: Order[]): string {
+  const paid = orders.filter((order) => order.paid);
+  const amounts = paid.map((order) => order.amount);
+  const sum = amounts.reduce((acc, value) => acc + value, 0);
+  const average = paid.length === 0 ? 0 : sum / paid.length;
+  const largest = amounts.length === 0 ? 0 : Math.max(...amounts);
+  const lines = [`paid: ${paid.length}`, `sum: ${sum}`];
+  lines.push(`average: ${average.toFixed(2)}`);
+  lines.push(`largest: ${largest}`);
+  return lines.join("\n");
+}
+@@ after src/main.ts
+import { summarize, summarizeRefunds, type Order } from "./report";
+
+export function printOrders(orders: Order[]): string {
+  return summarize(orders) + summarizeRefunds(orders);
+}
+@@ expect
+error duplication:new-code src/report.ts

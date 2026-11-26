@@ -1,0 +1,20 @@
+# An `#[allow]` silences a compiler warning.
+@@ before src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+@@ before src/main.rs
+pub fn run() -> i64 {
+    crate::total(&[1, 2, 3])
+}
+@@ after src/lib.rs
+pub mod main;
+
+#[allow(clippy::needless_range_loop)]
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+@@ expect
+error no-escape-hatches src/lib.rs

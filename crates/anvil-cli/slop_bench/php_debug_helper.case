@@ -1,0 +1,50 @@
+# A `dd()` debugging call left in a controller.
+@@ before app/Services/ReportService.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+final class ReportService
+{
+    public function read(string $path): string
+    {
+        return (string) file_get_contents($path);
+    }
+}
+@@ before app/Http/ReportController.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use App\Services\ReportService;
+
+final class ReportController
+{
+    public function show(ReportService $reports): string
+    {
+        return $reports->read('report.txt');
+    }
+}
+@@ after app/Http/ReportController.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use App\Services\ReportService;
+
+final class ReportController
+{
+    public function show(ReportService $reports): string
+    {
+        dd($reports);
+        return $reports->read('report.txt');
+    }
+}
+@@ expect
+error no-debug-helpers app/Http/ReportController.php

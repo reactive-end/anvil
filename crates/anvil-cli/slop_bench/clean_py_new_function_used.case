@@ -1,0 +1,25 @@
+# A new Python helper used by its caller.
+@@ before app/__init__.py
+@@ before app/calc.py
+def total(items: list[int]) -> int:
+    return sum(items)
+@@ before app/main.py
+from app.calc import total
+
+
+def run() -> int:
+    return total([1, 2, 3])
+@@ after app/calc.py
+def total(items: list[int]) -> int:
+    return sum(items)
+
+
+def average(items: list[int]) -> float:
+    return total(items) / len(items) if items else 0.0
+@@ after app/main.py
+from app.calc import average, total
+
+
+def run() -> int:
+    return int(total([1, 2, 3]) + average([4, 6]))
+@@ expect

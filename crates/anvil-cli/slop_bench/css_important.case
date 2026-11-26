@@ -1,0 +1,13 @@
+# `!important` forces a style instead of fixing specificity.
+@@ before src/styles.css
+.button {
+  color: #222;
+  padding: 4px 8px;
+}
+@@ after src/styles.css
+.button {
+  color: #222 !important;
+  padding: 4px 8px;
+}
+@@ expect
+error no-escape-hatches src/styles.css

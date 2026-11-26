@@ -1,0 +1,19 @@
+# An `unsafe` block where safe code works.
+@@ before src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+@@ before src/main.rs
+pub fn run() -> i64 {
+    crate::total(&[1, 2, 3])
+}
+@@ after src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    unsafe { items.get_unchecked(..).iter().sum() }
+}
+@@ expect
+error no-escape-hatches src/lib.rs

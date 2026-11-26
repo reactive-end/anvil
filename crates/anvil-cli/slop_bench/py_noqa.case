@@ -1,0 +1,19 @@
+# A `# noqa` silences the linter.
+@@ before app/__init__.py
+@@ before app/calc.py
+def total(items: list[int]) -> int:
+    return sum(items)
+@@ before app/main.py
+from app.calc import total
+
+
+def run() -> int:
+    return total([1, 2, 3])
+@@ after app/main.py
+from app.calc import total  # noqa: F401
+
+
+def run() -> int:
+    return total([1, 2, 3])
+@@ expect
+error no-escape-hatches app/main.py

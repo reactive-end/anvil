@@ -1,0 +1,24 @@
+# A bare `except: pass` hides every failure.
+@@ before app/__init__.py
+@@ before app/calc.py
+def total(items: list[int]) -> int:
+    return sum(items)
+@@ before app/main.py
+from app.calc import total
+
+
+def run() -> int:
+    return total([1, 2, 3])
+@@ after app/main.py
+from app.calc import total
+
+
+def run() -> int:
+    try:
+        return total([1, 2, 3])
+    except:
+        pass
+    return 0
+@@ expect
+@@ known-gap
+error no-swallowed-errors app/main.py

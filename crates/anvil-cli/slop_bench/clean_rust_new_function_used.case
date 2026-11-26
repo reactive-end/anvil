@@ -1,0 +1,26 @@
+# A new Rust function used by its caller.
+@@ before src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+@@ before src/main.rs
+pub fn run() -> i64 {
+    crate::total(&[1, 2, 3])
+}
+@@ after src/lib.rs
+pub mod main;
+
+pub fn total(items: &[i64]) -> i64 {
+    items.iter().sum()
+}
+
+pub fn double(value: i64) -> i64 {
+    value * 2
+}
+@@ after src/main.rs
+pub fn run() -> i64 {
+    crate::double(crate::total(&[1, 2, 3]))
+}
+@@ expect
