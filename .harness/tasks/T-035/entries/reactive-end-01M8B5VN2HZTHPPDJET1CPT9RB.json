@@ -1,0 +1,39 @@
+{
+  "entry_id": "01M8B5VN2HZTHPPDJET1CPT9RB",
+  "task_id": "T-035",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Per-executor scope from its own transcript, overlap rejection for running/starting executors, anvil check --scope, templates and README. Tests/clippy/check green.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/antigravity.rs",
+    "crates/anvil-adapters/src/claude_code.rs",
+    "crates/anvil-adapters/src/contract.rs",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/commands.rs",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/executors.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/tests/parallel_executors_e2e.rs",
+    "crates/anvil-core/src/orchestrator_mode.rs",
+    "crates/anvil-core/src/orchestrator_mode/overlap.rs",
+    "templates/agents/anvil-executor.md",
+    "templates/agents/anvil-orchestrator.md",
+    "templates/agents/orchestrate-skill.md"
+  ],
+  "done_steps": [
+    "executors.rs transcript reader",
+    "orchestrator_mode spawns + overlap",
+    "roles.rs per-executor scope and find_clash",
+    "check --scope",
+    "templates and README",
+    "parallel_executors_e2e.rs"
+  ],
+  "next_steps": [
+    "Install binary, sync, commit",
+    "Live test with real parallel executors"
+  ],
+  "timestamp": "2026-11-26T05:39:37.718427300Z"
+}

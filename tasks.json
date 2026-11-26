@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 34,
-  "updated_at": "2026-11-26T05:07:29.527876Z",
+  "task_count": 35,
+  "updated_at": "2026-11-26T05:44:39.122837300Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -634,6 +634,25 @@
       "progress_file": ".harness/tasks/T-034/progress.md",
       "created_at": "2026-11-26T05:00:16.243099700Z",
       "updated_at": "2026-11-26T05:07:29.527876Z"
+    },
+    {
+      "task_id": "T-035",
+      "request": "Parallel executors: per-executor scope, overlap rejection, scoped check",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Parallel executors: each executor's scope comes from its own latest brief in its Claude Code transcript; briefs overlapping a running or starting executor are refused; anvil check --scope; templates and README updated.",
+      "evidence": "cargo test --workspace 83 binaries ok; clippy clean; anvil check PASS; live test: two parallel executors each allowed in own scope and refused in the other's, an overlapping third brief refused before start, a later brief over the finished executors' folder allowed.",
+      "entry_count": 4,
+      "files_count": 16,
+      "progress_file": ".harness/tasks/T-035/progress.md",
+      "created_at": "2026-11-26T05:26:32.285189200Z",
+      "updated_at": "2026-11-26T05:44:39.122837300Z"
     }
   ]
 }

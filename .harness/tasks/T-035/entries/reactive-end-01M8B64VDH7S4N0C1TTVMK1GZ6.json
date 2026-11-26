@@ -1,0 +1,28 @@
+{
+  "entry_id": "01M8B64VDH7S4N0C1TTVMK1GZ6",
+  "task_id": "T-035",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Parallel executors: each executor's scope comes from its own latest brief in its Claude Code transcript; briefs overlapping a running or starting executor are refused; anvil check --scope; templates and README updated.",
+  "evidence": "cargo test --workspace 83 binaries ok; clippy clean; anvil check PASS; live test: two parallel executors each allowed in own scope and refused in the other's, an overlapping third brief refused before start, a later brief over the finished executors' folder allowed.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/antigravity.rs",
+    "crates/anvil-adapters/src/claude_code.rs",
+    "crates/anvil-adapters/src/contract.rs",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/commands.rs",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/executors.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/tests/parallel_executors_e2e.rs",
+    "crates/anvil-core/src/orchestrator_mode.rs",
+    "crates/anvil-core/src/orchestrator_mode/overlap.rs",
+    "templates/agents/anvil-executor.md",
+    "templates/agents/anvil-orchestrator.md",
+    "templates/agents/orchestrate-skill.md"
+  ],
+  "timestamp": "2026-11-26T05:44:39.122837300Z"
+}

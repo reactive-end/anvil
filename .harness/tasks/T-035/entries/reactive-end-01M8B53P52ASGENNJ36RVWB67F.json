@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8B53P52ASGENNJ36RVWB67F",
+  "task_id": "T-035",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Scope comes from each executor's latest brief in its own transcript (replaces the session-wide union); reject briefs that overlap a live or pending executor; anvil check --scope; templates for parallel delegation.",
+  "files_touched": [],
+  "timestamp": "2026-11-26T05:26:32.389127700Z"
+}

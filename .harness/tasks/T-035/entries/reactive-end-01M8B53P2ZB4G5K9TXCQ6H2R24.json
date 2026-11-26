@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8B53P2ZB4G5K9TXCQ6H2R24",
+  "task_id": "T-035",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Parallel executors: per-executor scope, overlap rejection, scoped check",
+  "files_touched": [],
+  "timestamp": "2026-11-26T05:26:32.322461400Z"
+}
