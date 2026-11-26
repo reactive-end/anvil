@@ -339,7 +339,11 @@ fn mcp_mem_save_before_read_still_syncs_preexisting_external_chunk() {
         ],
     );
     assert_eq!(parse_tool_json(&resps[0])["saved"], json!(true));
-    assert_eq!(parse_tool_json(&resps[1])["count"], json!(1));
+    assert_eq!(
+        parse_tool_json(&resps[1])["hits"][0]["topic_key"],
+        json!("decision/preexisting-team-chunk"),
+        "the teammate chunk on disk must be synced and rank first"
+    );
 }
 
 #[test]

@@ -10,22 +10,37 @@ use crate::model::{MemoryKind, Observation, SearchHit, TimelineEntry};
 use crate::store::sql::{OBS_COLUMNS, row_to_observation};
 use map::{collect_rows, estimate_hit_tokens, row_to_search_hit, row_to_timeline_entry};
 
-/// Sanitizes arbitrary user search input into safe quoted FTS5 terms.
+/// Words that carry no meaning in a memory query; dropped so they do not decide the ranking.
+const STOPWORDS: &[&str] = &[
+    "a", "an", "and", "are", "can", "do", "does", "for", "how", "i", "in", "is", "it", "my", "of",
+    "on", "or", "should", "the", "to", "what", "when", "where", "which", "who", "why", "with",
+    "como", "cual", "de", "del", "el", "en", "es", "la", "las", "lo", "los", "para", "por", "que",
+    "se", "un", "una", "y",
+];
+
+/// Turns arbitrary search input into quoted FTS5 terms joined by `OR`, so a record that matches
+/// only some words is still found; BM25 ranks records that match more and rarer terms first.
 pub fn sanitize_fts_query(raw: &str) -> String {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    for ch in raw.chars() {
-        if ch.is_alphanumeric() || ch == '_' {
-            current.push(ch);
-        } else if !current.is_empty() {
-            tokens.push(format!("\"{current}\""));
-            current.clear();
+    let mut tokens: Vec<String> = Vec::new();
+    for word in raw.split(|ch: char| !(ch.is_alphanumeric() || ch == '_')) {
+        let lower = word.to_lowercase();
+        if word.is_empty() || STOPWORDS.contains(&lower.as_str()) {
+            continue;
+        }
+        let quoted = format!("\"{word}\"");
+        if !tokens.contains(&quoted) {
+            tokens.push(quoted);
         }
     }
-    if !current.is_empty() {
-        tokens.push(format!("\"{current}\""));
+    if tokens.is_empty() {
+        // Only stopwords: search them anyway rather than returning unrelated recent records.
+        tokens = raw
+            .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
+            .filter(|word| !word.is_empty())
+            .map(|word| format!("\"{word}\""))
+            .collect();
     }
-    tokens.join(" ")
+    tokens.join(" OR ")
 }
 
 /// Performs FTS5 BM25 search returning compact `SearchHit` rows for progressive disclosure.
@@ -97,7 +112,13 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Observation>> {
     Ok(stmt.query_row(params![id, now_ms], row_to_observation).optional()?)
 }
 
-/// Returns compact recent decisions, gotchas, domain rules, and active sessions within `max_tokens`.
+/// Kinds in the order a fresh agent needs them: working rules and project knowledge, decisions,
+/// pitfalls, then sessions.
+const CONTEXT_KIND_ORDER: &[MemoryKind] =
+    &[MemoryKind::Domain, MemoryKind::Decision, MemoryKind::Gotcha, MemoryKind::Session];
+
+/// Returns compact recent memory within `max_tokens`, taking the newest record of each kind in
+/// turn so rules, decisions, and pitfalls all appear instead of one kind filling the budget.
 pub fn session_context(
     conn: &Connection,
     max_tokens: usize,
@@ -110,23 +131,29 @@ pub fn session_context(
         "SELECT id, topic_key, kind, title, updated_at, freshness, what
          FROM observations
          WHERE expires_at IS NULL OR expires_at > ?1
-         ORDER BY CASE kind WHEN 'decision' THEN 0 WHEN 'gotcha' THEN 1
-                            WHEN 'domain' THEN 2 ELSE 3 END ASC, updated_at DESC
-         LIMIT 64",
+         ORDER BY updated_at DESC
+         LIMIT 128",
     )?;
-    let rows = stmt.query_map([now_ms], row_to_search_hit)?;
+    let rows = collect_rows(stmt.query_map([now_ms], row_to_search_hit)?)?;
+    let mut queues: Vec<std::collections::VecDeque<SearchHit>> =
+        CONTEXT_KIND_ORDER.iter().map(|_| std::collections::VecDeque::new()).collect();
+    for hit in rows {
+        let slot = CONTEXT_KIND_ORDER.iter().position(|k| *k == hit.kind).unwrap_or(0);
+        queues[slot].push_back(hit);
+    }
     let mut out = Vec::new();
     let mut used_tokens = 0usize;
-    for row in rows {
-        let hit = row?;
-        let est = estimate_hit_tokens(&hit);
-        if !out.is_empty() && used_tokens + est > max_tokens {
-            break;
-        }
-        used_tokens += est;
-        out.push(hit);
-        if used_tokens >= max_tokens {
-            break;
+    while queues.iter().any(|q| !q.is_empty()) {
+        for queue in &mut queues {
+            let Some(hit) = queue.pop_front() else {
+                continue;
+            };
+            let est = estimate_hit_tokens(&hit);
+            if !out.is_empty() && used_tokens + est > max_tokens {
+                return Ok(out);
+            }
+            used_tokens += est;
+            out.push(hit);
         }
     }
     Ok(out)
