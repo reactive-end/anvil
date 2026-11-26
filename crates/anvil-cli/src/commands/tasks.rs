@@ -99,18 +99,21 @@ fn execute_progress_cmd(root: &Path, sub: TasksSubcmd) -> Result<()> {
             },
             author.as_deref(),
         ),
-        TasksSubcmd::Done { task_id, summary, evidence, files, author } => cmd_append(
-            root,
-            &task_id,
-            ProgressUpdate {
-                status: TaskStatus::Done,
-                summary: &summary,
-                evidence: evidence.as_deref(),
-                files: &files,
-                ..ProgressUpdate::default()
-            },
-            author.as_deref(),
-        ),
+        TasksSubcmd::Done { task_id, summary, evidence, files, author } => {
+            anvil_tasks::review::ensure_reviewed(root, &task_id)?;
+            cmd_append(
+                root,
+                &task_id,
+                ProgressUpdate {
+                    status: TaskStatus::Done,
+                    summary: &summary,
+                    evidence: evidence.as_deref(),
+                    files: &files,
+                    ..ProgressUpdate::default()
+                },
+                author.as_deref(),
+            )
+        }
         _ => Ok(()),
     }
 }

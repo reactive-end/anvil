@@ -18,8 +18,16 @@ use super::payload::{
 use super::roles_shell;
 use super::shell::targets::is_scratch_path;
 
-const EXECUTOR_FORBIDDEN_TOOLS: &[&str] =
-    &["Agent", "Task", "Workflow", "task_start", "task_done", "task_skip", "task_record"];
+const EXECUTOR_FORBIDDEN_TOOLS: &[&str] = &[
+    "Agent",
+    "Task",
+    "Workflow",
+    "task_start",
+    "task_done",
+    "task_skip",
+    "task_record",
+    "review_approve",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Role {
@@ -50,7 +58,7 @@ pub fn mode_reminder(root: &Path) -> Option<InboxMessage> {
             "orchestrator-mode",
             MessageLevel::Info,
             format!(
-                "ON. You are the orchestrator: understand, plan, decide, and review, but never write code. Delegate every edit to the `{EXECUTOR_AGENT}` agent with a self-contained brief that contains a `SCOPE: path, path` line (exact files or directories), the constraints, and the done command. Review with `anvil diff` and `anvil check`, and send corrections back to the executor. Only the user can turn this mode off."
+                "ON. You are the orchestrator: understand, plan, decide, and review, but never write code. Delegate every edit to the `{EXECUTOR_AGENT}` agent with a self-contained brief that contains a `SCOPE: path, path` line (exact files or directories), the constraints, and the done command. Review each task with `review_packet` and `anvil check`, send corrections back to the executor, and approve with `review_approve` before `task_done`. Only the user can turn this mode off."
             ),
             None,
         )

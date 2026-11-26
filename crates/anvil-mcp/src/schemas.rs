@@ -1,8 +1,8 @@
-//! JSON Schema definitions for all 23 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_log` MCP tools.
+//! JSON Schema definitions for all 25 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_*` MCP tools.
 
 use serde_json::{Value, json};
 
-/// Returns JSON Schema definitions for all 23 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_log` tools.
+/// Returns JSON Schema definitions for all 25 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_*` tools.
 pub fn tool_definitions() -> Vec<Value> {
     let mut tools = graph_core_schemas();
     tools.extend(graph_inspect_schemas());
@@ -10,6 +10,7 @@ pub fn tool_definitions() -> Vec<Value> {
     tools.extend(memory_tool_schemas());
     tools.extend(task_tool_schemas());
     tools.push(review_log_schema());
+    tools.extend(review_gate_schemas());
     tools
 }
 
@@ -29,6 +30,33 @@ fn review_log_schema() -> Value {
             "required": ["description", "category"]
         }),
     )
+}
+
+fn review_gate_schemas() -> Vec<Value> {
+    vec![
+        tool_schema(
+            "review_packet",
+            "Build the compact review of a task's change (files, line and assertion counts, last check, checklist, capped diff) and remember it for `review_approve`. In orchestrator mode a task with changed files cannot close until its current packet is approved.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string", "description": "Task to review; defaults to the active task." }
+                }
+            }),
+        ),
+        tool_schema(
+            "review_approve",
+            "Approve a task's change after reading its `review_packet` and finding no remaining problems. Refused when the task's files changed after the packet.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "summary": { "type": "string", "description": "What you verified, in one sentence." }
+                },
+                "required": ["task_id", "summary"]
+            }),
+        ),
+    ]
 }
 
 fn code_exec_schema() -> Value {

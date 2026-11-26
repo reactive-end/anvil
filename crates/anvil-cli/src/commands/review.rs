@@ -1,8 +1,10 @@
-//! `anvil review`: record problems found in review after `anvil check` was green.
+//! `anvil review`: review packets, approvals, and problems found after `anvil check` was green.
 
 use std::path::Path;
 
+use anvil_core::review_gate;
 use anvil_core::stats::{self, NewFinding, ReviewEntry};
+use anvil_tasks::review;
 use anyhow::Result;
 
 use crate::cli::subcmds::ReviewSubcmd;
@@ -15,6 +17,15 @@ pub fn execute(root: &Path, sub: ReviewSubcmd) -> Result<()> {
             cmd_log(root, NewFinding { description, category, severity, source, file })
         }
         ReviewSubcmd::List { since } => cmd_list(root, since),
+        ReviewSubcmd::Packet { task_id } => {
+            print!("{}", review::packet(root, task_id.as_deref())?.text);
+            Ok(())
+        }
+        ReviewSubcmd::Approve { task_id, summary } => {
+            review_gate::approve(root, &task_id, &summary)?;
+            println!("approved {task_id}: {}", summary.trim());
+            Ok(())
+        }
     }
 }
 

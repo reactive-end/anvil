@@ -449,6 +449,18 @@ pub enum ReviewSubcmd {
         #[arg(long)]
         since: Option<u32>,
     },
+    /// Print a compact review of a task's change and remember it for approval.
+    Packet {
+        /// Task to review; defaults to the active task.
+        task_id: Option<String>,
+    },
+    /// Approve a task's reviewed change; refused if its files changed after the packet.
+    Approve {
+        /// Task whose packet was reviewed.
+        task_id: String,
+        /// What you verified, in one sentence.
+        summary: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]

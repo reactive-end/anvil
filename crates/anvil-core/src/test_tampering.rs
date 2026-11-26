@@ -102,6 +102,12 @@ pub fn check_test_tampering_diff(rel_path: &str, unified_diff: &str) -> Vec<Diag
     diags
 }
 
+/// Counts assertion lines a unified diff adds and removes, as `(added, removed)`.
+pub fn assertion_delta(unified_diff: &str) -> (usize, usize) {
+    let (added, removed) = split_diff_lines(unified_diff);
+    (count_assertions(added.iter().map(|(_, l)| *l)), count_assertions(removed.iter().copied()))
+}
+
 /// Splits a unified diff into added lines (with post-image line numbers) and removed lines.
 fn split_diff_lines(unified_diff: &str) -> (Vec<(u32, &str)>, Vec<&str>) {
     let mut added = Vec::new();

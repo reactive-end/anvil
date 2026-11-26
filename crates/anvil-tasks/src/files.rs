@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use anvil_core::git::{self, DiffScope};
 
 use crate::active::load_active_task;
+use crate::builder::read_single_task;
 use crate::curate::{load_first_untracked_edit_at, load_untracked_edits};
 
 /// Returns `true` for repository-relative project paths (excludes harness state and paths
@@ -19,6 +20,19 @@ pub fn is_project_file(path: &str) -> bool {
         || norm.starts_with("../")
         || norm.as_bytes().get(1) == Some(&b':');
     !norm.is_empty() && !is_outside && !norm.starts_with(".harness/") && norm != "tasks.json"
+}
+
+/// The files a review of `task_id` covers: those its entries recorded plus its pending edits.
+///
+/// Packets, approvals, and the close check all use this one set, so they agree on what was reviewed.
+pub fn review_files(repo: &Path, task_id: &str) -> Vec<String> {
+    let mut set: BTreeSet<String> = read_single_task(repo, task_id)
+        .map(|task| task.files_touched)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    set.extend(collect_task_files(repo, Some(task_id), &[]));
+    set.into_iter().filter(|f| is_project_file(f)).collect()
 }
 
 /// Collects files for a ledger entry: explicit paths win, otherwise session edits plus dirty

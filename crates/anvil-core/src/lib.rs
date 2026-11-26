@@ -13,6 +13,7 @@ pub mod locale;
 pub mod orchestrator_mode;
 pub mod proc_util;
 pub mod ratchet;
+pub mod review_gate;
 pub mod sonar;
 pub mod stack_detector;
 pub mod stats;

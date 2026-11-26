@@ -155,6 +155,7 @@ fn handle_task_done(root: &Path, args: &Value) -> Result<Value> {
     let summary = req_str(args, "summary")?;
     let evidence = opt_str(args, "evidence");
     let explicit_files = opt_string_vec(args, "files");
+    anvil_tasks::review::ensure_reviewed(root, task_id)?;
     let files = collect_task_files(root, Some(task_id), &explicit_files);
     let author = resolve_author_fast(root).unwrap_or_else(|_| "mcp".to_owned());
     let (task, entry) = record_task_progress(

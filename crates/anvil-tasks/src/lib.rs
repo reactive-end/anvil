@@ -10,6 +10,7 @@ pub mod ledger;
 pub mod merge_driver;
 pub mod model;
 pub mod progress;
+pub mod review;
 
 use std::fs;
 use std::path::Path;

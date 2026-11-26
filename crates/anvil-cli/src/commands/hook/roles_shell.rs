@@ -165,6 +165,7 @@ fn is_reserved_anvil(sub: &str, rest: &[String]) -> bool {
         || (sub == "circuit" && mentions(&["reset"]))
         || (sub == "ratchet" && mentions(&["promote"]))
         || (sub == "tasks" && mentions(&["start", "done", "skip", "record"]))
+        || (sub == "review" && mentions(&["approve"]))
 }
 
 /// The reserved `anvil` subcommand in `args`, if any. When the words before the subcommand cannot be
@@ -476,14 +477,20 @@ mod tests {
             "sudo git push",
             "bash -c 'git reset --hard'",
             "anvil tasks done T-1 x",
+            "anvil review approve T-1 ok",
             "anvil orchestrator off",
             "anvil circuit reset",
         ] {
             assert!(why_not_executor(bad).is_some(), "{bad}");
         }
-        for ok in
-            ["git status", "cargo test", "anvil check", "anvil tasks list", "anvil run -- npm test"]
-        {
+        for ok in [
+            "git status",
+            "cargo test",
+            "anvil check",
+            "anvil tasks list",
+            "anvil review packet T-1",
+            "anvil run -- npm test",
+        ] {
             assert_eq!(why_not_executor(ok), None, "{ok}");
         }
         assert_eq!(
