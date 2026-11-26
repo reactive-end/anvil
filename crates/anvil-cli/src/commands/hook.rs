@@ -10,6 +10,7 @@ mod security_guard;
 mod session_scope;
 mod shell;
 mod task_auto;
+mod texts;
 mod token_guard;
 mod token_guard_media;
 mod token_guard_shell;
@@ -30,6 +31,7 @@ use anvil_core::config::{AnvilConfig, MobileQaDriver, WebQaDriver};
 use anvil_core::diff_classifier::{ChangedFile, classify_files};
 use anvil_core::fs_util::with_file_lock;
 use anvil_core::git::{self, DiffScope};
+use anvil_core::locale::Lang;
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
@@ -421,12 +423,13 @@ fn handle_stop(
     if bypass_stop {
         return HookOutcome::allow();
     }
+    let lang = Lang::detect(config);
     let has_root_harness = root.join(".harness").is_dir();
     if has_root_harness {
         task_auto::refresh_tasks_json_if_changed(root);
         match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
             Ok(st) if st.is_open() => {
-                let msg = "Circuit Breaker OPEN — stopping for human escalation.".to_owned();
+                let msg = texts::circuit_open(lang, None);
                 return HookOutcome::with_messages(vec![InboxMessage::new(
                     "circuit-breaker",
                     MessageLevel::Error,
@@ -438,7 +441,7 @@ fn handle_stop(
             Err(err) => error_log::log_hook_error(root, "stop:circuit", &err),
         }
     }
-    if let Some(sub_block) = check_subrepo_stop_gates(root, config, input) {
+    if let Some(sub_block) = check_subrepo_stop_gates(root, config, input, lang) {
         return sub_block;
     }
     if !has_root_harness {
@@ -450,17 +453,13 @@ fn handle_stop(
     }
     let errs = collect_changed_gate_errors(root, &changed, config);
     if !errs.is_empty() {
-        return HookOutcome::block_stop(format!(
-            "Tier 0 AST gate failed ({} error(s)): {}",
-            errs.len(),
-            errs.join("; ")
-        ));
+        return HookOutcome::block_stop(texts::gate_failed(lang, None, &errs));
     }
-    if let Some(block) = task_auto::check_pending_task_summary(root, &changed) {
+    if let Some(block) = task_auto::check_pending_task_summary(root, &changed, lang) {
         return block;
     }
     let mut messages = Vec::new();
-    append_stop_advisories(root, config, &changed, &mut messages);
+    append_stop_advisories(root, config, &changed, lang, &mut messages);
     task_auto::mark_stop_completed(root);
     HookOutcome::with_messages(messages)
 }
@@ -469,16 +468,13 @@ fn append_stop_advisories(
     root: &Path,
     config: &AnvilConfig,
     changed: &[String],
+    lang: Lang,
     messages: &mut Vec<InboxMessage>,
 ) {
     if let Some(blast) = resolve_stop_blast(root, config, changed)
         && !blast.impacted_files.is_empty()
     {
-        let msg = format!(
-            "{} impacted file(s), {} related test(s)",
-            blast.impacted_files.len(),
-            blast.related_tests.len()
-        );
+        let msg = texts::impact(lang, blast.impacted_files.len(), blast.related_tests.len());
         messages.push(InboxMessage::new("tier1:impact", MessageLevel::Info, msg, None));
     }
     let classified = classify_files(&changed.iter().map(ChangedFile::from_path).collect::<Vec<_>>());
@@ -486,7 +482,7 @@ fn append_stop_advisories(
         messages.push(InboxMessage::new(
             "tier2:qa",
             MessageLevel::Warning,
-            "UI files changed; verify with `anvil qa`.".to_owned(),
+            texts::ui_changed(lang),
             None,
         ));
     }
@@ -541,6 +537,7 @@ fn check_subrepo_stop_gates(
     root: &Path,
     config: &AnvilConfig,
     input: &NormalizedHookInput,
+    lang: Lang,
 ) -> Option<HookOutcome> {
     let sub_paths = collect_subrepo_stop_paths(root, config);
     if sub_paths.is_empty() {
@@ -557,7 +554,7 @@ fn check_subrepo_stop_gates(
         if let Ok(st) = CircuitBreaker::new(&sub_dir, sub_cfg.circuit_breaker_limit).status()
             && st.is_open()
         {
-            let msg = format!("Circuit Breaker OPEN in `{rel_sub}` — stopping for human escalation.");
+            let msg = texts::circuit_open(lang, Some(&rel_sub));
             return Some(HookOutcome::with_messages(vec![InboxMessage::new(
                 "circuit-breaker",
                 MessageLevel::Error,
@@ -571,13 +568,9 @@ fn check_subrepo_stop_gates(
         }
         let errs = collect_changed_gate_errors(&sub_dir, &sub_changed, &sub_cfg);
         if !errs.is_empty() {
-            return Some(HookOutcome::block_stop(format!(
-                "Tier 0 AST gate failed in `{rel_sub}` ({} error(s)): {}",
-                errs.len(),
-                errs.join("; ")
-            )));
+            return Some(HookOutcome::block_stop(texts::gate_failed(lang, Some(&rel_sub), &errs)));
         }
-        if let Some(block) = task_auto::check_pending_task_summary(&sub_dir, &sub_changed) {
+        if let Some(block) = task_auto::check_pending_task_summary(&sub_dir, &sub_changed, lang) {
             return Some(block);
         }
         task_auto::mark_stop_completed(&sub_dir);

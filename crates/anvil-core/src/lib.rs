@@ -9,6 +9,7 @@ pub mod diff_grep;
 pub mod duplication;
 pub mod fs_util;
 pub mod git;
+pub mod locale;
 pub mod orchestrator_mode;
 pub mod proc_util;
 pub mod ratchet;

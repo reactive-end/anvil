@@ -15,6 +15,7 @@ regex.workspace = true
 chrono.workspace = true
 ulid.workspace = true
 ureq = "2"
+sys-locale = "0.3"
 
 [dev-dependencies]
 tempfile.workspace = true

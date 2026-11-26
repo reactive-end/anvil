@@ -73,7 +73,7 @@ fn antigravity_render_stop_preserves_messages_on_block_and_allow() {
     assert_eq!(out_block["decision"], "continue");
     let reason = out_block["reason"].as_str().expect("blocking reason");
     assert!(reason.contains("Tier 1 failed"));
-    assert!(reason.contains("[error][tier1] (src/app.ts): 2 type errors in src/app.ts"));
+    assert!(reason.contains("Anvil · src/app.ts: 2 type errors in src/app.ts"));
 
     let blocking_no_reason = HookOutcome {
         block_stop: true,
@@ -135,7 +135,7 @@ fn claude_code_render_stop_surfaces_messages_on_block_and_allow() {
     assert_eq!(out_block["decision"], "block");
     let reason = out_block["reason"].as_str().expect("reason");
     assert!(reason.contains("Verification failed"));
-    assert!(reason.contains("[error][tier0] (src/index.ts): Disallowed @ts-ignore"));
+    assert!(reason.contains("Anvil · src/index.ts: Disallowed @ts-ignore"));
 
     let allowing_with_msgs = HookOutcome::with_messages(vec![InboxMessage::new(
         "anvil-tasks",
@@ -150,7 +150,7 @@ fn claude_code_render_stop_surfaces_messages_on_block_and_allow() {
         out_allow["systemMessage"]
             .as_str()
             .expect("systemMessage")
-            .contains("[info][anvil-tasks]: Reminder: update task T-42")
+            .contains("Anvil · Reminder: update task T-42")
     );
 }
 

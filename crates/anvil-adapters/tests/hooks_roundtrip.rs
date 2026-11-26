@@ -45,7 +45,7 @@ fn antigravity_session_start_and_stop_roundtrip() {
             &HookOutcome::block_stop("Tier 1 failed"),
         )
         .expect("stop continue"),
-        json!({ "decision": "continue", "reason": "Tier 1 failed" })
+        json!({ "decision": "continue", "reason": "Anvil · Tier 1 failed" })
     );
     assert_eq!(
         antigravity::render_output(root, HookEvent::Stop, &HookOutcome::allow())
@@ -188,7 +188,7 @@ fn claude_code_session_start_and_stop_roundtrip() {
     assert_eq!(
         claude_code::render_output(root, HookEvent::Stop, &HookOutcome::block_stop("tsc failed"))
             .expect("stop block"),
-        json!({ "decision": "block", "reason": "tsc failed" })
+        json!({ "decision": "block", "reason": "Anvil · tsc failed" })
     );
     assert_eq!(
         claude_code::render_output(root, HookEvent::Stop, &HookOutcome::allow())

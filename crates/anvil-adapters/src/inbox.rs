@@ -144,15 +144,30 @@ pub fn format_context(messages: &[InboxMessage]) -> Option<String> {
     Some(out)
 }
 
+/// Formats messages for a person to read: one plain sentence per line, no level or source tags.
+pub fn format_for_user(messages: &[InboxMessage]) -> Option<String> {
+    if messages.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = messages
+        .iter()
+        .map(|msg| match &msg.file {
+            Some(file) => format!("Anvil · {file}: {}", msg.content),
+            None => format!("Anvil · {}", msg.content),
+        })
+        .collect();
+    Some(lines.join("\n"))
+}
+
 pub(crate) fn format_stop_reason(
     reason: Option<&str>,
     messages: &[InboxMessage],
 ) -> Option<String> {
-    let formatted = format_context(messages);
+    let formatted = format_for_user(messages);
     match (reason, formatted) {
-        (Some(r), Some(m)) if !r.is_empty() => Some(format!("{r}\n{m}")),
+        (Some(r), Some(m)) if !r.is_empty() => Some(format!("Anvil · {r}\n{m}")),
         (Some(_), Some(m)) => Some(m),
-        (Some(r), None) => Some(r.to_owned()),
+        (Some(r), None) => Some(format!("Anvil · {r}")),
         (None, Some(m)) => Some(m),
         (None, None) => None,
     }

@@ -154,7 +154,7 @@ fn render_stop(outcome: &HookOutcome) -> Value {
         {
             obj.insert("reason".to_owned(), Value::String(reason));
         }
-    } else if let Some(msg) = inbox::format_context(&outcome.messages) {
+    } else if let Some(msg) = inbox::format_for_user(&outcome.messages) {
         obj.insert("systemMessage".to_owned(), Value::String(msg));
     }
     Value::Object(obj)

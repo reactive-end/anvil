@@ -310,6 +310,9 @@ pub struct AnvilConfig {
     /// Orchestrator/executor model pair; absent until `anvil orchestrator setup` runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orchestrator: Option<OrchestratorConfig>,
+    /// Language of the messages Anvil shows the user (`en`, `es`); detected when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 impl Default for AnvilConfig {
@@ -332,6 +335,7 @@ impl Default for AnvilConfig {
             duplication_min_lines: None,
             token_guard: TokenGuardConfig::default(),
             orchestrator: None,
+            language: None,
         }
     }
 }

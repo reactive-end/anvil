@@ -6,6 +6,7 @@ use std::process::Command;
 use std::time::SystemTime;
 
 use anvil_adapters::contract::{HookEvent, HookOutcome, NormalizedHookInput};
+use anvil_core::locale::Lang;
 use anvil_tasks::ledger::tasks_root;
 use anvil_tasks::{
     TaskStatus, build_root_tasks_json, clear_skipped_active_task, list_tasks, load_active_task,
@@ -141,7 +142,7 @@ fn is_newer(path: &Path, baseline: SystemTime) -> bool {
 /// - Read-only turns, pure docs edits, and `<= 12`-line single-file micro-tweaks pass automatically (`0` tasks).
 /// - Never auto-creates tasks from raw user chat messages.
 /// - On substantive diffs, asks the LLM once to record a curated task, reuse the latest task, or call `task_skip`.
-pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<HookOutcome> {
+pub fn check_pending_task_summary(root: &Path, changed: &[String], lang: Lang) -> Option<HookOutcome> {
     let project_changes: Vec<&String> = changed
         .iter()
         .filter(|p| !p.starts_with(".harness/") && *p != "tasks.json")
@@ -156,10 +157,7 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
             return None;
         }
         if st.status == TaskStatus::InProgress && st.summary_recorded_at.is_none() {
-            return Some(HookOutcome::block_stop(format!(
-                "Task {} is still in_progress. Verify & finish via MCP `task_done` / `anvil tasks done {} \"<summary>\"`, or checkpoint/block via `task_update` (`status=\"blocked\"`) / `anvil tasks update {} \"<progress>\" --status blocked --next \"...\"`.",
-                st.task_id, st.task_id, st.task_id
-            )));
+            return Some(HookOutcome::block_stop(super::texts::task_in_progress(lang, &st.task_id)));
         }
     }
 
@@ -192,6 +190,7 @@ pub fn check_pending_task_summary(root: &Path, changed: &[String]) -> Option<Hoo
     Some(HookOutcome::block_stop(build_curation_prompt(
         root,
         fresh_changes.len(),
+        lang,
     )))
 }
 
@@ -235,18 +234,8 @@ fn count_changed_lines(root: &Path, rel: &str) -> usize {
         .unwrap_or(TRIVIAL_SINGLE_FILE_MAX_LINES + 1)
 }
 
-fn build_curation_prompt(root: &Path, file_count: usize) -> String {
-    let reuse_hint = list_tasks(root)
-        .ok()
-        .and_then(|mut v| v.pop())
-        .map(|last| {
-            format!(
-                " (2) If continuing `{}` (\"{}\"), append via MCP `task_done` / `anvil tasks done {} \"<summary>\"`.",
-                last.task_id, last.request, last.task_id
-            )
-        })
-        .unwrap_or_default();
-    format!(
-        "Substantive edits across {file_count} file(s) need an explicit LLM task decision (strict anti-noise bias — NEVER copy raw user chat): (1) Real feature/refactor/bugfix -> MCP `task_record` or `anvil tasks record \"<Clean Engineering Title>\" \"<summary>\"` (e.g. \"Reorganización visual del módulo X\").{reuse_hint} (3) Minor tweak/chore -> MCP `task_skip` or `anvil tasks skip \"<reason>\"`."
-    )
+fn build_curation_prompt(root: &Path, file_count: usize, lang: Lang) -> String {
+    let last = list_tasks(root).ok().and_then(|mut v| v.pop());
+    let last = last.as_ref().map(|task| (task.task_id.as_str(), task.request.as_str()));
+    super::texts::curation_prompt(lang, file_count, last)
 }
