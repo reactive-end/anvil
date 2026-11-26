@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use anvil_core::config::orchestrator::OrchestratorConfig;
+use anvil_core::config::orchestrator::{OrchestratorConfig, is_tool_name};
 use serde_json::Value;
 
 use crate::antigravity::config::read_json_object;
@@ -86,11 +86,54 @@ pub fn set_default_agent(repo_root: &Path, enabled: bool) -> Result<bool> {
     write_if_changed(&path, &format!("{json}\n"))
 }
 
+/// What an executor needs to search, edit, build, test, and read docs; nothing else is loaded,
+/// which keeps every executor's starting context small.
+const EXECUTOR_TOOLS: &[&str] = &[
+    "Read", "Edit", "Write", "NotebookEdit", "Grep", "Glob", "Bash", "PowerShell", "WebFetch",
+    "WebSearch", "mcp__anvil__*",
+];
+
+/// The default tools plus the valid extra ones from the config, without repeats.
+fn executor_tools(config: &OrchestratorConfig) -> String {
+    let mut tools: Vec<&str> = EXECUTOR_TOOLS.to_vec();
+    let extra = config.executor_tools.iter().map(String::as_str).filter(|t| is_tool_name(t));
+    for tool in extra {
+        if !tools.contains(&tool) {
+            tools.push(tool);
+        }
+    }
+    tools.join(", ")
+}
+
 fn render(template: &str, config: &OrchestratorConfig) -> String {
     template
         .replace("\r\n", "\n")
+        .replace("{{executor_tools}}", &executor_tools(config))
         .replace("{{orchestrator_model}}", &config.orchestrator.model)
         .replace("{{orchestrator_effort}}", config.orchestrator.effort.as_str())
         .replace("{{executor_model}}", &config.executor.model)
         .replace("{{executor_effort}}", config.executor.effort.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn executor_tools_add_valid_extras_once_and_drop_the_rest() {
+        let config = OrchestratorConfig {
+            executor_tools: vec![
+                "mcp__godot__*".to_owned(),
+                "Read".to_owned(),
+                "Bash\nmodel: opus".to_owned(),
+                "mcp__x__*__*".to_owned(),
+            ],
+            ..OrchestratorConfig::default()
+        };
+        let tools = executor_tools(&config);
+        assert!(tools.starts_with("Read, Edit, Write,"));
+        assert!(tools.ends_with("mcp__anvil__*, mcp__godot__*"), "{tools}");
+        assert_eq!(tools.matches("Read").count(), 1);
+        assert!(!tools.contains('\n') && !tools.contains("x__*__*"));
+    }
 }

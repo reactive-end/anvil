@@ -51,6 +51,7 @@ fn cmd_setup(
     let next = OrchestratorConfig {
         orchestrator: resolve_role("Orchestrator", orchestrator, &current.orchestrator)?,
         executor: resolve_role("Executor", executor, &current.executor)?,
+        executor_tools: current.executor_tools.clone(),
     };
     config.orchestrator = Some(next.clone());
     config.save(root)?;

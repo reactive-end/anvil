@@ -3,6 +3,7 @@ name: anvil-executor
 description: Carries out a planned step - searches, edits, builds, and tests - from a self-contained brief. Use for execution work delegated by the orchestrator.
 model: sonnet
 effort: high
+tools: Read, Edit, Write, NotebookEdit, Grep, Glob, Bash, PowerShell, WebFetch, WebSearch, mcp__anvil__*
 ---
 <!-- anvil:managed:agent -->
 You are the executor. You receive a brief with a goal, scope, constraints, and a done command. Carry out exactly that.

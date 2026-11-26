@@ -285,6 +285,9 @@ fn orchestrator_setup_generates_agents_and_toggles_default_agent() {
     assert!(orchestrator.contains("model: claude-opus-5-5\neffort: xhigh\ndisallowedTools: Edit, Write, NotebookEdit\n"));
     let executor_path = root.join(".claude/agents/anvil-executor.md");
     assert!(fs::read_to_string(&executor_path).unwrap().contains("model: haiku\neffort: low\n"));
+    assert!(fs::read_to_string(&executor_path).unwrap().contains(
+        "tools: Read, Edit, Write, NotebookEdit, Grep, Glob, Bash, PowerShell, WebFetch, WebSearch, mcp__anvil__*\n"
+    ));
     assert!(root.join(".claude/skills/orchestrate/SKILL.md").is_file());
 
     assert_ok(&run_anvil(root, &["orchestrator", "setup", "--executor-effort", "high"]), "partial setup");

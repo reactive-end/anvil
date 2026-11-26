@@ -53,6 +53,9 @@ pub struct RoleModel {
 pub struct OrchestratorConfig {
     pub orchestrator: RoleModel,
     pub executor: RoleModel,
+    /// Tools the executor gets besides its default set, such as `mcp__godot__*`; invalid names are dropped.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub executor_tools: Vec<String>,
 }
 
 impl Default for OrchestratorConfig {
@@ -66,6 +69,7 @@ impl Default for OrchestratorConfig {
                 model: "sonnet".to_owned(),
                 effort: EffortLevel::Medium,
             },
+            executor_tools: Vec::new(),
         }
     }
 }
@@ -85,4 +89,13 @@ pub fn validate_model(raw: &str) -> Result<String> {
         "unsupported model `{raw}` (use {} or a full `claude-*` ID)",
         MODEL_ALIASES.join(", ")
     )
+}
+
+/// `true` for a Claude Code tool name or MCP pattern (`Read`, `mcp__server__tool`, `mcp__server__*`),
+/// so nothing else can reach an agent's frontmatter.
+pub fn is_tool_name(raw: &str) -> bool {
+    let body = raw.strip_suffix("__*").unwrap_or(raw);
+    let mut chars = body.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
