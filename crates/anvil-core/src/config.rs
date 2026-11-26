@@ -302,6 +302,9 @@ pub struct AnvilConfig {
     pub forbid_import_cycles: bool,
     #[serde(default)]
     pub sonar: SonarConfig,
+    /// Normalized-line window of the duplication check; falls back to `sonar.duplication_min_lines`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duplication_min_lines: Option<usize>,
     #[serde(default)]
     pub token_guard: TokenGuardConfig,
     /// Orchestrator/executor model pair; absent until `anvil orchestrator setup` runs.
@@ -326,6 +329,7 @@ impl Default for AnvilConfig {
             boundaries: Vec::new(),
             forbid_import_cycles: false,
             sonar: SonarConfig::default(),
+            duplication_min_lines: None,
             token_guard: TokenGuardConfig::default(),
             orchestrator: None,
         }
@@ -333,6 +337,11 @@ impl Default for AnvilConfig {
 }
 
 impl AnvilConfig {
+    /// Window of normalized lines the duplication check compares (at least 4).
+    pub fn duplication_window(&self) -> usize {
+        self.duplication_min_lines.unwrap_or(self.sonar.duplication_min_lines).max(4)
+    }
+
     /// Returns the canonical path to `.harness/config.json`.
     pub fn path(repo_root: &Path) -> PathBuf {
         repo_root.join(".harness").join("config.json")

@@ -144,7 +144,7 @@ fn angular_selector_modification_impacts_consuming_html_template() {
 }
 
 #[test]
-fn overengineering_check_flags_unused_new_abstraction_on_small_fix() {
+fn overengineering_check_accepts_a_new_abstraction_with_one_consumer() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path();
 
@@ -161,11 +161,13 @@ fn overengineering_check_flags_unused_new_abstraction_on_small_fix() {
     );
 
     let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("build");
-    let report = engine.check_overengineering(
-        &["src/core/SingleUseFactory.ts".to_owned()],
-        &["src/core/SingleUseFactory.ts".to_owned()],
-        true,
-    );
-    assert!(report.flagged);
-    assert!(!report.warnings.is_empty());
+    let report = engine.check_overengineering(&["src/core/SingleUseFactory.ts".to_owned()], &Default::default());
+    assert!(!report.flagged, "one non-test consumer is normal: {:?}", report.findings);
+    assert!(report.findings.is_empty(), "no finding for a used abstraction: {:?}", report.findings);
+    assert_eq!(report.flagged, !report.findings.is_empty());
+
+    write_repo_file(root, "src/core/Lonely.ts", "export class Lonely { run() { return 2; } }\n");
+    let engine = CodeGraphEngine::build(root, AnvilConfig::default()).expect("rebuild");
+    let orphan = engine.check_overengineering(&["src/core/Lonely.ts".to_owned()], &Default::default());
+    assert!(orphan.flagged, "the same check still fires when nothing imports the file: {:?}", orphan.findings);
 }

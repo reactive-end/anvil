@@ -10,8 +10,6 @@ use serde_json::Value;
 
 /// Marketplace name declared by the embedded `marketplace.json`.
 pub const MARKETPLACE: &str = "anvil";
-/// Plugin name inside the marketplace.
-pub const PLUGIN: &str = "anvil-mode";
 /// `plugin@marketplace` identifier used with `claude plugin`.
 pub const PLUGIN_ID: &str = "anvil-mode@anvil";
 

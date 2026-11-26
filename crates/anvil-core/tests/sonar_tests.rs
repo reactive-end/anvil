@@ -3,9 +3,10 @@ use std::net::TcpListener;
 use std::thread;
 
 use anvil_core::sonar::{
-    check_cognitive_complexity, check_new_code_duplication, fetch_new_code_issues,
-    fetch_quality_gate, parse_sonar_properties,
+    check_cognitive_complexity, fetch_new_code_issues, fetch_quality_gate, parse_sonar_properties,
 };
+use anvil_core::duplication::check_added_duplication;
+use anvil_core::git::AddedLines;
 use tempfile::TempDir;
 
 #[test]
@@ -65,13 +66,26 @@ fn duplication_detects_repeated_block_across_changed_files() {
         .map(|i| format!("let v{i} = compute(step_{i}) + offset;"))
         .collect::<Vec<_>>()
         .join("\n");
-    let files = vec![
-        ("src/a.ts".to_owned(), format!("export function f1() {{\n{block}\n}}")),
-        ("src/b.ts".to_owned(), format!("export function f2() {{\n{block}\n}}")),
+    let dir = TempDir::new().unwrap();
+    let files = [
+        ("src/a.ts", format!("export function f1() {{
+{block}
+}}")),
+        ("src/b.ts", format!("export function f2() {{
+{block}
+}}")),
     ];
-    let diags = check_new_code_duplication(&files, 6);
+    let mut repo_files = Vec::new();
+    let mut added = AddedLines::default();
+    for (rel, content) in &files {
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join(rel), content).unwrap();
+        repo_files.push((*rel).to_owned());
+        added.insert((*rel).to_owned(), vec![(1, 8)]);
+    }
+    let diags = check_added_duplication(dir.path(), &repo_files, &added, 6);
     assert_eq!(diags.len(), 1);
-    assert_eq!(diags[0].rule, "sonar:duplication");
+    assert_eq!(diags[0].rule, "duplication:new-code");
 }
 
 #[test]

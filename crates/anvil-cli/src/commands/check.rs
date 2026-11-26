@@ -10,9 +10,10 @@ use anyhow::Result;
 use anvil_ast::analyze_files_parallel;
 use anvil_core::config::AnvilConfig;
 use anvil_core::diff_classifier::{ChangedFile, DiffClassification, classify_files};
-use anvil_core::git::{self, DiffScope};
+use anvil_core::git::{self, AddedLines, DiffScope};
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
-use anvil_core::sonar::{check_cognitive_complexity, check_new_code_duplication};
+use anvil_core::duplication::check_added_duplication;
+use anvil_core::sonar::check_cognitive_complexity;
 use anvil_core::test_tampering::{check_test_tampering_diff, is_test_file};
 use anvil_core::traits::{Diagnostic, Severity, Tier};
 use anvil_graph::builder::collect_source_files;
@@ -46,6 +47,7 @@ pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
     } else {
         classify_repo_diff(root)
     };
+    let added_lines = git::added_line_ranges(root, opts.staged).unwrap_or_default();
     let effective_tier = resolve_tier(opts.full, opts.tier_override, classification.minimum_tier);
 
     println!(
@@ -57,23 +59,7 @@ pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
         classification.skip_logic_tests
     );
 
-    let tier0_started = std::time::Instant::now();
-    let tier0_errors = run_tier0(
-        root,
-        &config,
-        &changed_paths,
-        opts.full,
-        opts.staged,
-        run_sonar,
-    )?;
-    let tier0_ms = u64::try_from(tier0_started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    if tier0_ms > config.tier_budgets.tier0_ms {
-        println!(
-            "  {} Tier 0 took {tier0_ms}ms (budget {}ms)",
-            ui::warn_badge(),
-            config.tier_budgets.tier0_ms
-        );
-    }
+    let tier0_errors = run_timed_tier0(root, &config, &changed_paths, opts, run_sonar, &added_lines)?;
     let mut tier1_failed = false;
 
     if effective_tier >= Tier::Tier1 && (opts.full || !changed_paths.is_empty()) {
@@ -83,6 +69,7 @@ pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
             &config,
             &changed_paths,
             &added_paths,
+            &added_lines,
             &classification,
             Tier1Options {
                 full: opts.full,
@@ -100,6 +87,27 @@ pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
     }
 
     finish_check(tier0_errors, tier1_failed, tier2_failed)
+}
+
+fn run_timed_tier0(
+    root: &Path,
+    config: &AnvilConfig,
+    changed: &[String],
+    opts: CheckOptions,
+    run_sonar: bool,
+    added_lines: &AddedLines,
+) -> Result<usize> {
+    let started = std::time::Instant::now();
+    let errors = run_tier0(root, config, changed, opts.full, opts.staged, run_sonar, added_lines)?;
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if elapsed_ms > config.tier_budgets.tier0_ms {
+        println!(
+            "  {} Tier 0 took {elapsed_ms}ms (budget {}ms)",
+            ui::warn_badge(),
+            config.tier_budgets.tier0_ms
+        );
+    }
+    Ok(errors)
 }
 
 fn finish_check(tier0_errors: usize, tier1_failed: bool, tier2_failed: bool) -> Result<()> {
@@ -168,7 +176,9 @@ fn classify_staged_diff(root: &Path) -> (Vec<String>, Vec<String>, DiffClassific
         })
         .collect();
     let classification = classify_files(&changed);
-    (paths, Vec::new(), classification)
+    let added = git::working_tree_status(root).unwrap_or_default().added;
+    let added_paths = added.iter().filter(|p| paths.contains(p)).map(|p| CodeGraph::normalize_rel_path(p)).collect();
+    (paths, added_paths, classification)
 }
 
 fn resolve_tier(full: bool, tier_override: Option<u8>, minimum: Tier) -> Tier {
@@ -188,6 +198,7 @@ fn run_tier0(
     full: bool,
     staged: bool,
     run_sonar: bool,
+    added_lines: &AddedLines,
 ) -> Result<usize> {
     let targets: Vec<String> = if full {
         collect_source_files(root)
@@ -222,6 +233,11 @@ fn run_tier0(
         }
     }
     run_tampering_and_sonar(root, config, changed, staged, run_sonar, &loaded, &mut errors);
+    if !added_lines.is_empty() {
+        let repo_files: Vec<String> = collect_source_files(root).into_iter().map(|(_, rel)| rel).collect();
+        let duplicates = check_added_duplication(root, &repo_files, added_lines, config.duplication_window());
+        print_diagnostics(&duplicates, &mut errors);
+    }
     Ok(errors)
 }
 
@@ -245,8 +261,6 @@ fn run_tampering_and_sonar(
                 check_cognitive_complexity(rel, src, config.sonar.cognitive_complexity_max);
             print_diagnostics(&diags, errors);
         }
-        let dup_diags = check_new_code_duplication(loaded, config.sonar.duplication_min_lines);
-        print_diagnostics(&dup_diags, errors);
     }
 }
 

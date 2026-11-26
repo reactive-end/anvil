@@ -6,6 +6,7 @@ pub mod compressor;
 pub mod config;
 pub mod diff_classifier;
 pub mod diff_grep;
+pub mod duplication;
 pub mod fs_util;
 pub mod git;
 pub mod orchestrator_mode;

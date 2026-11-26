@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::{CodeGraph, GraphEdgeKind, NodeId, NodeKind};
 
 pub use boundaries::check_boundaries;
-pub use guard::{OverengineeringReport, OverengineeringWarning, check_overengineering};
+pub use guard::{OverengineeringFinding, OverengineeringReport, check_overengineering};
 pub use tests_runner::run_impacted_tests;
 pub use typecheck::{
     build_ts_typecheck_command, build_vue_or_ts_typecheck_command, filter_typecheck_output,

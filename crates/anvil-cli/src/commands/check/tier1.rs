@@ -6,6 +6,7 @@ use anyhow::Result;
 use anvil_core::check_cache::{self, CachedTier1};
 use anvil_core::config::{AnvilConfig, StackKind};
 use anvil_core::diff_classifier::DiffClassification;
+use anvil_core::git::AddedLines;
 use anvil_core::fs_util::{
     resolve_godot_bin, resolve_local_or_path_bin, resolve_php_bin, resolve_php_vendor_script,
 };
@@ -30,28 +31,27 @@ pub(super) fn run_tier1(
     config: &AnvilConfig,
     changed: &[String],
     added_paths: &[String],
+    added_lines: &AddedLines,
     classification: &DiffClassification,
     opts: Tier1Options,
 ) -> Result<bool> {
     let engine = CodeGraphEngine::load_or_build(root, config.clone())?;
     let blast = engine.blast_radius(changed, 2);
     print_blast_summary(&blast);
-    if !changed.is_empty() {
-        print_overengineering_warnings(&engine, changed, added_paths);
-    }
+    let unused_new_code = print_overengineering_findings(&engine, added_paths, added_lines);
     if !opts.full && classification.skip_logic_tests {
         println!(
             "  {} {}",
             ui::cyan("[Tier 1]"),
             ui::dim("style/docs-only diff: skipping logic typecheck/test suites")
         );
-        return Ok(false);
+        return Ok(unused_new_code);
     }
 
     let (tc_scope, cache_scope) = build_tier1_scopes(&blast);
     let boundary_scope: &[String] = if opts.full { &[] } else { changed };
     let boundary_diags = engine.check_boundaries(boundary_scope);
-    let boundaries_failed = print_boundary_diagnostics(&boundary_diags);
+    let boundaries_failed = print_boundary_diagnostics(&boundary_diags) || unused_new_code;
     let salt = format!(
         "full={};no_tests={};stacks={:?};boundaries={};cycles={}",
         opts.full,
@@ -104,21 +104,25 @@ fn print_blast_summary(blast: &BlastRadiusReport) {
     );
 }
 
-fn print_overengineering_warnings(
+/// Prints each unused-new-code finding as an error and returns `true` when there is any.
+fn print_overengineering_findings(
     engine: &CodeGraphEngine,
-    changed: &[String],
     added_paths: &[String],
-) {
-    let over = engine.check_overengineering(changed, added_paths, changed.len() <= 3);
-    for w in over.warnings {
+    added_lines: &AddedLines,
+) -> bool {
+    let report = engine.check_overengineering(added_paths, added_lines);
+    for finding in &report.findings {
         println!(
-            "  {} overengineering: {} (consumers={}): {}",
-            ui::warn_badge(),
-            ui::cyan(&w.file),
-            w.consumer_count,
-            w.reason
+            "  {} [{}] {}:{} — {}\n      {}",
+            ui::error_badge(),
+            finding.rule,
+            finding.file,
+            finding.line,
+            finding.message,
+            finding.suggestion
         );
     }
+    report.flagged
 }
 
 fn build_tier1_scopes(blast: &BlastRadiusReport) -> (Vec<String>, Vec<String>) {

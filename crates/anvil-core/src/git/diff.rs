@@ -84,3 +84,51 @@ fn extract_diff_path(header: &str, chunk: &str) -> Option<String> {
     rest.rsplit_once(" b/")
         .map(|(_, b)| b.replace('\\', "/"))
 }
+
+/// Inclusive 1-based line ranges added to each file, keyed by repository-relative path.
+pub type AddedLines = FxHashMap<String, Vec<(u32, u32)>>;
+
+/// Added line ranges of every file in a raw multi-file unified diff (`git diff -M ...` output).
+pub fn parse_added_lines(raw_diff: &str) -> AddedLines {
+    added_lines_of(&split_batched_diffs(raw_diff))
+}
+
+/// Added line ranges of each already-split per-file diff.
+pub fn added_lines_of(diffs: &FxHashMap<String, String>) -> AddedLines {
+    diffs
+        .iter()
+        .filter_map(|(path, diff)| {
+            let ranges = hunk_ranges(diff);
+            (!ranges.is_empty()).then(|| (path.clone(), ranges))
+        })
+        .collect()
+}
+
+fn hunk_ranges(diff: &str) -> Vec<(u32, u32)> {
+    let mut ranges: Vec<(u32, u32)> = Vec::new();
+    let mut next_line = 0u32;
+    let mut in_hunk = false;
+    for line in diff.lines() {
+        if let Some(start) = line.strip_prefix("@@ ").and_then(new_start) {
+            next_line = start;
+            in_hunk = true;
+        } else if !in_hunk {
+            continue;
+        } else if line.starts_with('+') {
+            match ranges.last_mut() {
+                Some((_, end)) if *end + 1 == next_line => *end = next_line,
+                _ => ranges.push((next_line, next_line)),
+            }
+            next_line += 1;
+        } else if line.starts_with(' ') || line.is_empty() {
+            next_line += 1;
+        }
+    }
+    ranges
+}
+
+/// The `c` of a hunk header `-a,b +c,d @@`.
+fn new_start(header: &str) -> Option<u32> {
+    let plus = header.split_whitespace().find(|part| part.starts_with('+'))?;
+    plus.trim_start_matches('+').split(',').next()?.parse().ok()
+}

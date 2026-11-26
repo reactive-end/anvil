@@ -2,7 +2,9 @@
 
 mod diff;
 
-pub use diff::{batched_staged_diffs, batched_working_tree_diffs};
+pub use diff::{
+    AddedLines, added_lines_of, batched_staged_diffs, batched_working_tree_diffs, parse_added_lines,
+};
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -187,6 +189,25 @@ pub fn all_diff(repo_root: &Path, staged: bool) -> Result<String> {
     } else {
         run_git_unquoted(repo_root, &["diff"])
     }
+}
+
+/// Added line ranges of the pending change, untracked files included.
+pub fn added_line_ranges(repo_root: &Path, staged: bool) -> Result<AddedLines> {
+    let diffs = if staged {
+        batched_staged_diffs(repo_root)?
+    } else {
+        batched_working_tree_diffs(repo_root)?
+    };
+    let mut added = added_lines_of(&diffs);
+    if !staged {
+        for path in working_tree_status(repo_root)?.untracked {
+            let lines = fs::read_to_string(repo_root.join(&path)).map(|text| text.lines().count());
+            if let Ok(count @ 1..) = lines {
+                added.insert(path, vec![(1, u32::try_from(count).unwrap_or(u32::MAX))]);
+            }
+        }
+    }
+    Ok(added)
 }
 
 fn sort_dedup(items: &mut Vec<String>) {

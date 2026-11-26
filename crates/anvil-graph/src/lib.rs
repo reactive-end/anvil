@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use anvil_core::config::AnvilConfig;
+use anvil_core::git::AddedLines;
 use anvil_core::traits::{CompressedOutput, Diagnostic};
 
 use crate::analytics::{CommunitySummary, GodNode};
@@ -186,14 +187,13 @@ impl CodeGraphEngine {
         impact::compute_blast_radius(&self.graph, changed_files, max_depth)
     }
 
-    /// Checks whether a small fix introduced new abstractions with <= 1 consumer.
+    /// Finds added files and exported symbols on added lines that no non-test file uses.
     pub fn check_overengineering(
         &self,
-        changed_files: &[String],
         added_files: &[String],
-        is_small_fix: bool,
+        added_lines: &AddedLines,
     ) -> OverengineeringReport {
-        impact::check_overengineering(&self.graph, changed_files, added_files, is_small_fix)
+        impact::check_overengineering(&self.graph, added_files, added_lines)
     }
 
     /// Invokes native typecheckers filtered to `impacted_files` via `anvil-core` compressor.

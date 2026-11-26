@@ -1,5 +1,5 @@
 //! Opt-in SonarQube integration: `sonar-project.properties` parsing, local Tier 0 complexity
-//! & duplication checks, and SonarQube Web API client (`qualitygates` & `issues`).
+//! check, and SonarQube Web API client (`qualitygates` & `issues`).
 
 use std::fs;
 use std::path::Path;
@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use regex::Regex;
-use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -113,74 +112,6 @@ pub fn check_cognitive_complexity(
         }
     }
     diags
-}
-
-/// Local Tier 0 New-Code duplication detector across changed files (`min_lines` normalized window).
-pub fn check_new_code_duplication(
-    files: &[(String, String)],
-    min_lines: usize,
-) -> Vec<Diagnostic> {
-    let window = min_lines.max(4);
-    let mut seen: FxHashMap<blake3::Hash, (String, usize)> = FxHashMap::default();
-    let mut diags = Vec::new();
-
-    for (rel, content) in files {
-        if !is_code_file(rel) {
-            continue;
-        }
-        let raw_lines: Vec<&str> = content.lines().collect();
-        let norm = collect_normalized_lines(&raw_lines);
-        if norm.len() < window {
-            continue;
-        }
-        detect_file_duplicates(rel, &raw_lines, &norm, window, &mut seen, &mut diags);
-    }
-    diags
-}
-
-fn detect_file_duplicates(
-    rel: &str,
-    raw_lines: &[&str],
-    norm: &[(usize, String)],
-    window: usize,
-    seen: &mut FxHashMap<blake3::Hash, (String, usize)>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let mut last_flagged_end = 0usize;
-    for idx in 0..=norm.len() - window {
-        let first_line_idx = norm[idx].0;
-        if first_line_idx < last_flagged_end
-            || has_allow_comment(raw_lines, first_line_idx, "sonar:duplication")
-        {
-            continue;
-        }
-        let hash = hash_window(&norm[idx..idx + window]);
-        match seen.get(&hash) {
-            Some((orig_file, orig_line))
-                if orig_file != rel || first_line_idx + 1 >= orig_line + window =>
-            {
-                diags.push(Diagnostic {
-                    rule: "sonar:duplication".to_owned(),
-                    severity: Severity::Warning,
-                    file: rel.to_owned(),
-                    line: u32::try_from(first_line_idx + 1).unwrap_or(1),
-                    column: 1,
-                    message: format!(
-                        "{window}+ normalized lines duplicate `{orig_file}:{orig_line}`"
-                    ),
-                    suggestion: Some(
-                        "Extract a shared helper instead of duplicating logic across files."
-                            .to_owned(),
-                    ),
-                });
-                last_flagged_end = norm[idx + window - 1].0 + 1;
-            }
-            Some(_) => {}
-            None => {
-                seen.insert(hash, (rel.to_owned(), first_line_idx + 1));
-            }
-        }
-    }
 }
 
 /// Fetches Quality Gate status from a SonarQube Server/Cloud instance.
@@ -574,35 +505,7 @@ fn count_char(s: &str, ch: char) -> i32 {
     i32::try_from(s.chars().filter(|&c| c == ch).count()).unwrap_or(0)
 }
 
-fn collect_normalized_lines(lines: &[&str]) -> Vec<(usize, String)> {
-    let mut out = Vec::new();
-    for (idx, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with("//")
-            || trimmed.starts_with('#')
-            || trimmed.starts_with("/*")
-            || trimmed.starts_with('*')
-            || matches!(trimmed, "{" | "}" | "};" | ");" | ")")
-        {
-            continue;
-        }
-        let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
-        out.push((idx, compact));
-    }
-    out
-}
-
-fn hash_window(slice: &[(usize, String)]) -> blake3::Hash {
-    let mut hasher = blake3::Hasher::new();
-    for (_, line) in slice {
-        hasher.update(line.as_bytes());
-        hasher.update(b"\n");
-    }
-    hasher.finalize()
-}
-
-fn has_allow_comment(lines: &[&str], idx: usize, rule: &str) -> bool {
+pub(crate) fn has_allow_comment(lines: &[&str], idx: usize, rule: &str) -> bool {
     let marker = format!("anvil-allow({rule}):");
     let start = idx.saturating_sub(3);
     lines[start..=idx].iter().any(|line| {
