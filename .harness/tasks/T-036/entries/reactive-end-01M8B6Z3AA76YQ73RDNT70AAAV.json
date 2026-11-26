@@ -1,0 +1,23 @@
+{
+  "entry_id": "01M8B6Z3AA76YQ73RDNT70AAAV",
+  "task_id": "T-036",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "Waiting on the live probe: the first probe still started with all tools (58.4k), likely before the agent file was reloaded; retry running.",
+  "files_touched": [
+    ".claude/agents/anvil-executor.md",
+    "crates/anvil-adapters/src/claude_code/agents.rs",
+    "crates/anvil-cli/src/commands/orchestrator.rs",
+    "crates/anvil-cli/tests/runner_circuit_and_adapters_e2e.rs",
+    "crates/anvil-core/src/config/orchestrator.rs",
+    "templates/agents/anvil-executor.md"
+  ],
+  "next_steps": [
+    "Read retry probe tokens and tools",
+    "commit and push",
+    "task_done"
+  ],
+  "blocker": "Live verification pending: retry probe of anvil-executor with the tools allowlist.",
+  "timestamp": "2026-11-26T05:58:59.180709600Z"
+}

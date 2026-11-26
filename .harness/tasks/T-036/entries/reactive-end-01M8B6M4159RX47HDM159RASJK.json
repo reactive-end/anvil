@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8B6M4159RX47HDM159RASJK",
+  "task_id": "T-036",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Measured 58.2k startup tokens per executor, 16.8k with a tool allowlist; render a default allowlist plus validated orchestrator.executor_tools extras.",
+  "files_touched": [],
+  "timestamp": "2026-11-26T05:52:59.463646500Z"
+}

@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 35,
-  "updated_at": "2026-11-26T05:44:39.122837300Z",
+  "task_count": 36,
+  "updated_at": "2026-11-26T11:57:53.482819700Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -653,6 +653,25 @@
       "progress_file": ".harness/tasks/T-035/progress.md",
       "created_at": "2026-11-26T05:26:32.285189200Z",
       "updated_at": "2026-11-26T05:44:39.122837300Z"
+    },
+    {
+      "task_id": "T-036",
+      "request": "Lean executor startup: tool allowlist in the executor agent",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "anvil-executor now declares a tool allowlist (core file/shell/web tools + mcp__anvil__*, extendable via orchestrator.executor_tools). First-turn prompt 58,211 -> 18,550 tokens; Anvil MCP tools usable without ToolSearch. Commit 0c07a6b.",
+      "evidence": "first-turn prompt 18550 tokens; 0 ToolSearch calls; cargo test workspace ok; clippy -D warnings ok",
+      "entry_count": 6,
+      "files_count": 6,
+      "progress_file": ".harness/tasks/T-036/progress.md",
+      "created_at": "2026-11-26T05:52:59.363298500Z",
+      "updated_at": "2026-11-26T11:57:53.482819700Z"
     }
   ]
 }

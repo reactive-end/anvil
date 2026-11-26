@@ -1,0 +1,17 @@
+{
+  "entry_id": "01M8BVG8X9K7505N0WAFX1C0QP",
+  "task_id": "T-036",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "anvil-executor now declares a tool allowlist (core file/shell/web tools + mcp__anvil__*, extendable via orchestrator.executor_tools). First-turn prompt 58,211 -> 18,550 tokens; Anvil MCP tools usable without ToolSearch. Commit 0c07a6b.",
+  "files_touched": [
+    ".claude/agents/anvil-executor.md",
+    "crates/anvil-adapters/src/claude_code/agents.rs",
+    "crates/anvil-cli/src/commands/orchestrator.rs",
+    "crates/anvil-cli/tests/runner_circuit_and_adapters_e2e.rs",
+    "crates/anvil-core/src/config/orchestrator.rs",
+    "templates/agents/anvil-executor.md"
+  ],
+  "timestamp": "2026-11-26T11:57:53.482819700Z"
+}

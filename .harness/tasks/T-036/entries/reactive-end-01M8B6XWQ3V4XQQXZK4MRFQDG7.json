@@ -1,0 +1,28 @@
+{
+  "entry_id": "01M8B6XWQ3V4XQQXZK4MRFQDG7",
+  "task_id": "T-036",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Executor tool allowlist implemented, tested, installed and synced; waiting for the live capability/token probe.",
+  "files_touched": [
+    ".claude/agents/anvil-executor.md",
+    "crates/anvil-adapters/src/claude_code/agents.rs",
+    "crates/anvil-cli/src/commands/orchestrator.rs",
+    "crates/anvil-cli/tests/runner_circuit_and_adapters_e2e.rs",
+    "crates/anvil-core/src/config/orchestrator.rs",
+    "templates/agents/anvil-executor.md"
+  ],
+  "done_steps": [
+    "EXECUTOR_TOOLS default + orchestrator.executor_tools extras with is_tool_name validation",
+    "template tools line",
+    "unit and e2e assertions",
+    "release installed and synced"
+  ],
+  "next_steps": [
+    "Read probe result and startup tokens",
+    "commit and push",
+    "task_done"
+  ],
+  "timestamp": "2026-11-26T05:58:19.653870900Z"
+}
