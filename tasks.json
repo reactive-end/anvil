@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 38,
-  "updated_at": "2026-11-26T13:22:32.396330800Z",
+  "task_count": 39,
+  "updated_at": "2026-11-26T13:38:34.409829Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -708,6 +708,25 @@
       "progress_file": ".harness/tasks/T-038/progress.md",
       "created_at": "2026-11-26T13:16:54.191670900Z",
       "updated_at": "2026-11-26T13:22:32.396330800Z"
+    },
+    {
+      "task_id": "T-039",
+      "request": "Orchestrator review gate: review packet and mandatory approval before task_done",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Mandatory, cheap orchestrator review. `anvil review packet` / MCP `review_packet` prints a deterministic digest of the task's change: files with line and assertion counts, last check, checklist, and a diff capped at about 4k tokens. `anvil review approve` / MCP `review_approve` approves the content fingerprint. In orchestrator mode, `task_done` (CLI and MCP) refuses unapproved or changed content, and executors cannot approve. The gate is off outside the mode.",
+      "evidence": "review_gate_e2e (refuse, stale packet, edit after approval, mode off), review_gate unit tests, roles_shell tests; 459 workspace tests, clippy -D warnings, fmt, anvil check PASS",
+      "entry_count": 5,
+      "files_count": 23,
+      "progress_file": ".harness/tasks/T-039/progress.md",
+      "created_at": "2026-11-26T13:27:42.012826200Z",
+      "updated_at": "2026-11-26T13:38:34.409829Z"
     }
   ]
 }

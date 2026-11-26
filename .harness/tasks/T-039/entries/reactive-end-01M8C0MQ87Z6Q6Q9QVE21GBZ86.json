@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8C0MQ87Z6Q6Q9QVE21GBZ86",
+  "task_id": "T-039",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Add `anvil review packet` (a compact digest of a task's change: file and line counts, test assertion changes, last check, checklist, capped diff) and `anvil review approve`. Approvals are bound to the files' content fingerprint. In orchestrator mode, task_done refuses until the current content is approved. Also add MCP tools review_packet and review_approve, and block approval for executors.",
+  "files_touched": [],
+  "timestamp": "2026-11-26T13:27:42.122288900Z"
+}

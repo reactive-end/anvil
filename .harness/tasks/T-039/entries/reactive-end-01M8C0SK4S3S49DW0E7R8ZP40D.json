@@ -1,0 +1,30 @@
+{
+  "entry_id": "01M8C0SK4S3S49DW0E7R8ZP40D",
+  "task_id": "T-039",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Core review_gate (fingerprint-bound packet and approval, ensure_reviewed only in orchestrator mode), anvil-tasks review (review_files, packet, ensure_reviewed), CLI `review packet`/`review approve`, gates in CLI `tasks done` and MCP `task_done`, MCP tools review_packet and review_approve (25 tools), and executors blocked from approving. Unit tests pass.",
+  "files_touched": [
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/review.rs",
+    "crates/anvil-cli/src/commands/tasks.rs",
+    "crates/anvil-core/src/review_gate/packet.rs",
+    "crates/anvil-mcp/src/router.rs",
+    "crates/anvil-mcp/src/schemas.rs",
+    "crates/anvil-mcp/src/tools_review.rs",
+    "crates/anvil-mcp/src/tools_tasks.rs",
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "crates/anvil-tasks/src/files.rs",
+    "crates/anvil-tasks/src/lib.rs",
+    "crates/anvil-tasks/src/review.rs"
+  ],
+  "next_steps": [
+    "e2e test via binary",
+    "templates + README",
+    "full verify + commit"
+  ],
+  "timestamp": "2026-11-26T13:30:21.755164300Z"
+}

@@ -1,0 +1,39 @@
+{
+  "entry_id": "01M8C184VJEC39JM326DTYPVK9",
+  "task_id": "T-039",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Review gate complete: templates, mode reminder and README updated, binary installed, agents synced. 459 tests, clippy, fmt and anvil check pass. A sample packet for this task is about 17.8k chars for 20 files and +406 lines.",
+  "files_touched": [
+    ".claude/agents/anvil-orchestrator.md",
+    ".claude/skills/orchestrate/SKILL.md",
+    "README.md",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/review.rs",
+    "crates/anvil-cli/src/commands/tasks.rs",
+    "crates/anvil-cli/tests/review_gate_e2e.rs",
+    "crates/anvil-core/src/lib.rs",
+    "crates/anvil-core/src/review_gate.rs",
+    "crates/anvil-core/src/review_gate/packet.rs",
+    "crates/anvil-core/src/test_tampering.rs",
+    "crates/anvil-mcp/src/router.rs",
+    "crates/anvil-mcp/src/schemas.rs",
+    "crates/anvil-mcp/src/tools_review.rs",
+    "crates/anvil-mcp/src/tools_tasks.rs",
+    "crates/anvil-mcp/tests/mcp_stdio.rs",
+    "crates/anvil-tasks/src/files.rs",
+    "crates/anvil-tasks/src/lib.rs",
+    "crates/anvil-tasks/src/review.rs",
+    "templates/agents/anvil-orchestrator.md",
+    "templates/agents/orchestrate-skill.md"
+  ],
+  "next_steps": [
+    "packet + approve (dogfood)",
+    "task_done",
+    "commit"
+  ],
+  "timestamp": "2026-11-26T13:38:18.652356600Z"
+}
