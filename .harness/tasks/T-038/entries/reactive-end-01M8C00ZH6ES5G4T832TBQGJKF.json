@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8C00ZH6ES5G4T832TBQGJKF",
+  "task_id": "T-038",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Add a corpus of slop and clean cases (.case files: before and after trees plus the expected findings) and a test that runs anvil check on each case. It reports detection and false positives per rule and fails on any mismatch. Known gaps are tracked and must not silently change.",
+  "files_touched": [],
+  "timestamp": "2026-11-26T13:16:55.265903200Z"
+}

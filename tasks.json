@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 37,
-  "updated_at": "2026-11-26T12:23:43.037216400Z",
+  "task_count": 38,
+  "updated_at": "2026-11-26T13:22:32.396330800Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -690,6 +690,24 @@
       "progress_file": ".harness/tasks/T-037/progress.md",
       "created_at": "2026-11-26T12:16:53.735047Z",
       "updated_at": "2026-11-26T12:23:43.037216400Z"
+    },
+    {
+      "task_id": "T-038",
+      "request": "Slop benchmark: measured detection and false positives per rule",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Slop benchmark with 30 .case files: 21 slop cases (17 caught, 4 known gaps: swallowed errors in TS and Python, commented-out code, TS debug logs) and 9 clean cases with 0 false positives. It runs in parallel in about 10 s and fails on any mismatch or on a gap that starts being reported. README updated. Workspace: 455 tests pass, clippy and fmt clean.",
+      "entry_count": 3,
+      "files_count": 32,
+      "progress_file": ".harness/tasks/T-038/progress.md",
+      "created_at": "2026-11-26T13:16:54.191670900Z",
+      "updated_at": "2026-11-26T13:22:32.396330800Z"
     }
   ]
 }

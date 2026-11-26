@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8C00YHHV7RMQK9QC6JD0GBC",
+  "task_id": "T-038",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Slop benchmark: measured detection and false positives per rule",
+  "files_touched": [],
+  "timestamp": "2026-11-26T13:16:54.232705Z"
+}
