@@ -14,6 +14,7 @@ use anvil_core::git::{self, AddedLines, DiffScope};
 use anvil_core::ratchet::{compile_promoted_rules, evaluate_compiled, load_promoted_rules};
 use anvil_core::duplication::check_added_duplication;
 use anvil_core::sonar::check_cognitive_complexity;
+use anvil_core::stats::record_check_outcome;
 use anvil_core::test_tampering::{check_test_tampering_diff, is_test_file};
 use anvil_core::traits::{Diagnostic, Severity, Tier};
 use anvil_graph::builder::collect_source_files;
@@ -86,6 +87,8 @@ pub fn execute(root: &Path, opts: CheckOptions) -> Result<()> {
             tier2::run_tier2(root, &config, &changed_paths, &classification, opts.full, run_sonar);
     }
 
+    let passed = tier0_errors == 0 && !tier1_failed && !tier2_failed;
+    let _ = record_check_outcome(root, passed, &format!("{effective_tier:?}"), &changed_paths);
     finish_check(tier0_errors, tier1_failed, tier2_failed)
 }
 

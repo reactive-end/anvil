@@ -417,6 +417,33 @@ pub enum OrchestratorSubcmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum ReviewSubcmd {
+    /// Record a real problem found in review of work that had already passed `anvil check`.
+    Log {
+        /// What was wrong, in one sentence.
+        description: String,
+        /// Kebab-case category slug, for example `error-handling` or `dead-code`.
+        #[arg(long)]
+        category: String,
+        /// How serious the problem is.
+        #[arg(long, default_value = "medium", value_parser = ["high", "medium", "low"])]
+        severity: String,
+        /// Where it is, as `path` or `path:line`.
+        #[arg(long)]
+        file: Option<String>,
+        /// Who found it.
+        #[arg(long, default_value = "orchestrator", value_parser = ["orchestrator", "human", "ci", "tool"])]
+        source: String,
+    },
+    /// List recorded findings, oldest first.
+    List {
+        /// Only findings from the last N days.
+        #[arg(long)]
+        since: Option<u32>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum PluginSubcmd {
     /// Install or upgrade the Claude Code mod (`anvil-mode`) for the whole user account.
     Install,

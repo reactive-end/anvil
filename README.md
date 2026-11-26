@@ -57,7 +57,7 @@ Tracks tasks with short sequential codes (`T-001`, `T-002`, ...) or 1-level grou
 
 ### 8. Adapters, MCP Server & CLI (`anvil-adapters`, `anvil-mcp`, `anvil-cli`)
 - **Thin Adapters (`anvil-adapters`):** translate lifecycle hooks (`SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `Stop`), **Security Guard**, **Token Guard**, **Availability Guard** (gracefully skips `anvil:managed` blocks when `anvil` is absent from `PATH`), and synced configs/rules for Antigravity, Claude Code, Cursor, Windsurf, and Codex (including thin-umbrella multi-repo routing).
-- **Unified MCP Server (`anvil-mcp`):** exposes 22 code-graph, memory, task, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
+- **Unified MCP Server (`anvil-mcp`):** exposes 23 code-graph, memory, task, review, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
 - **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), a Claude Code orchestrator/executor model pair (`anvil orchestrator`), diagnostics (`anvil doctor`), and an optional resident TCP daemon.
 
 ## Quick Start
@@ -86,6 +86,10 @@ anvil orchestrator on               # enforce roles: the orchestrator judges, ex
 
 # Executor model and effort selector above the Claude Code prompt (the orchestrator uses the native picker)
 anvil plugin install
+
+# Record problems review finds after `anvil check` was green; `anvil stats` reports the escape rate per category
+anvil review log "unchecked input" --category error-handling --severity high --file src/a.rs:10
+anvil review list --since 7
 
 # Optional local SonarQube status & repo health check
 anvil sonar status

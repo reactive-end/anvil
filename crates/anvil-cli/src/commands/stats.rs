@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::Result;
 use anvil_core::circuit_breaker::CircuitBreaker;
 use anvil_core::config::AnvilConfig;
-use anvil_core::stats::{AnvilStats, load_stats, percentile_ms, reset_stats};
+use anvil_core::stats::{AnvilStats, QualityStats, load_stats, percentile_ms, reset_stats};
 
 use crate::ui;
 
@@ -72,6 +72,7 @@ pub fn execute(root: &Path, reset: bool, trajectories: bool) -> Result<()> {
         print_trajectory_section(root, &st);
     }
     print_top_rule_hits(&st);
+    print_quality(&st.quality);
     Ok(())
 }
 
@@ -142,5 +143,37 @@ fn print_trajectory_section(root: &Path, st: &AnvilStats) {
         && let Ok(cb) = CircuitBreaker::new(root, cfg.circuit_breaker_limit).status()
     {
         ui::print_kv("circuit:", &format!("{:?} (streak={})", cb.state, cb.consecutive_failures));
+    }
+}
+
+/// Escape rate of `anvil check`: review findings that surfaced after a green check.
+fn print_quality(quality: &QualityStats) {
+    if quality.is_empty() {
+        return;
+    }
+    ui::print_section("Quality");
+    if !ui::colors_enabled() {
+        println!("  quality:");
+    }
+    ui::print_kv(
+        "checks:",
+        &format!("green={} red={}", ui::green(&quality.checks_passed.to_string()), quality.checks_failed),
+    );
+    let rate = quality
+        .escape_rate()
+        .map_or_else(|| "n/a (no green check yet)".to_owned(), |rate| format!("{rate:.2} per green check"));
+    ui::print_kv(
+        "review_findings:",
+        &format!(
+            "total={} after_green={} escape_rate={rate}",
+            quality.findings,
+            ui::yellow(&quality.findings_after_green.to_string())
+        ),
+    );
+    for (category, count) in quality.top_categories(5) {
+        println!("    {:<24} {count:>4}", ui::cyan(category));
+    }
+    for (category, count) in quality.ratchet_candidates() {
+        println!("  consider: anvil ratchet log --rule {category} ... ({count} findings after green)");
     }
 }

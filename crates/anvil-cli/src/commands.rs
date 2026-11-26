@@ -20,6 +20,7 @@ pub mod orchestrator;
 pub mod plugin;
 pub mod qa;
 pub mod ratchet;
+pub mod review;
 pub mod run;
 pub mod sonar;
 pub mod spec;
@@ -122,6 +123,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Stats { reset, trajectories } => stats::execute(&root, reset, trajectories),
         Command::Orchestrator { sub } => orchestrator::execute(&root, sub),
         Command::Plugin { sub } => plugin::execute(sub),
+        Command::Review { sub } => review::execute(&root, sub),
         Command::Sonar { sub } => sonar::execute(&root, sub),
         Command::Checkpoint { sub } => checkpoint::execute(&root, sub),
         Command::Worktree { sub } => worktree::execute(&root, sub),

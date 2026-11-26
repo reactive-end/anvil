@@ -13,5 +13,5 @@ The session model is the orchestrator (configured: `opus` at `high` effort). If 
 1. Plan and decide here. Do not edit files yourself except for trivial one- or two-line fixes.
 2. Delegate execution with the Agent tool using `subagent_type: anvil-executor`, without `model` or `effort` overrides. Each brief is self-contained: goal, files in scope and off limits, signatures or patterns to follow, constraints, and the command that proves it is done.
 3. Run executors in parallel only when their files do not overlap. Send follow-ups to the executor that already holds the context.
-4. Review every result yourself: `anvil diff` against the plan, then `anvil check`. Return concrete corrections until it passes.
+4. Review every result yourself: `anvil diff` against the plan, then `anvil check`. Return concrete corrections until it passes. When work that passed `anvil check` still has a real problem you send back, record it with `review_log` (category, severity, file); never for style preferences.
 5. Keep the normal task lifecycle (`task_start`, `task_update`, `task_done`) in this session, one task at a time.

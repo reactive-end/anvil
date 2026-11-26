@@ -1,5 +1,12 @@
 //! Lock-free JSONL telemetry appending with periodic compaction into `.harness/.state/stats.json`.
 
+mod quality;
+
+pub use quality::{
+    CategoryStats, LoggedReview, NewFinding, QualityStats, RATCHET_HINT_THRESHOLD, ReviewEntry, SEVERITIES,
+    SOURCES, list_reviews, log_review, record_check_outcome, scope_key, validate_category,
+};
+
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -35,6 +42,7 @@ pub struct AnvilStats {
     pub token_guard_warnings: u64,
     pub hook_latencies_ms: Vec<u64>,
     pub rule_hits: FxHashMap<String, u64>,
+    pub quality: QualityStats,
 }
 
 /// Telemetry events recorded by `anvil` subsystems.
@@ -54,6 +62,24 @@ pub enum StatsEvent {
     SecurityPrompt,
     StopBlocked,
     RuleHit { rule: String },
+    CheckOutcome {
+        passed: bool,
+        #[serde(default)]
+        tier: String,
+        #[serde(default)]
+        scope_key: String,
+    },
+    ReviewFinding {
+        category: String,
+        #[serde(default)]
+        severity: String,
+        #[serde(default)]
+        source: String,
+        #[serde(default)]
+        file: Option<String>,
+        #[serde(default)]
+        after_green: bool,
+    },
 }
 
 /// Computes an integer percentile (`p` in `0.0..=100.0`) from latency samples.
@@ -253,6 +279,9 @@ fn apply_event(stats: &mut AnvilStats, event: StatsEvent) {
         StatsEvent::RuleHit { rule } => {
             let counter = stats.rule_hits.entry(rule).or_insert(0);
             *counter = counter.saturating_add(1);
+        }
+        quality_event @ (StatsEvent::CheckOutcome { .. } | StatsEvent::ReviewFinding { .. }) => {
+            stats.quality.apply(&quality_event);
         }
     }
 }

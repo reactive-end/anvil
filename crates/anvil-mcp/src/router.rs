@@ -6,6 +6,7 @@ use crate::McpServer;
 use crate::tools_codemode::call_code_exec;
 use crate::tools_graph::call_graph_tool;
 use crate::tools_memory::call_memory_tool;
+use crate::tools_review::call_review_log;
 use crate::tools_tasks::call_task_tool;
 use crate::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, JsonRpcRequest, JsonRpcResponse, METHOD_NOT_FOUND,
@@ -74,6 +75,8 @@ fn dispatch_tool_call(
         call_code_exec(server, args)
     } else if name == "context_pack" || name.starts_with("graph_") {
         call_graph_tool(server, name, args)
+    } else if name == "review_log" {
+        call_review_log(server, args)
     } else if name.starts_with("mem_") {
         call_memory_tool(server, name, args)
     } else if name.starts_with("task_") {

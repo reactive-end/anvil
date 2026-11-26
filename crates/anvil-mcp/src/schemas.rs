@@ -1,15 +1,34 @@
-//! JSON Schema definitions for all 22 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` MCP tools.
+//! JSON Schema definitions for all 23 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_log` MCP tools.
 
 use serde_json::{Value, json};
 
-/// Returns JSON Schema definitions for all 22 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, and `task_*` tools.
+/// Returns JSON Schema definitions for all 23 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_log` tools.
 pub fn tool_definitions() -> Vec<Value> {
     let mut tools = graph_core_schemas();
     tools.extend(graph_inspect_schemas());
     tools.push(code_exec_schema());
     tools.extend(memory_tool_schemas());
     tools.extend(task_tool_schemas());
+    tools.push(review_log_schema());
     tools
+}
+
+fn review_log_schema() -> Value {
+    tool_schema(
+        "review_log",
+        "Record a real problem found while reviewing work that already passed `anvil check`, so the escape rate shows which categories should become rules. Never use it for style preferences.",
+        json!({
+            "type": "object",
+            "properties": {
+                "description": { "type": "string", "description": "What was wrong, in one sentence." },
+                "category": { "type": "string", "description": "Kebab-case slug, e.g. `error-handling` or `dead-code`." },
+                "severity": { "type": "string", "enum": ["high", "medium", "low"], "default": "medium" },
+                "file": { "type": "string", "description": "`path` or `path:line`." },
+                "source": { "type": "string", "enum": ["orchestrator", "human", "ci", "tool"], "default": "orchestrator" }
+            },
+            "required": ["description", "category"]
+        }),
+    )
 }
 
 fn code_exec_schema() -> Value {

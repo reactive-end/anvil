@@ -76,7 +76,7 @@ fn mcp_initialize_and_tools_list() {
     let tools = resps[2].result.as_ref().unwrap()["tools"]
         .as_array()
         .unwrap();
-    assert_eq!(tools.len(), 22);
+    assert_eq!(tools.len(), 23);
     assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
     assert!(tools.iter().any(|t| t["name"] == "context_pack"));
     assert!(tools.iter().any(|t| t["name"] == "code_exec"));
@@ -498,4 +498,25 @@ fn mcp_code_exec_multistep_roundtrip() {
     assert!(ok_val["calls_executed"].as_u64().unwrap() >= 2);
     assert!(ok_val["result"].as_array().unwrap().iter().any(|v| v == "add"));
     assert_eq!(resps[1].result.as_ref().unwrap()["isError"], json!(true));
+}
+
+#[test]
+fn mcp_review_log_records_a_finding_and_reports_the_category() {
+    let repo = setup_sample_repo();
+    let mut server = McpServer::new(repo.path()).unwrap();
+    let args = json!({
+        "description": "unchecked input reaches the parser",
+        "category": "error-handling",
+        "severity": "high",
+        "file": "src/a.ts:3"
+    });
+    let resps = run_session(&mut server, &[call_req(1, "review_log", args), call_req(2, "review_log", json!({ "description": "x", "category": "Bad Slug" }))]);
+    let ok = resps[0].result.as_ref().unwrap();
+    assert_eq!(ok["isError"], false);
+    let payload: Value = serde_json::from_str(ok["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(payload["recorded"], true);
+    assert_eq!(payload["new_category"], true);
+    assert_eq!(payload["after_green"], false);
+    assert_eq!(payload["finding"]["category"], "error-handling");
+    assert_eq!(resps[1].result.as_ref().unwrap()["isError"], true);
 }
