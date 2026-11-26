@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 39,
-  "updated_at": "2026-11-26T13:38:34.409829Z",
+  "task_count": 40,
+  "updated_at": "2026-11-26T14:09:02.086176500Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -727,6 +727,25 @@
       "progress_file": ".harness/tasks/T-039/progress.md",
       "created_at": "2026-11-26T13:27:42.012826200Z",
       "updated_at": "2026-11-26T13:38:34.409829Z"
+    },
+    {
+      "task_id": "T-040",
+      "request": "Full anvil check skips test-tampering on untracked test files",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Fixed: test-tampering checks in `anvil check` and the Stop gate read `git diff HEAD`, which leaves out untracked files, so a new test file with it.skip( passed. New git::pending_diffs adds untracked files as new-file diffs (up to 1 MB), and the review packet reuses it. Two benchmark cases added: an untracked skipped test (caught) and an untracked clean test (silent). Verified: the old binary passed the case and the new one fails it.",
+      "evidence": "old binary PASS vs new binary [ERROR] no-test-tampering on untracked tests/a.test.ts; slop_bench 32 cases ok; 459 tests; clippy, fmt, anvil check PASS",
+      "entry_count": 3,
+      "files_count": 6,
+      "progress_file": ".harness/tasks/T-040/progress.md",
+      "created_at": "2026-11-26T14:04:31.369787600Z",
+      "updated_at": "2026-11-26T14:09:02.086176500Z"
     }
   ]
 }

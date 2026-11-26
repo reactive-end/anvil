@@ -1,0 +1,18 @@
+{
+  "entry_id": "01M8C30D30B2XQANDHYXEKFEHW",
+  "task_id": "T-040",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Fixed: test-tampering checks in `anvil check` and the Stop gate read `git diff HEAD`, which leaves out untracked files, so a new test file with it.skip( passed. New git::pending_diffs adds untracked files as new-file diffs (up to 1 MB), and the review packet reuses it. Two benchmark cases added: an untracked skipped test (caught) and an untracked clean test (silent). Verified: the old binary passed the case and the new one fails it.",
+  "evidence": "old binary PASS vs new binary [ERROR] no-test-tampering on untracked tests/a.test.ts; slop_bench 32 cases ok; 459 tests; clippy, fmt, anvil check PASS",
+  "files_touched": [
+    "crates/anvil-cli/slop_bench/clean_test_new_file.case",
+    "crates/anvil-cli/slop_bench/test_new_file_skipped.case",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/hook/gates.rs",
+    "crates/anvil-core/src/git.rs",
+    "crates/anvil-core/src/review_gate/packet.rs"
+  ],
+  "timestamp": "2026-11-26T14:09:02.086176500Z"
+}

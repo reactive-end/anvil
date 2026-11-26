@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8C2R4TF9DP9WGT1BT2EY52K",
+  "task_id": "T-040",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "A new untracked test file containing it.skip( passed a full `anvil check`, and only the staged pre-commit check caught it. Find the cause, fix it, and add a slop benchmark case.",
+  "files_touched": [],
+  "timestamp": "2026-11-26T14:04:31.484722100Z"
+}
