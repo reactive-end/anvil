@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 36,
-  "updated_at": "2026-11-26T11:57:53.482819700Z",
+  "task_count": 37,
+  "updated_at": "2026-11-26T12:23:43.037216400Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -672,6 +672,24 @@
       "progress_file": ".harness/tasks/T-036/progress.md",
       "created_at": "2026-11-26T05:52:59.363298500Z",
       "updated_at": "2026-11-26T11:57:53.482819700Z"
+    },
+    {
+      "task_id": "T-037",
+      "request": "anvil orchestrator tools: choose which MCP servers executors load",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "`anvil orchestrator tools`: lists the MCP servers in Claude Code's config (project .mcp.json, local and user ~/.claude.json, enabled plugins named plugin_<plugin>_<server>) and lets the user check which ones executors load, or use --add/--remove/--list. It writes orchestrator.executor_tools and re-syncs anvil-executor.md. Unit and e2e tests, clippy, and anvil check pass. Commit 9bfb652.",
+      "entry_count": 4,
+      "files_count": 6,
+      "progress_file": ".harness/tasks/T-037/progress.md",
+      "created_at": "2026-11-26T12:16:53.735047Z",
+      "updated_at": "2026-11-26T12:23:43.037216400Z"
     }
   ]
 }

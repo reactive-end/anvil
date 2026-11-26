@@ -1,0 +1,22 @@
+{
+  "entry_id": "01M8BWP2XZSEH7ATB93TFTA941",
+  "task_id": "T-037",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "New module mcp_servers.rs discovers servers from project, local, user and enabled-plugin config. New `anvil orchestrator tools` command: a checklist when run without flags, `--add`/`--remove`, and `--list`. It writes orchestrator.executor_tools and re-syncs the agents. Builds.",
+  "files_touched": [
+    "crates/anvil-adapters/src/claude_code.rs",
+    "crates/anvil-adapters/src/claude_code/mcp_servers.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/orchestrator.rs",
+    "crates/anvil-cli/src/commands/orchestrator/tools.rs"
+  ],
+  "next_steps": [
+    "tests + clippy",
+    "e2e via binary --list/--add",
+    "README",
+    "install + commit"
+  ],
+  "timestamp": "2026-11-26T12:18:32.545694300Z"
+}

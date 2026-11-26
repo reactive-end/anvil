@@ -1,0 +1,17 @@
+{
+  "entry_id": "01M8BWZJ4T4MWB2ABZWB2R2JVK",
+  "task_id": "T-037",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "`anvil orchestrator tools`: lists the MCP servers in Claude Code's config (project .mcp.json, local and user ~/.claude.json, enabled plugins named plugin_<plugin>_<server>) and lets the user check which ones executors load, or use --add/--remove/--list. It writes orchestrator.executor_tools and re-syncs anvil-executor.md. Unit and e2e tests, clippy, and anvil check pass. Commit 9bfb652.",
+  "files_touched": [
+    "crates/anvil-adapters/src/claude_code.rs",
+    "crates/anvil-adapters/src/claude_code/mcp_servers.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/orchestrator.rs",
+    "crates/anvil-cli/src/commands/orchestrator/tools.rs",
+    "crates/anvil-cli/tests/orchestrator_tools_e2e.rs"
+  ],
+  "timestamp": "2026-11-26T12:23:43.037216400Z"
+}
