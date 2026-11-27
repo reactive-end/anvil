@@ -1,5 +1,6 @@
 //! `anvil init`: single-repo and multi-subproject `.harness/`, adapter, git, graph, and task setup.
 
+mod architecture;
 mod prereqs;
 
 use std::fs;
@@ -25,6 +26,7 @@ pub struct InitOptions<'a> {
     pub git_hooks: bool,
     pub sonar: &'a str,
     pub layout: &'a str,
+    pub architecture: &'a str,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -80,6 +82,7 @@ pub fn execute(root: &Path, opts: InitOptions<'_>) -> Result<()> {
     let explicit_adapter = AdapterTarget::parse_cli(opts.adapter)?;
     let sonar_mode = SonarInitMode::parse(opts.sonar)?;
     let layout_mode = LayoutMode::parse(opts.layout)?;
+    let arch_mode = architecture::ArchMode::parse(opts.architecture)?;
     let use_tui = prompt::is_interactive_tui();
     let interactive = use_tui
         || io::stdin().is_terminal()
@@ -99,11 +102,14 @@ pub fn execute(root: &Path, opts: InitOptions<'_>) -> Result<()> {
         } else {
             prompt_sonar_for_repo_opt("root project", root, sonar_mode, &mut reader, interactive)?
         };
+        let arch_plan =
+            plan_single_architecture(root, arch_mode, interactive, use_tui, &mut reader)?;
         let _ = init_single_repo(
             root,
             explicit_adapter,
             opts.git_hooks,
             root_sonar,
+            &arch_plan,
             "anvil initialized at",
         )?;
         return Ok(());
@@ -123,6 +129,7 @@ pub fn execute(root: &Path, opts: InitOptions<'_>) -> Result<()> {
         explicit_adapter,
         git_hooks: opts.git_hooks,
         sonar_mode,
+        arch_mode,
         interactive,
         use_tui,
     };
@@ -132,12 +139,25 @@ pub fn execute(root: &Path, opts: InitOptions<'_>) -> Result<()> {
     }
 }
 
+fn plan_single_architecture(
+    root: &Path,
+    mode: architecture::ArchMode,
+    interactive: bool,
+    use_tui: bool,
+    reader: &mut dyn BufRead,
+) -> Result<architecture::ArchPlan> {
+    let candidate = architecture::Candidate::root("this project", root)?;
+    let mut io = architecture::PromptIo { interactive, use_tui, reader };
+    architecture::plan(mode, &[candidate], &mut io)
+}
+
 struct MultiInitCtx<'a> {
     root: &'a Path,
     child_repos: &'a [&'a DetectedRepo],
     explicit_adapter: Option<AdapterTarget>,
     git_hooks: bool,
     sonar_mode: SonarInitMode,
+    arch_mode: architecture::ArchMode,
     interactive: bool,
     use_tui: bool,
 }
@@ -263,11 +283,13 @@ fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
             cfgs
         };
     let root_sonar = sonar_configs.drain(..1).next().flatten();
+    let arch_plan = plan_monorepo_architecture(ctx, reader)?;
     let mut root_config = init_single_repo(
         ctx.root,
         ctx.explicit_adapter,
         ctx.git_hooks,
         root_sonar,
+        &arch_plan,
         "anvil monorepo initialized at",
     )?;
     for (repo, sub_sonar) in ctx.child_repos.iter().zip(sonar_configs) {
@@ -279,6 +301,33 @@ fn init_monorepo_root(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
         }
     }
     root_config.save(ctx.root)
+}
+
+/// Architecture choices of a monorepo: its children, plus the root when it has its own `src/`.
+fn plan_monorepo_architecture(
+    ctx: &MultiInitCtx<'_>,
+    reader: &mut dyn BufRead,
+) -> Result<architecture::ArchPlan> {
+    let root_config = AnvilConfig::load_or_default(ctx.root)?;
+    let mut candidates = Vec::new();
+    if ctx.root.join("src").is_dir() {
+        candidates.push(architecture::Candidate::root("monorepo root", ctx.root)?);
+    }
+    for repo in ctx.child_repos {
+        let dir = ctx.root.join(&repo.rel_path);
+        candidates.push(architecture::Candidate::subrepo(
+            &repo.rel_path,
+            &repo.name,
+            &dir,
+            &root_config,
+        ));
+    }
+    let mut io = architecture::PromptIo {
+        interactive: ctx.interactive,
+        use_tui: ctx.use_tui,
+        reader: &mut *reader,
+    };
+    architecture::plan(ctx.arch_mode, &candidates, &mut io)
 }
 
 fn resolve_umbrella_sonar_configs(
@@ -343,7 +392,19 @@ fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
         println!();
     }
 
-    for (repo, sub_sonar) in ctx.child_repos.iter().zip(sonar_configs) {
+    let mut plans = Vec::with_capacity(ctx.child_repos.len());
+    for repo in ctx.child_repos {
+        let sub_dir = ctx.root.join(&repo.rel_path);
+        let candidate = architecture::Candidate::root(&repo.rel_path, &sub_dir)?;
+        let mut io = architecture::PromptIo {
+            interactive: ctx.interactive,
+            use_tui: ctx.use_tui,
+            reader: &mut *reader,
+        };
+        plans.push(architecture::plan(ctx.arch_mode, &[candidate], &mut io)?);
+    }
+
+    for ((repo, sub_sonar), arch_plan) in ctx.child_repos.iter().zip(sonar_configs).zip(&plans) {
         let sub_dir = ctx.root.join(&repo.rel_path);
         if !sub_dir.is_dir() {
             continue;
@@ -353,6 +414,7 @@ fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
             Some(adapter_target),
             ctx.git_hooks,
             sub_sonar,
+            arch_plan,
             &format!("repo {} initialized at", repo.rel_path),
         )?;
     }
@@ -501,6 +563,7 @@ fn init_single_repo(
     explicit_adapter: Option<AdapterTarget>,
     git_hooks: bool,
     sonar_override: Option<SonarConfig>,
+    arch_plan: &architecture::ArchPlan,
     banner: &str,
 ) -> Result<AnvilConfig> {
     let report = sync::init_repo_with_adapter(dir, explicit_adapter)?;
@@ -509,6 +572,7 @@ fn init_single_repo(
         config.sonar = sonar;
         config.save(dir)?;
     }
+    let architecture_line = architecture::apply(dir, &mut config, arch_plan)?;
     let prereqs_line = prereqs::detect_and_store(dir, &mut config)?;
 
     let merge_driver_status = if dir.join(".git").exists() {
@@ -543,6 +607,7 @@ fn init_single_repo(
         task_count: tasks.task_count,
         files_written: report.written_files.len(),
         prereqs: &prereqs_line,
+        architecture: &architecture_line,
     });
     Ok(config)
 }
@@ -560,6 +625,7 @@ struct InitSummary<'a> {
     task_count: usize,
     files_written: usize,
     prereqs: &'a str,
+    architecture: &'a str,
 }
 
 fn print_init_summary(s: InitSummary<'_>) {
@@ -597,6 +663,7 @@ fn print_init_summary(s: InitSummary<'_>) {
             ui::dim(&format!("({})", s.graph_bin.display()))
         ),
     );
+    ui::print_kv("architecture", s.architecture);
     ui::print_kv("prereqs", s.prereqs);
     ui::print_kv("summary", &format!("tasks={}  files_written={}", s.task_count, s.files_written));
     if ui::colors_enabled() {

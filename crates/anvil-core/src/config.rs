@@ -1,5 +1,6 @@
 //! Schema and persistence for `.harness/config.json`.
 
+pub mod architecture;
 pub mod docs;
 pub mod orchestrator;
 pub mod prereqs;
@@ -13,6 +14,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use architecture::ArchitectureConfig;
 use docs::DocsConfig;
 use orchestrator::OrchestratorConfig;
 use prereqs::PrerequisitesConfig;
@@ -308,6 +310,9 @@ pub struct AnvilConfig {
     pub boundaries: Vec<BoundaryRule>,
     #[serde(default)]
     pub forbid_import_cycles: bool,
+    /// Architecture style presets, expanded into import rules at check time (`anvil architecture`).
+    #[serde(default, skip_serializing_if = "ArchitectureConfig::is_default")]
+    pub architecture: ArchitectureConfig,
     #[serde(default)]
     pub sonar: SonarConfig,
     /// Normalized-line window of the duplication check; falls back to `sonar.duplication_min_lines`.
@@ -351,6 +356,7 @@ impl Default for AnvilConfig {
             allowed_escapes: default_allowed_escapes(),
             boundaries: Vec::new(),
             forbid_import_cycles: false,
+            architecture: ArchitectureConfig::default(),
             sonar: SonarConfig::default(),
             duplication_min_lines: None,
             token_guard: TokenGuardConfig::default(),

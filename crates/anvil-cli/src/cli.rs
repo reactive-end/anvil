@@ -9,9 +9,10 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
-    CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, DocsSubcmd,
-    GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd, PrereqsSubcmd, QaSubcmd,
-    RatchetSubcmd, ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
+    ArchitectureSubcmd, CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd,
+    DocsSubcmd, GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd,
+    PrereqsSubcmd, QaSubcmd, RatchetSubcmd, ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd,
+    WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -136,6 +137,9 @@ pub enum Command {
         /// Workspace layout when multiple projects exist (`auto` prompts interactively, or `monorepo` / `multi-repo`).
         #[arg(long, default_value = "auto", value_parser = ["auto", "monorepo", "multi-repo"])]
         layout: String,
+        /// Architecture style to enforce (`auto` detects one and prompts interactively, or `none`, `hexagonal`, `clean`, `layered`, `feature-sliced`, `modular-monolith`, `event-driven`).
+        #[arg(long, default_value = "auto", value_parser = ["auto", "none", "hexagonal", "clean", "layered", "feature-sliced", "modular-monolith", "event-driven"])]
+        architecture: String,
     },
     /// Non-destructively sync skills, config tools, and adapter files.
     Sync {
@@ -327,6 +331,11 @@ pub enum Command {
     Prereqs {
         #[command(subcommand)]
         sub: PrereqsSubcmd,
+    },
+    /// Architecture style presets (hexagonal, clean, ...): record one, see its rules, check the repo.
+    Architecture {
+        #[command(subcommand)]
+        sub: ArchitectureSubcmd,
     },
     /// Execute sandboxed JS Code Mode queries against `anvil-graph` and `anvil-memory`.
     Code {

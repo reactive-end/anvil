@@ -2,9 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
+use anvil_core::config::AnvilConfig;
 use anyhow::Result;
 
 use crate::antigravity::config::merge_mcp_servers_json;
+use crate::architecture;
 use crate::sync::{merge_managed_markdown, read_optional_string, write_if_changed};
 use crate::templates;
 
@@ -43,7 +45,9 @@ pub fn merge_umbrella_mcp_config(root: &Path, subrepos: &[(String, PathBuf)]) ->
 
 /// Writes or updates `.cursor/rules/anvil.mdc`, preserving user text outside managed markers.
 pub fn sync_rules(repo_root: &Path) -> Result<bool> {
-    sync_rules_with_template(repo_root, templates::CURSOR_RULES_MD)
+    let config = AnvilConfig::load_or_default(repo_root)?;
+    let template = architecture::with_architecture(templates::CURSOR_RULES_MD, &config);
+    sync_rules_with_template(repo_root, &template)
 }
 
 /// Writes or updates `.cursor/rules/anvil.mdc` with an explicit managed markdown template.

@@ -173,6 +173,7 @@ fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
     let author = resolve_author_fast(root).unwrap_or_else(|_| "hook".to_owned());
     append_session_memory(root, &author, &mut messages);
     append_session_graph(root, &mut messages);
+    append_session_architecture(config, &mut messages);
     append_session_task_context(root, &mut messages);
     match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
         Ok(st) if st.is_open() => {
@@ -217,6 +218,13 @@ fn append_session_graph(root: &Path, messages: &mut Vec<InboxMessage>) {
             messages.push(InboxMessage::new("anvil-graph", MessageLevel::Info, msg, None));
         }
         Err(err) => error_log::log_hook_error(root, "session-start:graph-header", &err),
+    }
+}
+
+/// States the configured architecture to the agent, one line per style.
+fn append_session_architecture(config: &AnvilConfig, messages: &mut Vec<InboxMessage>) {
+    for line in anvil_core::config::architecture::guidance::architecture_lines(config) {
+        messages.push(InboxMessage::new("anvil-architecture", MessageLevel::Info, line, None));
     }
 }
 

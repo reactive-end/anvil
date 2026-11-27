@@ -166,6 +166,43 @@ Custom checks run through the shell under a timeout; exit 0 means ok. In a monor
 
 `anvil prereqs script` writes `init.sh` and `init.ps1` to the repository root and adds them (and `init.cmd`) to the root-hygiene allowlist. They check that `anvil` is on `PATH` (otherwise they print the install commands from the Install section above), run `anvil prereqs check "$@"` and exit with its code, so `./init.sh --json` and `.\init.ps1 --subrepo api` work.
 
+## Architecture Presets
+
+`anvil init` can record which architecture a project follows. Each style is a preset that is (a) expanded into import rules `anvil check` verifies and (b) stated to the agents. The rules are generated when checks run; they are never written into `boundaries`, which stay yours.
+
+```bash
+anvil architecture detect                       # suggest a style from the folder names (changes nothing)
+anvil architecture set hexagonal [--subrepo NAME] [--source-root DIR]
+anvil architecture show [--json]                # style per repo/subrepo, generated rules, agent guidance
+anvil architecture check [--json]               # the whole repo, not just the diff; exit 1 on a violation
+anvil init --architecture hexagonal             # or: auto (default), none, clean, layered, feature-sliced, modular-monolith, event-driven
+anvil sync                                      # writes one Architecture line per style into CLAUDE.md, AGENTS.md, Codex, Cursor, Windsurf
+```
+
+`check` prints `file:line -> target`, the rule name and the reason that teaches the fix. `anvil check` (Tier 1) applies the same rules to the changed files, and SessionStart gives the agent the same `Architecture:` line. In orchestrator mode `show`, `detect` and `check` are readable by both roles; `set` is a writer (executors only).
+
+```json
+{ "architecture": {
+    "style": "hexagonal", "source_root": "src", "modules": ["orders", "customers"], "strict_framework": false,
+    "subrepos": { "orders-api": { "style": "hexagonal" }, "web": { "style": "feature-sliced" } }
+} }
+```
+
+`style` is `none` (default), `hexagonal`, `clean`, `layered`, `feature-sliced`, `modular-monolith` or `event-driven`. `source_root` (default `src`) anchors every rule; under a subrepo it is relative to the subrepo path. `modules` limits module isolation to those directories (default: every directory under the source root, or under `<source_root>/modules` when that exists). `strict_framework` (hexagonal) also forbids `@nestjs/*` in `application/`. Per-subrepo choices live in `architecture.subrepos`, keyed by subrepo name, so stack detection (which rebuilds `subrepos`) never wipes them. Generated rule names start with `arch:<style>:` (subrepo rules end in `@<subrepo>`) and show up as `boundary:arch:...` in `anvil check`.
+
+| Style | What is enforced |
+| --- | --- |
+| `hexagonal` | `domain/` imports no `application/`, no infrastructure folder (`infrastructure`, `infraestructure`, `infra`, `adapters`, `persistence`) and no delivery folder (`controller(s)`, `presentation`, `api`, `http`, `web`, `graphql`). `application/` imports no infrastructure or delivery. Infrastructure imports no delivery. `domain/` imports no `@nestjs/*`, `typeorm`, `@prisma/*`, `mongoose`, `sequelize`, `express`, `fastify`, `class-validator`, `class-transformer`, `axios`, `pg`, `mysql2`, `redis`, `ioredis`. `application/` imports no `typeorm`, `@prisma/*`, `mongoose`, `sequelize`, `express`, `fastify`, `axios`, `pg` (`@nestjs/common` stays allowed for `@Injectable`/`@Inject`). A module reaches another only through its `domain/`, `application/`, `*.module.*` or `index.*` (shared kernels such as `shared/` and `common/` are exempt, as under `modular-monolith`). |
+| `clean` | Rings `entities\|domain` <- `use-cases\|usecases\|application` <- `adapters\|interface-adapters\|controllers\|presenters\|gateways` <- `frameworks\|infrastructure\|drivers\|main`; an inner ring never imports an outer one. |
+| `layered` | `repository\|repositories\|dao\|models` import no `service(s)`, `controller(s)` or `routes`; `service(s)` import no `controller(s)` or `routes`. |
+| `feature-sliced` | `app > processes > pages > widgets > features > entities > shared`: a layer never imports a higher one, and slices of one layer (`features/a`, `features/b`) never import each other. |
+| `modular-monolith` | Modules (`<source_root>/modules/*`, else `<source_root>/*`) import each other only through `index.*`, `*.module.*`, `public/**` or `api/**`. `shared`, `common`, `core`, `config`, `utils`, `lib(s)` and `kernel` are shared kernels: they may be imported freely and are not themselves checked (they hold app-wide wiring such as the database config). |
+| `event-driven` | Files in `handlers/`, `consumers/` and `subscribers/` do not import another context's internals (only its public API or `events/`, `contracts/`, `*.event.*`). The guidance matters most here: publish and consume through the event bus, keep handlers idempotent, never call another context directly. |
+
+How the rules are checked: besides resolved file imports, generated rules look at imports the graph could not resolve to a file (packages). The package name is taken from the specifier (`typeorm/repository` is `typeorm`, `@nestjs/common/decorators` is `@nestjs/common`); relative and alias paths (`./x`, `@/x`, `~/x`) are never packages. Package rules apply to TypeScript, JavaScript, Vue and Svelte files. Spec and test files (`*.spec.*`, `*.test.*`, `__tests__/`, `test/`, `tests/`, `e2e/`) are not held to the rules, and files outside any module (such as `src/app.module.ts`, the composition root) may import anything. User `boundaries` keep their own glob semantics (`*` within a segment, `**` across segments) unchanged.
+
+`anvil init --architecture auto` detects a style from the folders under the source root (most modules with `domain` + `application` + an infrastructure folder: hexagonal; `entities` + `use-cases`: clean; `features` + `entities` + `shared`: feature-sliced; `controllers` + `services` + `repositories`: layered) and prints it with a confidence note. In an interactive terminal you pick the style from a select prompt that defaults to the detected one (per subrepo in a monorepo); without a prompt it only suggests, because enforcing a guessed style could fail builds unexpectedly.
+
 ## Code Search
 
 `anvil grep <pattern> [paths]...` and the MCP `grep` tool search the repository with ripgrep's own crates (`ignore`, `grep-regex`, `grep-searcher`). Nested `.gitignore` and `.ignore` files, negations, and global git excludes are honoured, binaries and files over 512 KB are skipped, and hidden files are skipped unless `--hidden` is passed (`.github/`, `.claude/`, and `.agents/` are always searched, and so are `.harness/docs/`, `.harness/rules/`, `.harness/skills/`, and `.harness/config.json`; the `.harness/` ledgers `tasks/`, `memory/`, and `candidates/` and the runtime `.state/` and `.worktrees/` are never searched). Lockfiles, minified bundles, and generated directories stay out, as in the other Anvil commands.

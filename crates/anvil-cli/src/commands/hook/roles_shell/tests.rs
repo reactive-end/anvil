@@ -257,3 +257,30 @@ fn executor_cannot_take_orchestrator_decisions() {
         assert_eq!(why_not_executor(ok), None, "{ok}");
     }
 }
+
+#[test]
+fn orchestrator_reads_architecture_but_cannot_set_it() {
+    for ok in [
+        "anvil architecture show",
+        "anvil architecture show --json",
+        "anvil architecture detect",
+        "anvil architecture check --json",
+        "anvil --root sandbox architecture check",
+    ] {
+        assert_eq!(why_not_read_only(ok), None, "{ok}");
+    }
+    for bad in [
+        "anvil architecture set hexagonal",
+        "anvil architecture set clean --subrepo api",
+        "anvil architecture",
+    ] {
+        assert!(why_not_read_only(bad).is_some(), "{bad}");
+    }
+}
+
+#[test]
+fn executors_may_set_the_architecture() {
+    for cmd in ["anvil architecture set hexagonal", "anvil architecture check"] {
+        assert_eq!(why_not_executor(cmd), None, "{cmd}");
+    }
+}

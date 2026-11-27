@@ -1,6 +1,7 @@
 //! Thin adapters for Antigravity, Claude Code, Cursor, Windsurf, and Codex hooks, configs, docs, and skills.
 
 pub mod antigravity;
+pub mod architecture;
 pub mod claude_code;
 pub mod codex;
 pub mod contract;

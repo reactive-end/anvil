@@ -1,5 +1,6 @@
 //! Command dispatcher and shared CLI repository resolution helpers.
 
+pub mod architecture;
 pub mod check;
 pub mod checkpoint;
 pub mod circuit;
@@ -73,9 +74,15 @@ impl std::error::Error for ExitCodeError {}
 pub fn dispatch(cli: Cli) -> Result<()> {
     let root = resolve_repo_root(cli.root.as_deref())?;
     match cli.command {
-        Command::Init { path, adapter, git_hooks, sonar, layout } => init::execute(
+        Command::Init { path, adapter, git_hooks, sonar, layout, architecture } => init::execute(
             &resolve_init_root(path.as_deref(), &root)?,
-            init::InitOptions { adapter: &adapter, git_hooks, sonar: &sonar, layout: &layout },
+            init::InitOptions {
+                adapter: &adapter,
+                git_hooks,
+                sonar: &sonar,
+                layout: &layout,
+                architecture: &architecture,
+            },
         ),
         Command::Sync { adapter } => sync::execute(&root, &adapter),
         Command::Doctor { prereqs } => doctor::execute(&root, prereqs),
@@ -121,6 +128,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Code { sub } => code::execute(&root, sub),
         Command::Docs { sub } => docs::execute(&root, sub),
         Command::Prereqs { sub } => prereqs::execute(&root, sub),
+        Command::Architecture { sub } => architecture::execute(&root, sub),
     }
 }
 

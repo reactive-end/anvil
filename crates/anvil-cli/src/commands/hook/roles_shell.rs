@@ -299,8 +299,14 @@ fn is_read_only_anvil(args: &[String]) -> bool {
         "guard" => rest.first().is_some_and(|a| a == "list" || a == "test"),
         "docs" => rest.first().is_some_and(|a| DOCS_READERS.contains(&a.as_str())),
         "prereqs" => is_prereqs_reader(rest),
+        "architecture" => is_architecture_reader(rest),
         sub => ANVIL_READERS.contains(&sub),
     }
+}
+
+/// `anvil architecture show`, `detect`, and `check` only read; `set` changes `.harness/config.json`.
+fn is_architecture_reader(rest: &[String]) -> bool {
+    rest.first().is_some_and(|a| matches!(a.as_str(), "show" | "detect" | "check"))
 }
 
 /// `anvil prereqs check` and `detect` only read; `script` and `detect --write` create or change files.

@@ -682,3 +682,32 @@ pub enum PrereqsSubcmd {
         out: Option<PathBuf>,
     },
 }
+
+#[derive(Debug, Subcommand)]
+pub enum ArchitectureSubcmd {
+    /// Print the configured style per repo/subrepo, the rules generated from it, and the agent guidance.
+    Show {
+        /// Print the full report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Record the architecture style (`none`, `hexagonal`, `clean`, `layered`, `feature-sliced`, `modular-monolith`, `event-driven`).
+    Set {
+        /// Style to record.
+        style: String,
+        /// Record it for this subrepo instead of the repository root.
+        #[arg(long)]
+        subrepo: Option<String>,
+        /// Directory the rules are anchored to, relative to the repo or subrepo (default `src`).
+        #[arg(long)]
+        source_root: Option<String>,
+    },
+    /// Suggest a style from the folder names under each source root (changes nothing).
+    Detect,
+    /// Check the whole repository against the generated rules; exits 1 on any violation.
+    Check {
+        /// Print the full report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+}

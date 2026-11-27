@@ -11,10 +11,10 @@ use anvil_core::config::{AdapterTarget, AnvilConfig, StackKind};
 use anvil_core::fs_util::atomic_write;
 use anvil_core::stack_detector;
 
-use crate::{antigravity, claude_code, codex, cursor, templates, windsurf};
+use crate::{antigravity, architecture, claude_code, codex, cursor, templates, windsurf};
 
 const MANAGED_START: &str = "<!-- anvil:managed:start -->";
-const MANAGED_END: &str = "<!-- anvil:managed:end -->";
+pub(crate) const MANAGED_END: &str = "<!-- anvil:managed:end -->";
 
 /// Summary of actions taken by [`init_repo`] or [`sync_repo`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,8 +318,10 @@ fn sync_claude(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
         claude_code::config::merge_mcp_config(repo_root)?,
         report,
     );
-    sync_managed_doc(&repo_root.join("CLAUDE.md"), templates::CLAUDE_MD, report)?;
-    if let Some(pair) = AnvilConfig::load_or_default(repo_root)?.orchestrator {
+    let config = AnvilConfig::load_or_default(repo_root)?;
+    let doc = architecture::with_architecture(templates::CLAUDE_MD, &config);
+    sync_managed_doc(&repo_root.join("CLAUDE.md"), &doc, report)?;
+    if let Some(pair) = config.orchestrator {
         report.written_files.extend(claude_code::agents::sync_agents(repo_root, &pair)?);
     }
     Ok(())
@@ -366,10 +368,15 @@ fn sync_into(repo_root: &Path, target: AdapterTarget, report: &mut SyncReport) -
     if sync_codex {
         record_write(codex::config_path(repo_root), codex::merge_config_toml(repo_root)?, report);
     }
-    if target.includes_antigravity() {
-        sync_managed_doc(&repo_root.join("AGENTS.md"), templates::AGENTS_MD, report)?;
-    } else if sync_codex {
-        sync_managed_doc(&repo_root.join("AGENTS.md"), templates::CODEX_AGENTS_MD, report)?;
+    if target.includes_antigravity() || sync_codex {
+        let template = if target.includes_antigravity() {
+            templates::AGENTS_MD
+        } else {
+            templates::CODEX_AGENTS_MD
+        };
+        let config = AnvilConfig::load_or_default(repo_root)?;
+        let doc = architecture::with_architecture(template, &config);
+        sync_managed_doc(&repo_root.join("AGENTS.md"), &doc, report)?;
     }
 
     sync_gitignore(repo_root, report)?;
