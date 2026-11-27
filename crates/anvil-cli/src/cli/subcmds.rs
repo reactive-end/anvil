@@ -588,3 +588,72 @@ pub enum CodeSubcmd {
         max_calls: usize,
     },
 }
+
+#[derive(Debug, Subcommand)]
+pub enum DocsSubcmd {
+    /// Create the OKF bundle (`index.md`, `log.md`) of each project under `.harness/docs/`; idempotent.
+    Init {
+        /// Project (bundle) name; defaults to `docs.project`, the repository folder, or every subrepo.
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Create a module concept `<module>/overview.md` with the standard sections.
+    New {
+        /// Module path inside the bundle, e.g. `orders` or `core/config`.
+        module: String,
+        /// Repo-relative globs of the code the concept documents (`x-anvil-paths`).
+        #[arg(long, num_args = 1.., required = true)]
+        paths: Vec<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Create a concept for every code module that has none yet, using the code graph.
+    Scaffold {
+        #[arg(long)]
+        project: Option<String>,
+        /// Levels below the project root that count as a module (containers such as `crates/` and
+        /// source roots such as `src/` are not levels). Default: the folders under each source root.
+        #[arg(long)]
+        depth: Option<usize>,
+    },
+    /// List concepts with status, trust tier, and drift.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate every bundle; stale concepts are warnings (errors with `--strict`).
+    Check {
+        /// Treat stale concepts as failures.
+        #[arg(long)]
+        strict: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// After updating a doc: regenerate the outline block, restamp `generated` and the synced commit, log it.
+    Refresh {
+        /// Concept ids (`<project>/<module>`).
+        ids: Vec<String>,
+        /// Refresh every stale concept.
+        #[arg(long, conflicts_with = "ids")]
+        stale: bool,
+    },
+    /// Record a human review of a concept (only a person runs this).
+    Verify {
+        id: String,
+        /// Reviewer name (default: `git config user.name`).
+        #[arg(long)]
+        by: Option<String>,
+    },
+    /// Search the concepts (BM25 over title, description, tags, headings, and body).
+    Search {
+        query: String,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+}

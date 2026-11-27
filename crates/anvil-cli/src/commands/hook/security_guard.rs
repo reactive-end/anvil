@@ -73,7 +73,7 @@ pub fn evaluate(root: &Path, config: &SecurityGuardConfig, input: &NormalizedHoo
             GuardDecision::Ask,
             None,
             format!(
-                "Security Guard requires confirmation before {what}; only the user should relax the guard."
+                "Security Guard requires confirmation before {what}; only the user should do this."
             ),
         );
     }

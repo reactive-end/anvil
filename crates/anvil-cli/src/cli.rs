@@ -9,8 +9,8 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
-    CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd,
-    GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd, QaSubcmd, RatchetSubcmd,
+    CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, DocsSubcmd,
+    GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd, QaSubcmd, RatchetSubcmd,
     ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
 };
 
@@ -292,6 +292,11 @@ pub enum Command {
     Spec {
         #[command(subcommand)]
         sub: SpecSubcmd,
+    },
+    /// Living project documentation (Open Knowledge Format) kept in sync with the code.
+    Docs {
+        #[command(subcommand)]
+        sub: DocsSubcmd,
     },
     /// Execute sandboxed JS Code Mode queries against `anvil-graph` and `anvil-memory`.
     Code {

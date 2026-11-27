@@ -396,7 +396,7 @@ fn ensure_dir(dir: &Path) -> Result<()> {
 
 fn ensure_harness_skeleton(repo_root: &Path, report: &mut SyncReport) -> Result<()> {
     let harness = repo_root.join(".harness");
-    for rel in ["rules", "candidates", "memory/chunks", "tasks", ".state"] {
+    for rel in ["rules", "candidates", "memory/chunks", "tasks", "docs", ".state"] {
         let dir = harness.join(rel);
         if !dir.exists() {
             ensure_dir(&dir)?;

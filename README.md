@@ -151,6 +151,25 @@ The engine is chosen with `search.backend` in `.harness/config.json` (`--backend
 
 Anvil never builds a `.tgrep/` index or starts `tgrep serve`; run `tgrep serve` yourself on large repositories to get indexed search. Without a running server, `tgrep` results can lag file changes. Both backends apply the same hidden-file rules.
 
+## Living Docs (OKF)
+
+`anvil docs` keeps project documentation next to the code as an [Open Knowledge Format](https://github.com/open-knowledge-format/open-knowledge-format) (v0.3) bundle: Markdown concepts with YAML frontmatter under `.harness/docs/<project>/` (one bundle per project; a monorepo gets one per `subrepos` entry, a single repository uses `docs.project` or its folder name). `index.md` lists the modules and `log.md` is the dated history; both are reserved. Files without a `type` (such as `PLAN.md`) are left alone.
+
+```bash
+anvil docs init                                   # create index.md and log.md (idempotent)
+anvil docs new orders --paths "src/orders/**"     # <module>/overview.md with Purpose, Responsibilities, Public interface, Invariants, Dependencies, Related
+anvil docs scaffold [--depth N]                   # a concept for every module without one, from the code graph (anvil graph build first)
+anvil docs list [--json]                          # status, trust tier, stale flag and reason
+anvil docs check [--strict] [--json]              # validation errors exit 1; stale concepts exit 1 only with --strict
+anvil docs refresh <id>... | --stale              # after updating a doc: regenerate the outline, restamp generated and the synced commit, log it
+anvil docs verify <id> [--by <name>]              # a human review; agents never run it
+anvil docs search <query> [--limit N] [--json]    # BM25 over title, description, tags, headings, and body
+```
+
+Concepts carry two Anvil extensions: `x-anvil-paths` (repo-relative globs of the documented code) and `x-anvil-synced-commit` (the commit the doc was synced to; `x-anvil-synced-digest` fingerprints uncommitted changes present at sync time so a refresh is not stale until the code changes again). A concept is **stale** when a file matching its globs changed since that commit (committed, uncommitted, or untracked) or when the commit is unknown. The trust tier is `unverified`, `machine-confirmed`, or `human-reviewed`; a `human:` verification only counts when it is at or after `generated.at`. The block between `<!-- anvil:outline:start -->` and `<!-- anvil:outline:end -->` in "Public interface" is generated from the graph; all other text is preserved byte for byte.
+
+Hooks keep it current: after an agent edits a file a concept documents, it gets one reminder per concept per turn; edits of a concept are validated; `Stop` lists concepts whose code changed but which were not refreshed; and `anvil check` reports invalid changed docs as Tier 0 errors and stale concepts as warnings. `anvil docs verify` always asks the user and is refused in orchestrator mode. Config (`.harness/config.json`): `"docs": { "project": "name", "remind_on_edit": true }`.
+
 ## Safety Model
 
 Anvil hooks only deny, ask, or stay silent. They never approve a tool call, so the permission system of the host stays in charge. The Security Guard inspects command text (including wrappers, nested shells, substitutions, here-documents, and PowerShell) as a safety net against accidents. It is not a sandbox: scripts on disk and dynamically built commands are outside its reach.

@@ -1,5 +1,6 @@
 //! Schema and persistence for `.harness/config.json`.
 
+pub mod docs;
 pub mod orchestrator;
 pub mod search;
 pub mod security_guard;
@@ -11,6 +12,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use docs::DocsConfig;
 use orchestrator::OrchestratorConfig;
 use search::SearchConfig;
 use security_guard::SecurityGuardConfig;
@@ -317,6 +319,9 @@ pub struct AnvilConfig {
     /// Engine behind `anvil grep` and the MCP `grep` tool.
     #[serde(default)]
     pub search: SearchConfig,
+    /// Living documentation (OKF bundles under `.harness/docs/`).
+    #[serde(default)]
+    pub docs: DocsConfig,
     /// Orchestrator/executor model pair; absent until `anvil orchestrator setup` runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orchestrator: Option<OrchestratorConfig>,
@@ -346,6 +351,7 @@ impl Default for AnvilConfig {
             token_guard: TokenGuardConfig::default(),
             security_guard: SecurityGuardConfig::default(),
             search: SearchConfig::default(),
+            docs: DocsConfig::default(),
             orchestrator: None,
             language: None,
         }

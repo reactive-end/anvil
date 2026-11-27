@@ -1,5 +1,6 @@
 //! `anvil check`: diff-classified Tier 0 / Tier 1 / Tier 2 verification.
 
+mod docs;
 mod tier1;
 mod tier2;
 
@@ -248,6 +249,7 @@ fn run_tier0(
         }
     }
     run_tampering_and_sonar(root, config, changed, staged, run_sonar, &loaded, &mut errors);
+    print_diagnostics(&docs::diagnostics(root, config, changed), &mut errors);
     if !added_lines.is_empty() {
         let repo_files: Vec<String> =
             collect_source_files(root).into_iter().map(|(_, rel)| rel).collect();

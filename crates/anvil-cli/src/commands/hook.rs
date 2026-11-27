@@ -1,5 +1,6 @@
 //! `anvil hook`: unified Antigravity & Claude Code hook dispatcher.
 
+mod docs_watch;
 mod error_log;
 mod executors;
 mod gates;
@@ -84,6 +85,9 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     let config = AnvilConfig::load_or_default(&effective_root)?;
 
     capture_session_baselines(&effective_root, &config, &input);
+    if event == HookEvent::UserPromptSubmit {
+        docs_watch::clear_turn(&effective_root);
+    }
     let outcome = match event {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
         HookEvent::UserPromptSubmit | HookEvent::PreInvocation => {
@@ -368,6 +372,7 @@ fn handle_post_tool_use(
         // Gitignored files (sandboxes, build output) are scratch work, not a change to decide on.
         if !anvil_tasks::is_git_ignored(root, &rel) {
             task_auto::mark_turn_edit(root);
+            messages.extend(docs_watch::on_edit(root, config, &rel));
         }
         collect_post_tool_messages(root, &rel, config, &mut messages);
         update_graph_after_edit(root, &rel, config);
@@ -490,6 +495,7 @@ fn append_stop_advisories(
         let msg = texts::impact(lang, blast.impacted_files.len(), blast.related_tests.len());
         messages.push(InboxMessage::new("tier1:impact", MessageLevel::Info, msg, None));
     }
+    messages.extend(docs_watch::stop_advisory(root, config));
     let classified =
         classify_files(&changed.iter().map(ChangedFile::from_path).collect::<Vec<_>>());
     if classified.needs_visual_qa && !is_visual_qa_skipped(root, config) {

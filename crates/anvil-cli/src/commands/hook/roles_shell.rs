@@ -103,6 +103,8 @@ const ANVIL_READERS: &[&str] = &[
 ];
 /// `anvil guard` subcommands that change the security guard; `list` and `test` only read it.
 const GUARD_WRITERS: &[&str] = &["set", "add", "remove", "reset"];
+/// `anvil docs` subcommands that only read; `verify` records a human review and is the user's alone.
+const DOCS_READERS: &[&str] = &["list", "check", "search"];
 const KEYWORDS: &[&str] = &["if", "then", "else", "elif", "do", "while", "until", "!"];
 const SELF_FIXING_FLAGS: &[&str] =
     &["--fix", "--write", "--unsafe", "--apply", "--update", "--updatesnapshot", "-u", "--format"];
@@ -170,10 +172,20 @@ fn is_reserved_anvil(sub: &str, rest: &[String]) -> bool {
     matches!(sub, "orchestrator" | "init" | "sync" | "hook")
         || (sub == "plugin" && rest.first().is_none_or(|a| a != "status"))
         || (sub == "guard" && rest.first().is_some_and(|a| GUARD_WRITERS.contains(&a.as_str())))
+        || (sub == "docs" && is_docs_verify(rest))
         || (sub == "circuit" && mentions(&["reset"]))
         || (sub == "ratchet" && mentions(&["promote"]))
         || (sub == "tasks" && mentions(&["start", "done", "skip", "record"]))
         || (sub == "review" && mentions(&["approve"]))
+}
+
+/// `anvil docs verify`: the first word after `docs`, or any word when a global option comes first.
+fn is_docs_verify(rest: &[String]) -> bool {
+    match rest.first() {
+        Some(first) if first.starts_with('-') => rest.iter().any(|a| a == "verify"),
+        Some(first) => first == "verify",
+        None => false,
+    }
 }
 
 /// `anvil help ...` and `anvil <subcommand ...> --help|-h` print usage and never write. Words after
@@ -285,6 +297,7 @@ fn is_read_only_anvil(args: &[String]) -> bool {
         "ratchet" => rest.first().is_some_and(|a| a != "promote"),
         "checkpoint" | "worktree" => rest.first().is_some_and(|a| a == "list"),
         "guard" => rest.first().is_some_and(|a| a == "list" || a == "test"),
+        "docs" => rest.first().is_some_and(|a| DOCS_READERS.contains(&a.as_str())),
         sub => ANVIL_READERS.contains(&sub),
     }
 }

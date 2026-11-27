@@ -14,7 +14,7 @@
    - `anvil diff` — Token-compressed diff. `anvil grep <pattern> [paths] [-i -F -w -g <glob> -C <n> -l]` — fast gitignore-aware code search grouped by file, each match annotated with its enclosing symbol when a graph exists (`anvil graph build`); also the MCP `grep` tool. Use `anvil daemon start|stop|status` & `anvil stats`.
    - `anvil circuit status|reset` — Circuit breaker trips at `N=3` identical failures; inspect root cause before resetting.
    - `anvil tasks start|update|done|resume|verify|record|skip|build` & `anvil mem save|search` — Crash-safe tasks & persistent memory.
-   - `anvil ratchet log|list|review|test|promote`, `anvil deps`, `anvil qa run|onboard|eval-web|scan-mobile`, `anvil doctor`.
+   - `anvil ratchet log|list|review|test|promote`, `anvil deps`, `anvil qa run|onboard|eval-web|scan-mobile`, `anvil doctor`. Living docs (OKF) in `.harness/docs/<project>/`: read `index.md` and the module's concept before touching a module; after behaviour changes update the concept and run `anvil docs refresh <id>` (`anvil docs list|check|search`); never run `anvil docs verify` (human review only).
 2. **MCP Tools (`anvil mcp`, configured in `.codex/config.toml`)**:
    - Code Graph: `graph_outline`, `graph_read_symbol` (read outlines/symbols before large files), `graph_query`, `graph_impact`, `graph_origin`, `graph_path`, `graph_explain`.
    - Memory & Tasks: `mem_search` -> `mem_timeline` -> `mem_get`, `mem_save`, `mem_context`; `task_start`, `task_update`, `task_done`, `task_resume`, `task_record`, `task_skip`, `task_list`, `task_get`.

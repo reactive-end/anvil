@@ -68,7 +68,7 @@ fn embedded_templates_meet_size_and_content_constraints() {
             assert!(doc.contains(token), "missing token: {token}");
         }
     }
-    assert_eq!(templates::EMBEDDED_SKILLS.len(), 4);
+    assert_eq!(templates::EMBEDDED_SKILLS.len(), 5);
 
     for skill in templates::EMBEDDED_SKILLS {
         assert!(skill.skill_md.contains(&format!("name: {}", skill.name)));

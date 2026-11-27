@@ -67,11 +67,29 @@ pub fn protects_config(
     input: &NormalizedHookInput,
     texts: &[GuardText<'_>],
 ) -> Option<&'static str> {
-    let shell_hit = texts
-        .iter()
-        .filter(|t| t.kind == TextKind::Shell)
-        .any(|t| runs_guard_writer(t.text) || shell_edits_config(t.text));
+    let shell: Vec<&GuardText<'_>> = texts.iter().filter(|t| t.kind == TextKind::Shell).collect();
+    if shell.iter().any(|t| runs_docs_verify(t.text)) {
+        return Some("recording a human review of the documentation");
+    }
+    let shell_hit = shell.iter().any(|t| runs_guard_writer(t.text) || shell_edits_config(t.text));
     (shell_hit || file_edits_config(root, input)).then_some("changing the security guard settings")
+}
+
+/// Returns `true` when `cmd` runs `anvil docs verify`: a human review only the user may record.
+fn runs_docs_verify(cmd: &str) -> bool {
+    let expansion = expand::expand(cmd);
+    expansion.invocations.iter().any(is_docs_verify)
+        || expansion.inline_code.iter().any(|code| names_docs_verify(code))
+}
+
+fn is_docs_verify(inv: &Invocation) -> bool {
+    matches!(inv.name.as_str(), "anvil" | "cargo")
+        && inv.args.windows(2).any(|w| w[0] == "docs" && w[1] == "verify")
+}
+
+fn names_docs_verify(code: &str) -> bool {
+    let flat = code.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_lowercase();
+    flat.contains("anvil docs verify")
 }
 
 /// Returns `true` when `cmd` runs `anvil guard set|add|remove|reset` in a form the expander sees.

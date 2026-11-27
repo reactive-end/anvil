@@ -11,6 +11,7 @@ members = [
     "crates/anvil-codemode",
     "crates/anvil-deps",
     "crates/anvil-qa",
+    "crates/anvil-docs",
     "crates/anvil-cli",
 ]
 
@@ -53,6 +54,7 @@ anvil-adapters = { path = "crates/anvil-adapters" }
 anvil-codemode = { path = "crates/anvil-codemode" }
 anvil-deps = { path = "crates/anvil-deps" }
 anvil-qa = { path = "crates/anvil-qa" }
+anvil-docs = { path = "crates/anvil-docs" }
 
 [profile.release]
 opt-level = 3

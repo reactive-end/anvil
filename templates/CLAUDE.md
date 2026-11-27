@@ -18,7 +18,7 @@
    - `anvil ratchet log|list|review|test|promote` — Governed rule graduation (triple filter + human approval).
    - `anvil deps` — Tier 2 npm/PyPI/pub.dev/Maven/Cargo/Composer audit (deprecated / >24mo stale packages).
    - `anvil qa run|onboard|eval-web|scan-mobile` — Hybrid DOM/View-Tree programmatic checks + before/after screenshots.
-   - `anvil doctor` — Audit repository health and adapter wiring. `anvil orchestrator setup|status|on|off` — planner/executor model pair (`/orchestrate`).
+   - `anvil doctor` — Audit repository health and adapter wiring. `anvil orchestrator setup|status|on|off` — planner/executor model pair (`/orchestrate`). Living docs (OKF) in `.harness/docs/<project>/`: read `index.md` and the module's concept before touching a module; after behaviour changes update the concept and run `anvil docs refresh <id>` (`anvil docs list|check|search`); never run `anvil docs verify` (human review only).
 2. **Unified MCP Server (`anvil mcp`, registered in `.mcp.json`)**:
    - Graph: `graph_outline`, `graph_read_symbol` (read outlines/symbols before large files), `graph_query`, `graph_impact`, `graph_origin`, `graph_path`, `graph_explain`.
    - Memory & Tasks: `mem_search` -> `mem_timeline` -> `mem_get`, `mem_save`, `mem_context`; `task_start`, `task_update`, `task_done`, `task_resume`, `task_record`, `task_skip`, `task_list`, `task_get`.
@@ -26,7 +26,7 @@
    - `PreToolUse` guards against reading lockfiles, minified bundles, or huge files whole — use `graph_outline`/`graph_read_symbol` or bounded line ranges.
    - Forbidden unless structured `anvil-allow(<rule>): <reason> [<ref>]`: `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `!important`, `# noqa`, `@Suppress`, `@phpstan-ignore`, `@psalm-suppress`, `TODO`/`FIXME`/`HACK`.
    - Avoid pure barrel files (`index.ts`) and unapproved root files.
-4. **Skills**: Follow `.claude/skills/` (`subagent-routing`, `visual-qa`, `ratchet-review`, `memory-hygiene`).
+4. **Skills**: Follow `.claude/skills/` (`subagent-routing`, `visual-qa`, `ratchet-review`, `memory-hygiene`, `living-docs`).
 5. **Task Lifecycle, Crash Recovery & Memory (Strictly 1 Task at a Time)**: You decide when work warrants a task vs `task_skip`. For backlogs/multi-task requests, finish one task's full loop before touching the next (NEVER batch edits across tasks or chain `update`+`done` at the end): **Analyze -> `task_start`/`anvil tasks start <ID|title>` -> Implement code -> `task_update`/`anvil tasks update <ID> "..." --done ... --next ...` (immediately after code edits, before tests) -> Verify (`anvil tasks verify <ID> --record` / `anvil check`) -> `task_done`/`anvil tasks done <ID> "..."` -> if you fixed a non-obvious bug, gotcha, or architecture decision, save it with `mem_save`/`anvil mem save`**. On restart/crash, run `task_resume`/`anvil tasks resume` first.
 6. **Zero Unverified Assumptions (Evidence First)**: Never assume runtime permissions, auth/session state, DOM structure (e.g. Shadow DOM vs light DOM), or config constraints without gathering runtime/source facts first. Always verify permission grant state after window focus and handle denial with an explicit settings/UI fallback (never empty `RequestPermission` callbacks or `adb pm grant` shortcuts).
 <!-- anvil:managed:end -->

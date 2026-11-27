@@ -8,6 +8,7 @@ pub mod context;
 pub mod daemon;
 pub mod deps;
 pub mod diff;
+pub mod docs;
 pub mod doctor;
 pub mod graph;
 pub mod grep;
@@ -115,6 +116,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Worktree { sub } => worktree::execute(&root, sub),
         Command::Spec { sub } => spec::execute(&root, sub),
         Command::Code { sub } => code::execute(&root, sub),
+        Command::Docs { sub } => docs::execute(&root, sub),
     }
 }
 
