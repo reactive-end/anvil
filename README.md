@@ -60,12 +60,48 @@ Tracks tasks with short sequential codes (`T-001`, `T-002`, ...) or 1-level grou
 - **Unified MCP Server (`anvil-mcp`):** exposes 23 code-graph, memory, task, review, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
 - **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), a Claude Code orchestrator/executor model pair (`anvil orchestrator`), diagnostics (`anvil doctor`), and an optional resident TCP daemon.
 
+## Install
+
+From source (needs a Rust toolchain; builds the release binary and copies it to `~/.cargo/bin`, or `~/.local/bin` when that does not exist):
+
+```bash
+scripts/install.sh                 # Linux and macOS
+cargo install --path crates/anvil-cli   # alternative on any platform
+```
+
+```powershell
+scripts/install.ps1                # Windows: installs to ~\.cargo\bin or %LOCALAPPDATA%\anvil\bin
+```
+
+From a GitHub release (no Rust toolchain needed; verifies the published SHA-256 checksum before installing):
+
+```bash
+scripts/install.sh --from-release                      # latest release
+scripts/install.sh --from-release --version v0.1.0     # a specific tag
+```
+
+```powershell
+scripts/install.ps1 -FromRelease                       # latest release
+scripts/install.ps1 -FromRelease -Version v0.1.0       # a specific tag
+```
+
+Both release modes use `gh release download`, so run `gh auth login` first while the repository is private. `install.sh` falls back to `curl` when `gh` is missing, which only works for public repositories. Set `ANVIL_REPO=owner/name` to install from a fork, and use `--install-dir` / `-InstallDir` to change the destination.
+
+On Windows the installer stops the daemon and renames a running `anvil.exe` to `anvil.exe.old` before copying the new one. An `anvil mcp` server that is already running keeps the old version until its client restarts it.
+
+Release targets (archives are named `anvil-<tag>-<target>.zip` on Windows and `.tar.gz` elsewhere, each with a `.sha256` file):
+
+| Platform | Targets |
+|----------|---------|
+| Windows | `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` |
+| Linux | `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl` (static, used by `install.sh`), `aarch64-unknown-linux-gnu` |
+| macOS | `aarch64-apple-darwin`, `x86_64-apple-darwin` |
+
+Pushing a `v*` tag publishes the release. Running the workflow manually (`workflow_dispatch`) builds every target as a dry run and keeps the archives as workflow artifacts only.
+
 ## Quick Start
 
 ```bash
-# Build & install the native binary
-cargo install --path crates/anvil-cli
-
 # Interactive setup (single repo, monorepo, or thin-umbrella multi-repo + opt-in SonarQube)
 anvil init
 
