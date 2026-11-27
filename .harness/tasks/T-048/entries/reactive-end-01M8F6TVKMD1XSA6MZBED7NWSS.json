@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F6TVKMD1XSA6MZBED7NWSS",
+  "task_id": "T-048",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "anvil deps flags regex/chrono/anyhow as vulnerable because it queries OSV with the manifest requirement instead of the resolved version; read Cargo.lock (and the npm/composer/pub/poetry lockfiles where present) and query OSV with exact versions, falling back to the requirement only when no lockfile exists.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T19:13:37.946051200Z"
+}

@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 47,
-  "updated_at": "2026-11-27T19:13:21.267487Z",
+  "task_count": 48,
+  "updated_at": "2026-11-27T19:26:12.740245Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -879,6 +879,25 @@
       "progress_file": ".harness/tasks/T-047/progress.md",
       "created_at": "2026-11-27T18:35:14.366008500Z",
       "updated_at": "2026-11-27T19:13:21.267487Z"
+    },
+    {
+      "task_id": "T-048",
+      "request": "Dependency audit checks the versions resolved in lockfiles",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "anvil deps audits the versions resolved in lockfiles (Cargo, npm, pnpm, yarn, composer, pub, poetry, uv, gradle), queries OSV with exact versions, reports unmaintained/unsound notices as non-blocking informational findings, skips gitignored manifests and prints the resolved version; the false Vulnerable findings on regex/chrono/anyhow are gone.",
+      "evidence": "fmt/clippy PASS; cargo test -p anvil-deps -p anvil-cli PASS; anvil check --scope PASS incl. Tier 2; anvil deps --all exit 0",
+      "entry_count": 3,
+      "files_count": 25,
+      "progress_file": ".harness/tasks/T-048/progress.md",
+      "created_at": "2026-11-27T19:13:37.831369800Z",
+      "updated_at": "2026-11-27T19:26:12.740245Z"
     }
   ]
 }
