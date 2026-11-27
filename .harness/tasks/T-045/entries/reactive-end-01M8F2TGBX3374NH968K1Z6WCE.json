@@ -1,0 +1,16 @@
+{
+  "entry_id": "01M8F2TGBX3374NH968K1Z6WCE",
+  "task_id": "T-045",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Release job builds Windows x64/ARM64, Linux x64 gnu/musl and ARM64, macOS ARM64/x64 with smoke tests and a macOS test run, publishes on tags and uploads artifacts on manual dry runs; install.sh/install.ps1 can install from a release with checksum verification and install.ps1 renames a running anvil.exe before copying.",
+  "evidence": "bash -n OK; PowerShell parser 0 errors; ci.yml parses with PyYAML; anvil check --scope PASS; install.ps1 installed anvil 0.4.0 and renamed the old exe",
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "README.md",
+    "scripts/install.ps1",
+    "scripts/install.sh"
+  ],
+  "timestamp": "2026-11-27T18:03:32.129748500Z"
+}

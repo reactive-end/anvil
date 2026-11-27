@@ -1,0 +1,31 @@
+{
+  "entry_id": "01M8F28TYMQN9CARXXWVET1HSC",
+  "task_id": "T-044",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "main",
+  "summary": "Orchestrator can now stage/commit/push/branch and read or open PRs with gh (git apply/am and program-launching flags stay refused); `--help` works for every role; executor write-path detection ignores PowerShell parameter values, npx package installs and unexpanded variables and follows literal cd; gitignored edits are not tracked; Stop no longer demands closing the task while an executor runs; hook help lists user-prompt-submit.",
+  "evidence": "cargo fmt --check PASS; clippy -D warnings PASS; cargo test -p anvil-cli -p anvil-tasks PASS; anvil check --scope PASS",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/executors.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/src/commands/hook/roles/cmdlets.rs",
+    "crates/anvil-cli/src/commands/hook/roles/orchestrator_cmds.rs",
+    "crates/anvil-cli/src/commands/hook/roles/writes.rs",
+    "crates/anvil-cli/src/commands/hook/roles/writes/tests.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell/tests.rs",
+    "crates/anvil-cli/src/commands/hook/shell/expand.rs",
+    "crates/anvil-cli/src/commands/hook/task_auto.rs",
+    "crates/anvil-cli/tests/orchestrator_usability_e2e.rs",
+    "crates/anvil-tasks/src/curate.rs",
+    "crates/anvil-tasks/src/files.rs",
+    "crates/anvil-tasks/src/files/tests.rs",
+    "crates/anvil-tasks/src/lib.rs",
+    "templates/agents/anvil-orchestrator.md"
+  ],
+  "timestamp": "2026-11-27T17:53:53.145326500Z"
+}

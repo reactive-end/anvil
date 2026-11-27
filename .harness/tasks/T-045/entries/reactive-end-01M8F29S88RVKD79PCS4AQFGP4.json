@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F29S88RVKD79PCS4AQFGP4",
+  "task_id": "T-045",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Started task: Release binaries for Linux, macOS and Windows ARM, plus install from release",
+  "files_touched": [],
+  "timestamp": "2026-11-27T17:54:24.178287700Z"
+}

@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F29SAQZ6KCF01S3EF1T1HK",
+  "task_id": "T-045",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Extend the release matrix (linux x64 gnu+musl, linux arm64, macOS arm64+x64, windows x64+arm64), smoke-test native builds, test on macOS in the release job, portable sha256, workflow_dispatch dry runs uploading artifacts; install.sh/install.ps1 gain a from-release mode with checksum verification and install.ps1 replaces a running anvil.exe safely.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T17:54:24.257375900Z"
+}

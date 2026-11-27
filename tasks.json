@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 42,
-  "updated_at": "2026-11-26T14:55:30.481557600Z",
+  "task_count": 45,
+  "updated_at": "2026-11-27T18:03:32.129748500Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -784,6 +784,63 @@
       "progress_file": ".harness/tasks/T-042/progress.md",
       "created_at": "2026-11-26T14:45:29.278193300Z",
       "updated_at": "2026-11-26T14:55:30.481557600Z"
+    },
+    {
+      "task_id": "T-043",
+      "request": "Configurable security guard for cloud, infra and container commands",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Security guard now detects destructive aws/gcloud/gsutil/az, terraform/tofu/terragrunt/pulumi/cdk/sls/sam/helm/kubectl and docker/podman commands (shell and MCP tool fields), closes force-with-lease and SQL/Mongo/Redis gaps, and is configurable per category (cloud/infra/disk deny by default) with regex patterns via `anvil guard list|set|add|remove|reset|test`; the agent cannot relax it, and the rules are mirrored into .claude/settings.json permissions.",
+      "evidence": "cargo fmt --check PASS; cargo clippy --workspace --all-targets -D warnings PASS; cargo test -p anvil-core -p anvil-adapters -p anvil-cli 294 passed; anvil check --scope PASS",
+      "entry_count": 5,
+      "files_count": 91,
+      "progress_file": ".harness/tasks/T-043/progress.md",
+      "created_at": "2026-11-27T17:04:51.712777900Z",
+      "updated_at": "2026-11-27T17:37:26.676878600Z"
+    },
+    {
+      "task_id": "T-044",
+      "request": "Orchestrator mode: unblock commits, help and built binaries; fix executor write-path false positives",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Orchestrator can now stage/commit/push/branch and read or open PRs with gh (git apply/am and program-launching flags stay refused); `--help` works for every role; executor write-path detection ignores PowerShell parameter values, npx package installs and unexpanded variables and follows literal cd; gitignored edits are not tracked; Stop no longer demands closing the task while an executor runs; hook help lists user-prompt-submit.",
+      "evidence": "cargo fmt --check PASS; clippy -D warnings PASS; cargo test -p anvil-cli -p anvil-tasks PASS; anvil check --scope PASS",
+      "entry_count": 5,
+      "files_count": 19,
+      "progress_file": ".harness/tasks/T-044/progress.md",
+      "created_at": "2026-11-27T17:38:16.639594300Z",
+      "updated_at": "2026-11-27T17:53:53.145326500Z"
+    },
+    {
+      "task_id": "T-045",
+      "request": "Release binaries for Linux, macOS and Windows ARM, plus install from release",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "main"
+      ],
+      "summary": "Release job builds Windows x64/ARM64, Linux x64 gnu/musl and ARM64, macOS ARM64/x64 with smoke tests and a macOS test run, publishes on tags and uploads artifacts on manual dry runs; install.sh/install.ps1 can install from a release with checksum verification and install.ps1 renames a running anvil.exe before copying.",
+      "evidence": "bash -n OK; PowerShell parser 0 errors; ci.yml parses with PyYAML; anvil check --scope PASS; install.ps1 installed anvil 0.4.0 and renamed the old exe",
+      "entry_count": 3,
+      "files_count": 4,
+      "progress_file": ".harness/tasks/T-045/progress.md",
+      "created_at": "2026-11-27T17:54:24.134727300Z",
+      "updated_at": "2026-11-27T18:03:32.129748500Z"
     }
   ]
 }

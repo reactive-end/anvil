@@ -1,0 +1,29 @@
+{
+  "entry_id": "01M8F28C44WJFGA6Y56ZZ9WQX6",
+  "task_id": "T-044",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "All 8 orchestrator-mode fixes implemented and verified by the executor; it is now moving roles_shell tests into roles_shell/tests.rs.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/executors.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/src/commands/hook/roles/cmdlets.rs",
+    "crates/anvil-cli/src/commands/hook/roles/orchestrator_cmds.rs",
+    "crates/anvil-cli/src/commands/hook/roles/writes.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/hook/shell/expand.rs",
+    "crates/anvil-cli/src/commands/hook/task_auto.rs",
+    "crates/anvil-cli/tests/orchestrator_usability_e2e.rs",
+    "crates/anvil-tasks/src/curate.rs",
+    "crates/anvil-tasks/src/files.rs",
+    "crates/anvil-tasks/src/files/tests.rs",
+    "crates/anvil-tasks/src/lib.rs",
+    "templates/agents/anvil-orchestrator.md"
+  ],
+  "blocker": "Waiting for the test-split follow-up run.",
+  "timestamp": "2026-11-27T17:53:37.964408500Z"
+}
