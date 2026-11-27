@@ -1,4 +1,5 @@
-//! `search` section of `.harness/config.json`: which engine answers `anvil grep` and the MCP `grep` tool.
+//! `search` section of `.harness/config.json`: which engine answers `anvil grep` and the MCP `grep` tool, and
+//! how strictly the PreToolUse hook enforces the graph -> docs -> code lookup order.
 
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
@@ -37,9 +38,57 @@ impl SearchBackend {
     }
 }
 
+/// How the PreToolUse hook enforces the lookup order graph -> docs -> code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchCascadeMode {
+    /// Deny the first code search of a turn (per agent) with the graph and docs results attached.
+    #[default]
+    Enforce,
+    /// Never block; queue a one-line advisory with the graph and docs hits instead.
+    Advise,
+    /// Do not interfere with code searches.
+    Off,
+}
+
+impl SearchCascadeMode {
+    /// Returns the config spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Enforce => "enforce",
+            Self::Advise => "advise",
+            Self::Off => "off",
+        }
+    }
+}
+
 /// Repository search settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SearchConfig {
     #[serde(default)]
     pub backend: SearchBackend,
+    /// Enforcement of the graph -> docs -> code lookup order in the PreToolUse hook.
+    #[serde(default)]
+    pub cascade: SearchCascadeMode,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cascade_defaults_to_enforce_and_parses_every_mode() {
+        let default: SearchConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(default.cascade, SearchCascadeMode::Enforce);
+        for (raw, mode) in [
+            ("enforce", SearchCascadeMode::Enforce),
+            ("advise", SearchCascadeMode::Advise),
+            ("off", SearchCascadeMode::Off),
+        ] {
+            let parsed: SearchConfig =
+                serde_json::from_str(&format!(r#"{{"cascade":"{raw}"}}"#)).unwrap();
+            assert_eq!(parsed.cascade, mode);
+            assert_eq!(mode.as_str(), raw);
+        }
+    }
 }

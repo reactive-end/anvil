@@ -47,6 +47,25 @@ pub struct Cli {
     pub command: Command,
 }
 
+/// Arguments of `anvil search` (graph -> docs -> code lookup).
+#[derive(Debug, Args)]
+pub struct SearchArgs {
+    /// Symbol, file, concept, or text to find (quote it to search the code for that exact text).
+    pub query: String,
+    /// Also search the code (grep) even when the graph and docs answered.
+    #[arg(long)]
+    pub code: bool,
+    /// Most graph hits listed (docs list at most 5).
+    #[arg(long, default_value_t = 8)]
+    pub limit: usize,
+    /// Token budget shared by the graph, docs, and code sections.
+    #[arg(long, default_value_t = 1200)]
+    pub max_tokens: usize,
+    /// Print the full report as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
 /// Arguments of `anvil grep` (ripgrep-style flags, token-bounded output).
 #[derive(Debug, Args)]
 pub struct GrepArgs {
@@ -242,6 +261,8 @@ pub enum Command {
         #[arg(long, default_value_t = 2000)]
         max_tokens: usize,
     },
+    /// Start here: look a query up in the code graph, then the docs, then the code (grep) only if needed.
+    Search(SearchArgs),
     /// Fast gitignore-aware code search grouped by file, annotated with the enclosing symbol.
     Grep(GrepArgs),
     /// Manage the resident local `anvil-graph` TCP daemon.

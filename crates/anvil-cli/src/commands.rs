@@ -24,6 +24,7 @@ pub mod qa;
 pub mod ratchet;
 pub mod review;
 pub mod run;
+pub mod search;
 pub mod sonar;
 pub mod spec;
 pub mod stats;
@@ -105,6 +106,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Qa { sub } => qa::execute(&root, sub),
         Command::Context { sub } => context::execute(&root, sub),
         Command::Diff { max_lines, max_tokens } => diff::execute(&root, max_lines, max_tokens),
+        Command::Search(args) => search::execute(&root, &args),
         Command::Grep(args) => grep::execute(&root, &args),
         Command::Daemon { sub } => daemon::execute(&root, sub),
         Command::Stats { reset, trajectories } => stats::execute(&root, reset, trajectories),

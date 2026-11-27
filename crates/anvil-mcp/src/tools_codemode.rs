@@ -20,6 +20,7 @@ pub const CODE_MODE_ALLOWLIST: &[&str] = &[
     "graph_origin",
     "graph_path",
     "context_pack",
+    "search",
     "grep",
     "mem_search",
     "mem_timeline",
@@ -39,7 +40,7 @@ impl ToolDispatcher for McpDispatcher<'_> {
         }
         if name == "context_pack" || name.starts_with("graph_") {
             call_graph_tool(self.0, name, &args)
-        } else if name == "grep" {
+        } else if name == "grep" || name == "search" {
             call_search_tool(self.0, name, &args)
         } else if name.starts_with("mem_") {
             call_memory_tool(self.0, name, &args)

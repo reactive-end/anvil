@@ -14,6 +14,7 @@ fn orchestrator_may_inspect_and_verify_only() {
         "anvil check",
         "anvil run -- cargo clippy",
         "anvil diff",
+        "anvil search \"security guard\" --code",
         "npm test",
         "find . -name '*.rs'",
         "git branch --show-current",

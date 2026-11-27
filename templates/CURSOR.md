@@ -16,7 +16,7 @@
    - `anvil tasks start|update|done|resume|verify|record|skip|build` & `anvil mem save|search` — Crash-safe tasks & persistent memory.
    - `anvil ratchet log|list|review|test|promote`, `anvil deps`, `anvil qa run|onboard|eval-web|scan-mobile`, `anvil doctor`. Living docs (OKF) in `.harness/docs/<project>/`: read `index.md` and the module's concept before touching a module; after behaviour changes update the concept and run `anvil docs refresh <id>` (`anvil docs list|check|search`); never run `anvil docs verify` (human review only).
 2. **MCP Tools (`anvil mcp`, configured in `.cursor/mcp.json`)**:
-   - Code Graph: `graph_outline`, `graph_read_symbol` (read outlines/symbols before large files), `graph_query`, `graph_impact`, `graph_origin`, `graph_path`, `graph_explain`.
+   - Graph: **Lookup order: graph -> docs -> code.** `search` first (code graph, then `.harness/docs/<project>/` concepts, then grep only if needed; CLI `anvil search <query> [--code]`), or `graph_query`/`graph_outline`/`graph_read_symbol` (read symbols, not whole files); `grep` last. `PreToolUse` answers the first code search of a turn with graph/docs results (`search.cascade`: enforce|advise|off). Also `graph_outline`, `graph_read_symbol`, `graph_query`, `graph_impact`, `graph_origin`, `graph_path`, `graph_explain`.
    - Memory & Tasks: `mem_search` -> `mem_timeline` -> `mem_get`, `mem_save`, `mem_context`; `task_start`, `task_update`, `task_done`, `task_resume`, `task_record`, `task_skip`, `task_list`, `task_get`.
 3. **Clean Code**:
    - Avoid `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `!important`, `# noqa`, `@Suppress`, `@phpstan-ignore`, `@psalm-suppress`, or `TODO`/`FIXME`/`HACK` without `anvil-allow(<rule>): <reason> [<ref>]`.

@@ -8,6 +8,7 @@ pub mod git_install;
 mod payload;
 mod roles;
 mod roles_shell;
+mod search_guard;
 pub mod security_guard;
 mod session_scope;
 mod shell;
@@ -87,6 +88,7 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     capture_session_baselines(&effective_root, &config, &input);
     if event == HookEvent::UserPromptSubmit {
         docs_watch::clear_turn(&effective_root);
+        search_guard::clear_turn(&effective_root);
     }
     let outcome = match event {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
@@ -290,6 +292,7 @@ fn run_pre_tool_guards(
     input: &NormalizedHookInput,
 ) -> Option<HookOutcome> {
     security_guard::check_security_guard(root, &config.security_guard, input)
+        .or_else(|| search_guard::check_search_guard(root, config, input))
         .or_else(|| token_guard::check_read_token_guard(root, config, input))
         .or_else(|| token_guard_shell::check_shell_token_guard(root, config, input))
 }

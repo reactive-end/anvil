@@ -1,11 +1,12 @@
-//! JSON Schema definitions for all 26 unified `graph_*`, `context_pack`, `grep`, `code_exec`, `mem_*`, `task_*`, and `review_*` MCP tools.
+//! JSON Schema definitions for all 27 unified `search`, `graph_*`, `context_pack`, `grep`, `code_exec`, `mem_*`, `task_*`, and `review_*` MCP tools.
 
 use serde_json::{Value, json};
 
-/// Returns JSON Schema definitions for all 26 unified `graph_*`, `context_pack`, `grep`, `code_exec`, `mem_*`, `task_*`, and `review_*` tools.
+/// Returns JSON Schema definitions for all 27 unified `search`, `graph_*`, `context_pack`, `grep`, `code_exec`, `mem_*`, `task_*`, and `review_*` tools.
 pub fn tool_definitions() -> Vec<Value> {
     let mut tools = graph_core_schemas();
     tools.extend(graph_inspect_schemas());
+    tools.push(search_schema());
     tools.push(grep_schema());
     tools.push(code_exec_schema());
     tools.extend(memory_tool_schemas());
@@ -13,6 +14,23 @@ pub fn tool_definitions() -> Vec<Value> {
     tools.push(review_log_schema());
     tools.extend(review_gate_schemas());
     tools
+}
+
+fn search_schema() -> Value {
+    tool_schema(
+        "search",
+        "Start here: looks the query up in the code graph, then the living docs, then the code (grep) only if needed.",
+        json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string", "description": "Symbol, file, concept, or text to find; quote it (\"...\") to search the code for that exact text." },
+                "code": { "type": "boolean", "default": false, "description": "Also search the code (grep) even when the graph and docs answered." },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 8, "description": "Most graph hits listed (docs list at most 5)." },
+                "max_tokens": { "type": "integer", "minimum": 100, "maximum": 16000, "default": 1200, "description": "Token budget shared by the graph, docs, and code sections." }
+            },
+            "required": ["query"]
+        }),
+    )
 }
 
 fn grep_schema() -> Value {

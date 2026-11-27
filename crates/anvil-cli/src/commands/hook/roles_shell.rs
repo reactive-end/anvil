@@ -98,8 +98,8 @@ const GIT_READERS: &[&str] = &[
     "name-rev",
 ];
 const ANVIL_READERS: &[&str] = &[
-    "check", "diff", "grep", "impact", "graph", "mem", "tasks", "stats", "doctor", "deps",
-    "context", "code", "run", "sonar", "qa",
+    "check", "diff", "search", "grep", "impact", "graph", "mem", "tasks", "stats", "doctor",
+    "deps", "context", "code", "run", "sonar", "qa",
 ];
 /// `anvil guard` subcommands that change the security guard; `list` and `test` only read it.
 const GUARD_WRITERS: &[&str] = &["set", "add", "remove", "reset"];
@@ -214,7 +214,7 @@ fn reserved_anvil(args: &[String]) -> Option<&str> {
 }
 
 /// Outcome of skipping the global options in front of an `anvil` subcommand.
-enum AnvilArgs<'a> {
+pub(super) enum AnvilArgs<'a> {
     Sub(&'a str, &'a [String]),
     NoSub,
     /// An option that is not a known global one came first.
@@ -223,7 +223,7 @@ enum AnvilArgs<'a> {
 
 /// Skips the global options declared in `cli.rs` (`--root <PATH>`, `--root=<PATH>`, `--no-color`) and
 /// clap's own `--help`/`--version`; none of them has a short form besides `-h`/`-V`.
-fn anvil_subcommand(args: &[String]) -> AnvilArgs<'_> {
+pub(super) fn anvil_subcommand(args: &[String]) -> AnvilArgs<'_> {
     let mut i = 0;
     while let Some(arg) = args.get(i) {
         match arg.as_str() {

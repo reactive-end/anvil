@@ -251,6 +251,7 @@ version = "0.4.0"
 dependencies = [
  "anvil-codemode",
  "anvil-core",
+ "anvil-docs",
  "anvil-graph",
  "anvil-memory",
  "anvil-tasks",

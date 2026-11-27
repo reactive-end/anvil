@@ -20,7 +20,7 @@
    - `anvil qa run|onboard|eval-web|scan-mobile` — Objective DOM/View-Tree checks + before/after screenshots.
    - `anvil doctor` — Verify repo config, strict TS/lint setup, and adapter health. Living docs (OKF) in `.harness/docs/<project>/`: read `index.md` and the module's concept before touching a module; after behaviour changes update the concept and run `anvil docs refresh <id>` (`anvil docs list|check|search`); never run `anvil docs verify` (human review only).
 2. **MCP Tools (`anvil mcp`, configured in `.agents/mcp_config.json`)**:
-   - Code Graph: `graph_outline`, `graph_read_symbol` (read outlines/symbols before large files), `graph_query`, `graph_impact`, `graph_origin`, `graph_path`, `graph_explain`.
+   - Graph: **Lookup order: graph -> docs -> code.** `search` first (code graph, then `.harness/docs/<project>/` concepts, then grep only if needed; CLI `anvil search <query> [--code]`), or `graph_query`/`graph_outline`/`graph_read_symbol` (read symbols, not whole files); `grep` last. `PreToolUse` answers the first code search of a turn with graph/docs results (`search.cascade`: enforce|advise|off). Also `graph_outline`, `graph_read_symbol`, `graph_query`, `graph_impact`, `graph_origin`, `graph_path`, `graph_explain`.
    - Memory & Tasks: `mem_search` -> `mem_timeline` -> `mem_get`, `mem_save`, `mem_context`; `task_start`, `task_update`, `task_done`, `task_resume`, `task_record`, `task_skip`, `task_list`, `task_get`.
 3. **Token Guard & Clean Code**:
    - `PreToolUse` guards against reading lockfiles, minified bundles, or huge files whole — use `graph_outline`/`graph_read_symbol` or bounded line ranges.

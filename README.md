@@ -57,7 +57,7 @@ Tracks tasks with short sequential codes (`T-001`, `T-002`, ...) or 1-level grou
 
 ### 8. Adapters, MCP Server & CLI (`anvil-adapters`, `anvil-mcp`, `anvil-cli`)
 - **Thin Adapters (`anvil-adapters`):** translate lifecycle hooks (`SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `Stop`), **Security Guard**, **Token Guard**, **Availability Guard** (gracefully skips `anvil:managed` blocks when `anvil` is absent from `PATH`), and synced configs/rules for Antigravity, Claude Code, Cursor, Windsurf, and Codex (including thin-umbrella multi-repo routing).
-- **Unified MCP Server (`anvil-mcp`):** exposes 26 code-graph, search, memory, task, review, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
+- **Unified MCP Server (`anvil-mcp`):** exposes 27 code-graph, search, memory, task, review, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
 - **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), a Claude Code orchestrator/executor model pair (`anvil orchestrator`), diagnostics (`anvil doctor`), and an optional resident TCP daemon.
 
 ## Install
@@ -150,6 +150,26 @@ The engine is chosen with `search.backend` in `.harness/config.json` (`--backend
 - `auto` (default): use `tgrep` only when it is on `PATH`, `<repo>/.tgrep/` exists, and `tgrep status` reports a running server with an active file watcher for the repository, so results are fresh. Otherwise the built-in engine runs.
 
 Anvil never builds a `.tgrep/` index or starts `tgrep serve`; run `tgrep serve` yourself on large repositories to get indexed search. Without a running server, `tgrep` results can lag file changes. Both backends apply the same hidden-file rules.
+
+## Search Cascade
+
+Every lookup follows one order: **code graph -> living docs -> code**. Reading a symbol from the graph or a concept from `.harness/docs/` costs a fraction of grepping files, so grep comes last.
+
+- `anvil search <query> [--code] [--limit N] [--max-tokens N] [--json]` and the MCP tool `search` ("Start here: looks the query up in the code graph, then the living docs, then the code (grep) only if needed.") run the cascade and print one block per stage: up to 8 graph hits (symbol or file, `file:line`), up to 5 docs hits (concept id, path, snippet), and grouped code matches with their enclosing symbols. The header names the stage that answered and the last line suggests the next step (`graph_read_symbol <id>`, `Read .harness/docs/...`, or a narrower `grep`).
+- The code stage runs only when graph and docs together return fewer than 3 hits, when `--code` / `"code": true` forces it, or when the query is clearly literal text (quoted, or containing punctuation such as `(`, `=`, or `\` that symbol search cannot match). The three sections share one token budget (`--max-tokens`, default 1200). A missing graph or docs bundle is a one-line note in its section, never an error; the cascade never builds a graph.
+- The MCP server states the order in the `instructions` it returns on `initialize`.
+
+**Once per turn.** The `PreToolUse` hook answers the first code search of each turn, per agent (the main thread and every subagent count separately), with a denial that quotes the graph and docs results for the searched pattern (about 600 tokens) and says "Graph and docs were checked first; repeat the search if you still need the code." The repeat goes through. Code searches are the `Grep`, `Glob`, `grep_search`, and `find_by_name` tools, the MCP `grep` tool, and `rg`, `grep`, `egrep`, `fgrep`, `findstr`, `Select-String`, `ag`, `ack`, `git grep`, `tgrep`, or `anvil grep` in the shell, when they search inside the repository (piped filters such as `cmd | grep x` and searches of paths outside the repository are never blocked). A turn counts as consulted as soon as the agent used `search`, a `graph_*` tool, `context_pack`, or `code_exec`, read a file under `.harness/docs/`, or ran `anvil search|graph|docs search|context`; a new user prompt clears the flags. Nothing happens when there is neither a graph nor a docs bundle, or when graph and docs have no hit for the pattern.
+
+`search.cascade` in `.harness/config.json` sets the behaviour:
+
+```json
+{ "search": { "cascade": "enforce" } }
+```
+
+- `enforce` (default): deny the first code search of the turn as described above.
+- `advise`: never block; queue a one-line advisory with the top graph or docs hit, delivered with the next tool result.
+- `off`: do not interfere with code searches.
 
 ## Living Docs (OKF)
 
