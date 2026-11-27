@@ -1,5 +1,7 @@
 //! Tier 2 dependency health and visual QA verification helpers for `anvil check`.
 
+mod web_qa;
+
 use std::path::{Path, PathBuf};
 
 use anvil_core::config::AnvilConfig;
@@ -42,6 +44,7 @@ pub fn run_tier2(
                 qa.detect_platform(config)
             );
         }
+        failed |= web_qa::run(root, config);
     }
     failed
 }

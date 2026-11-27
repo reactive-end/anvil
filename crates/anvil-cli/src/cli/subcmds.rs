@@ -359,15 +359,42 @@ pub enum QaSubcmd {
         #[arg(long, value_delimiter = ',')]
         page_errors: Vec<String>,
     },
-    /// Run headless Playwright DOM + screenshot capture on a URL.
+    /// Run headless Playwright on a URL (DOM audit), or scripted flows with `--flow`/`--all-flows`.
     Run {
-        url: String,
-        /// Screenshot capture phase (`before` or `after`).
+        /// Page to audit; defaults to `qa.web.url`.
+        url: Option<String>,
+        /// Run one flow (file name or `name` of a file in `qa.web.flows_dir`).
+        #[arg(long, conflicts_with = "all_flows")]
+        flow: Option<String>,
+        /// Run every flow in `qa.web.flows_dir`.
+        #[arg(long)]
+        all_flows: bool,
+        /// Start the app (`qa.web.start_command`) first and stop it afterwards.
+        #[arg(long)]
+        start: bool,
+        /// Print the full structured report as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Screenshot capture phase of the DOM audit (`before` or `after`).
         #[arg(long, default_value = "after", value_parser = ["before", "after"])]
         phase: String,
         #[arg(long, default_value = ".harness/.state/qa")]
         out_dir: PathBuf,
     },
+    /// Run flows and store their screenshots as visual baselines (`.harness/qa/baseline/`).
+    Baseline {
+        /// Only this flow (default: every flow).
+        #[arg(long)]
+        flow: Option<String>,
+        /// Start the app (`qa.web.start_command`) first and stop it afterwards.
+        #[arg(long)]
+        start: bool,
+        /// Print the full structured report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// List the flows in `qa.web.flows_dir` and validate them.
+    Flows,
     /// Scan Android `uiautomator` XML, `logcat`, and Roborazzi diffs.
     ScanMobile {
         #[arg(long)]

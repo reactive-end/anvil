@@ -44,6 +44,7 @@ chrono = { version = "0.4", features = ["serde"] }
 ulid = "1"
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 anvil-core = { path = "crates/anvil-core" }
 anvil-ast = { path = "crates/anvil-ast" }

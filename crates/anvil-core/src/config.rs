@@ -4,6 +4,7 @@ pub mod architecture;
 pub mod docs;
 pub mod orchestrator;
 pub mod prereqs;
+pub mod qa;
 pub mod search;
 pub mod security_guard;
 
@@ -18,6 +19,7 @@ use architecture::ArchitectureConfig;
 use docs::DocsConfig;
 use orchestrator::OrchestratorConfig;
 use prereqs::PrerequisitesConfig;
+use qa::QaConfig;
 use search::SearchConfig;
 use security_guard::SecurityGuardConfig;
 
@@ -302,6 +304,9 @@ pub struct AnvilConfig {
     pub deps_max_age_months: u32,
     #[serde(default)]
     pub qa_driver: QaDriverConfig,
+    /// Web app under test: URL, start command, flows directory, visual diff threshold.
+    #[serde(default, skip_serializing_if = "QaConfig::is_default")]
+    pub qa: QaConfig,
     #[serde(default)]
     pub adapters: AdapterTarget,
     #[serde(default = "default_allowed_escapes")]
@@ -352,6 +357,7 @@ impl Default for AnvilConfig {
             circuit_breaker_limit: default_circuit_breaker_limit(),
             deps_max_age_months: default_deps_max_age_months(),
             qa_driver: QaDriverConfig::default(),
+            qa: QaConfig::default(),
             adapters: AdapterTarget::default(),
             allowed_escapes: default_allowed_escapes(),
             boundaries: Vec::new(),

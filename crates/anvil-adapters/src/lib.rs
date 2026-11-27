@@ -9,6 +9,7 @@ pub mod cursor;
 pub mod inbox;
 pub mod sync;
 pub mod templates;
+pub mod web_qa;
 pub mod windsurf;
 
 /// Crate identifier for workspace smoke checks.

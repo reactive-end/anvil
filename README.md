@@ -260,6 +260,44 @@ Concepts carry two Anvil extensions: `x-anvil-paths` (repo-relative globs of the
 
 Hooks keep it current: after an agent edits a file a concept documents, it gets one reminder per concept per turn; edits of a concept are validated; `Stop` lists concepts whose code changed but which were not refreshed; and `anvil check` reports invalid changed docs as Tier 0 errors and stale concepts as warnings. `anvil docs verify` always asks the user and is refused in orchestrator mode. Config (`.harness/config.json`): `"docs": { "project": "name", "remind_on_edit": true }`.
 
+## Web QA
+
+Agents should verify web changes in a running browser, not by reading the code. Anvil offers two complementary ways.
+
+**Repeatable flows (`anvil qa`).** A flow is a JSON file in `.harness/qa/flows/` (`qa.web.flows_dir`). `anvil qa run --flow <name>` or `--all-flows` runs it in headless Chromium through Playwright, records every request (method, URL, status, resource type, duration) plus console and page errors, judges the expectations in order, and exits 1 on any failed expectation, page error, console error, or visual diff.
+
+```json
+{ "name": "create order", "url": "/", "viewport": "desktop",
+  "steps": [
+    { "goto": "/" },
+    { "wait_for": "table tbody tr" },
+    { "fill": { "selector": "#item", "value": "Widget" } },
+    { "select": { "selector": "#customer", "index": 1 } },
+    { "click": "button[type=submit]" },
+    { "expect_request": { "method": "POST", "url_contains": "/orders", "status": 201 } },
+    { "expect_text": "Widget" },
+    { "expect_visible": "table tbody tr" },
+    { "screenshot": "after-create" }
+  ] }
+```
+
+Steps: `goto`, `wait_for`, `fill {selector, value}`, `select {selector, index | value}`, `click`, `press` (`"Enter"` or `{selector, key}`), `wait_ms` (capped at 10 s), and the expectations `expect_request {method?, url_contains, status?}`, `expect_no_request {url_contains}`, `expect_text`, `expect_visible`, `expect_count {selector, count}`, and `screenshot` (a name, or `{name, selector?, mask?, full_page?}` to capture one element and mask dynamic parts). Selectors are Playwright selectors (CSS, `text=`, `role=`). Relative URLs resolve against `qa.web.url`; `viewport` is `desktop` (1440x900) or `mobile` (390x844); `timeout_ms` changes the per-step timeout (default 10 s). Request expectations look at the traffic since the last `goto`, `click`, or `press` step, and wait for it up to the timeout. A "Failed to load resource" console error caused by a request a passing `expect_request` expects to fail (status 4xx/5xx) does not count as a console error. Unknown steps or keys are rejected with the list of valid ones; `anvil qa flows` lists and validates every file. Playwright is found in the repository or in any app folder one or two levels below it (or `qa.web.start_cwd`).
+
+`anvil qa run [URL]` without `--flow`/`--all-flows` keeps the DOM audit. `--start` runs `qa.web.start_command` in `qa.web.start_cwd`, waits until `url + ready_path` answers, runs, and stops the whole process tree (an app that already answers is left alone). `--json` prints the structured report: step results with the requests each `expect_request` matched, the network log, errors, and screenshot paths under `.harness/.state/qa/<run-id>/`.
+
+**Visual baselines.** `anvil qa baseline [--flow NAME]` runs the flows and stores their `screenshot` steps in `.harness/qa/baseline/<flow>/<name>.png` (only for flows that otherwise passed). Later runs compare each screenshot with its baseline: a pixel counts as changed when a channel differs by more than 8/255, the run fails when the share of changed pixels exceeds `qa.web.diff_threshold` (default `0.01`), a diff PNG is written next to the new screenshot, and a size change fails with both sizes. Screenshots without a baseline only produce a note.
+
+```json
+"qa": { "web": {
+  "url": "http://localhost:5173", "start_command": "npm run dev", "start_cwd": "web",
+  "ready_path": "/", "ready_timeout_secs": 60,
+  "flows_dir": ".harness/qa/flows", "diff_threshold": 0.01, "autostart": false } }
+```
+
+**Tier 2.** When a diff touches UI files and `qa.web.url` is set, `anvil check` probes the URL (2 s). If it answers (or `autostart` is true and `start_command` is set, in which case Anvil starts and stops the app) it runs every flow, or the DOM audit when there are none, and fails Tier 2 on failures with a compact per-flow summary: the failed step and reason, unexpected 4xx/5xx responses, console errors, and visual diff ratios. If the app is not reachable it prints an advisory with the start command and does not fail. The driver `skip` disables it.
+
+**Chrome DevTools MCP.** `anvil qa select-web chrome_dev_tools` (and every `anvil sync` afterwards) registers Google's `chrome-devtools-mcp` as the `chrome-devtools` server in each adapter's MCP config (`.mcp.json`, `.agents/mcp_config.json`, Cursor, Windsurf, Codex) and adds `mcp__chrome-devtools__*` to `orchestrator.executor_tools` when an orchestrator is configured. The command is `npx -y chrome-devtools-mcp@1.14.0 --isolated --headless --no-usage-statistics --no-performance-crux` (`cmd /c npx ...` on Windows, where `npx` is a `.cmd` shim); the version is pinned in `anvil_adapters::web_qa::CHROME_DEVTOOLS_MCP_VERSION`. The flags matter for privacy: the server sends usage statistics to Google unless `--no-usage-statistics` is given, and performance traces look up the visited URLs in the Chrome UX Report unless `--no-performance-crux` is given, which must be off for local apps. `--isolated` uses a temporary browser profile. Changing the driver to anything else removes the entry again; an entry named `chrome-devtools` that Anvil did not write (different arguments) is never changed or removed. The `visual-qa` skill tells agents to use the tools for interactive checks (`take_snapshot` before screenshots, `list_console_messages`, `list_network_requests` to confirm the expected calls, a performance trace for Core Web Vitals) and flows for repeatable ones.
+
 ## Safety Model
 
 Anvil hooks only deny, ask, or stay silent. They never approve a tool call, so the permission system of the host stays in charge. The Security Guard inspects command text (including wrappers, nested shells, substitutions, here-documents, and PowerShell) as a safety net against accidents. It is not a sandbox: scripts on disk and dynamically built commands are outside its reach.

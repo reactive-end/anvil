@@ -45,7 +45,7 @@ pub fn merge_umbrella_config_toml(root: &Path, subrepos: &[(String, PathBuf)]) -
     write_if_changed(&path, &updated)
 }
 
-fn upsert_toml_section(
+pub(crate) fn upsert_toml_section(
     existing: Option<&str>,
     header: &str,
     command_line: &str,
@@ -125,7 +125,7 @@ fn update_existing_section(
     joined
 }
 
-fn find_section_end(lines: &[&str], header_idx: usize) -> usize {
+pub(crate) fn find_section_end(lines: &[&str], header_idx: usize) -> usize {
     let mut depth = 0i32;
     for (idx, line) in lines.iter().enumerate().skip(header_idx + 1) {
         let code = strip_toml_comment(line);
@@ -188,7 +188,7 @@ fn insert_missing_fields(
     inserted
 }
 
-fn is_named_header(line: &str, header: &str) -> bool {
+pub(crate) fn is_named_header(line: &str, header: &str) -> bool {
     strip_toml_comment(line).trim() == header
 }
 
