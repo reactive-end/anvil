@@ -43,6 +43,20 @@ const WRAPPERS: &[&str] = &[
     "runas",
     "strace",
 ];
+/// Options of the package runners that take their value as the next word.
+const RUNNER_VALUE_FLAGS: &[&str] = &[
+    "-p",
+    "--package",
+    "-c",
+    "--call",
+    "--node-options",
+    "--registry",
+    "--cache",
+    "--userconfig",
+    "--shell",
+    "-w",
+    "--workspace",
+];
 const SCRIPT_ARG_WRAPPERS: &[&str] = &["su", "wsl", "ssh", "watch", "parallel", "script"];
 const PRINTERS: &[&str] = &["echo", "printf", "write-output", "write-host"];
 const SEARCHERS: &[&str] = &["rg", "grep", "egrep", "fgrep", "select-string", "sls", "findstr"];
@@ -60,6 +74,9 @@ pub struct Invocation {
     pub fed_by_pipe: bool,
     /// Output is consumed by a pipe or file instead of reaching the terminal.
     pub captured_out: bool,
+    /// How many nested scripts (`bash -c`, substitutions) deep the invocation sits; `0` is the
+    /// command line itself.
+    pub depth: usize,
 }
 
 /// Everything discovered while expanding a command.
@@ -115,6 +132,7 @@ fn expand_segment(seg: &Segment, producer: Option<&Segment>, depth: usize, out: 
         stdin_text: seg.stdin_text.clone(),
         fed_by_pipe: seg.piped_in,
         captured_out: seg.captured_out || depth > 0,
+        depth,
         ..Invocation::default()
     };
     if let Some(text) = producer.and_then(printed_text) {
@@ -160,11 +178,21 @@ fn expand_invocation(inv: Invocation, depth: usize, out: &mut Expansion) {
 /// Tries every non-flag suffix of a wrapper as the wrapped command, independent of flag arity.
 fn expand_wrapped(wrapper: &Invocation, depth: usize, out: &mut Expansion) {
     let parses_script_args = SCRIPT_ARG_WRAPPERS.contains(&wrapper.name.as_str());
-    for (idx, word) in wrapper.args.iter().enumerate() {
+    let runner = runner_args_start(wrapper);
+    let mut value_pending = false;
+    for (idx, word) in wrapper.args.iter().enumerate().skip(runner.unwrap_or(0)) {
         if parses_script_args && word.contains(char::is_whitespace) {
             expand_script(word, depth + 1, out);
         }
+        if runner.is_some() && std::mem::take(&mut value_pending) {
+            continue;
+        }
         if word.starts_with('-') || is_env_assignment(word) {
+            value_pending = runner.is_some() && RUNNER_VALUE_FLAGS.contains(&word.as_str());
+            if runner.is_some() && (word == "-c" || word == "--call") {
+                let call = wrapper.args.get(idx + 1);
+                call.into_iter().for_each(|script| expand_script(script, depth + 1, out));
+            }
             continue;
         }
         let inner = Invocation {
@@ -175,21 +203,33 @@ fn expand_wrapped(wrapper: &Invocation, depth: usize, out: &mut Expansion) {
             stdin_text: wrapper.stdin_text.clone(),
             fed_by_pipe: wrapper.fed_by_pipe || wrapper.name == "xargs",
             captured_out: wrapper.captured_out || wrapper.name == "anvil",
+            depth: wrapper.depth,
         };
         if is_wrapper(&inner) {
             continue;
         }
         let inert = is_inert_text_command(&inner.name, &inner.args);
         expand_invocation(inner, depth, out);
-        if inert {
+        if inert || runner.is_some() {
             break;
         }
+    }
+}
+
+/// Where the package starts in `npx pkg ...`, `bunx pkg ...`, `pnpm dlx pkg ...`, or `yarn dlx pkg ...`.
+/// The package is the program that runs: its own arguments (`install`, `init`) are not commands.
+fn runner_args_start(wrapper: &Invocation) -> Option<usize> {
+    match wrapper.name.as_str() {
+        "npx" | "bunx" => Some(0),
+        "pnpm" | "yarn" if wrapper.args.first().is_some_and(|a| a == "dlx") => Some(1),
+        _ => None,
     }
 }
 
 fn is_wrapper(inv: &Invocation) -> bool {
     WRAPPERS.contains(&inv.name.as_str())
         || (inv.name == "anvil" && inv.args.iter().any(|a| a == "run"))
+        || runner_args_start(inv).is_some()
 }
 
 fn is_interpreter(name: &str) -> bool {

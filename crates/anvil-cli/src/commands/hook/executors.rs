@@ -41,6 +41,12 @@ pub fn brief_scope(dir: &Path, agent_id: &str) -> Option<Vec<String>> {
     raw.lines().rev().filter_map(brief_text).find_map(|text| parse_scope(&text).ok())
 }
 
+/// Whether an executor of the session is still working.
+pub fn any_running(transcript_path: Option<&str>, session_id: Option<&str>) -> bool {
+    subagents_dir(transcript_path, session_id)
+        .is_some_and(|dir| executors(&dir).iter().any(|e| e.running))
+}
+
 /// Every executor of the session, running or not.
 pub fn executors(dir: &Path) -> Vec<Executor> {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -115,6 +121,25 @@ mod tests {
             executors(dir.path()).into_iter().map(|e| (e.agent_id, e.running)).collect();
         found.sort();
         assert_eq!(found, vec![("e1".to_owned(), true), ("e2".to_owned(), false)]);
+    }
+
+    #[test]
+    fn running_executors_of_the_session_are_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript = dir.path().join("abc.jsonl");
+        let transcript = transcript.to_string_lossy();
+        let subagents = dir.path().join("abc").join("subagents");
+        fs::create_dir_all(&subagents).unwrap();
+        let meta = |kind: &str, finished: bool| {
+            serde_json::json!({ "agentType": kind, "finished": finished }).to_string()
+        };
+        assert!(!any_running(Some(&transcript), Some("abc")));
+        fs::write(subagents.join("agent-e1.meta.json"), meta("anvil-executor", true)).unwrap();
+        fs::write(subagents.join("agent-r1.meta.json"), meta("Explore", false)).unwrap();
+        assert!(!any_running(Some(&transcript), Some("abc")), "finished or not executors");
+        fs::write(subagents.join("agent-e2.meta.json"), meta("anvil-executor", false)).unwrap();
+        assert!(any_running(Some(&transcript), Some("abc")));
+        assert!(!any_running(None, Some("abc")));
     }
 
     #[test]

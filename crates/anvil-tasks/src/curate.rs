@@ -14,7 +14,7 @@ use crate::active::{
     mark_summary_recorded_with_files, pending_prompt_path, save_active_task_unlocked,
 };
 use crate::builder::build_root_tasks_json;
-use crate::files::{collect_task_files, is_project_file};
+use crate::files::{collect_task_files, is_git_ignored, is_project_file, without_ignored};
 use crate::identity::{resolve_author, resolve_author_fast};
 use crate::ledger::{append_entry_as, create_task_meta_in_group, task_dir};
 use crate::model::{TaskEntry, TaskMeta, TaskStatus};
@@ -58,7 +58,7 @@ pub fn validate_curated_task_title(raw: &str) -> Result<String> {
 pub fn record_session_edit(repo: &Path, rel_path: &str) -> Result<bool> {
     let norm = rel_path.trim().replace('\\', "/");
     let norm = norm.strip_prefix("./").unwrap_or(&norm);
-    if !is_project_file(norm) {
+    if !is_project_file(norm) || is_git_ignored(repo, norm) {
         return Ok(false);
     }
     with_file_lock(&active_task_lock_path(repo), ACTIVE_TASK_LOCK_TIMEOUT_MS, || {
@@ -97,13 +97,15 @@ pub fn record_session_edit(repo: &Path, rel_path: &str) -> Result<bool> {
     })
 }
 
-/// Loads any untracked session edit paths recorded since the last task decision.
+/// Loads any untracked session edit paths recorded since the last task decision, leaving out
+/// files git ignores even when an older version recorded them.
 pub fn load_untracked_edits(repo: &Path) -> Vec<String> {
     let path = untracked_edits_path(repo);
     if !path.is_file() {
         return Vec::new();
     }
-    read_json_file::<UntrackedEdits>(&path).map(|u| u.files).unwrap_or_default()
+    let files = read_json_file::<UntrackedEdits>(&path).map(|u| u.files).unwrap_or_default();
+    without_ignored(repo, files)
 }
 
 /// Returns when the oldest untracked session edit happened, if any.

@@ -33,6 +33,7 @@ use anvil_core::diff_classifier::{ChangedFile, classify_files};
 use anvil_core::fs_util::with_file_lock;
 use anvil_core::git::{self, DiffScope};
 use anvil_core::locale::Lang;
+use anvil_core::orchestrator_mode;
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
@@ -364,7 +365,10 @@ fn handle_post_tool_use(
         && in_repo
         && let Some(rel) = extract_rel_file(root, input.tool_input.as_ref())
     {
-        task_auto::mark_turn_edit(root);
+        // Gitignored files (sandboxes, build output) are scratch work, not a change to decide on.
+        if !anvil_tasks::is_git_ignored(root, &rel) {
+            task_auto::mark_turn_edit(root);
+        }
         collect_post_tool_messages(root, &rel, config, &mut messages);
         update_graph_after_edit(root, &rel, config);
         match MemoryEngine::open_without_sync(root, "hook") {
@@ -457,10 +461,17 @@ fn handle_stop(
     if !errs.is_empty() {
         return HookOutcome::block_stop(texts::gate_failed(lang, None, &errs));
     }
-    if let Some(block) = task_auto::check_pending_task_summary(root, &changed, lang) {
+    let executors_running = orchestrator_mode::is_enabled(root)
+        && executors::any_running(input.transcript_path.as_deref(), input.session_id.as_deref());
+    if let Some(block) =
+        task_auto::check_pending_task_summary(root, &changed, lang, executors_running)
+    {
         return block;
     }
     let mut messages = Vec::new();
+    if executors_running {
+        messages.extend(task_auto::executor_running_advisory(root));
+    }
     append_stop_advisories(root, config, &changed, lang, &mut messages);
     task_auto::mark_stop_completed(root);
     HookOutcome::with_messages(messages)
@@ -569,7 +580,9 @@ fn check_subrepo_stop_gates(
         if !errs.is_empty() {
             return Some(HookOutcome::block_stop(texts::gate_failed(lang, Some(&rel_sub), &errs)));
         }
-        if let Some(block) = task_auto::check_pending_task_summary(&sub_dir, &sub_changed, lang) {
+        if let Some(block) =
+            task_auto::check_pending_task_summary(&sub_dir, &sub_changed, lang, false)
+        {
             return Some(block);
         }
         task_auto::mark_stop_completed(&sub_dir);

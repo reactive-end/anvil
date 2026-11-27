@@ -1,9 +1,11 @@
 //! Shell policies for orchestrator mode: an allowlist for judging, a denylist for executing.
 
 use super::payload::should_wrap_with_anvil_run;
+use super::roles::orchestrator_cmds::{is_orchestrator_gh, is_orchestrator_git};
+use super::roles::writes::is_discard;
 use super::shell::command_name;
 use super::shell::destructive::split_git_subcommand;
-use super::shell::expand::{Invocation, expand};
+use super::shell::expand::expand;
 use super::shell::lex::{Segment, parse};
 
 const INSPECTORS: &[&str] = &[
@@ -99,6 +101,8 @@ const ANVIL_READERS: &[&str] = &[
     "check", "diff", "grep", "impact", "graph", "mem", "tasks", "stats", "doctor", "deps",
     "context", "code", "run", "sonar", "qa",
 ];
+/// `anvil guard` subcommands that change the security guard; `list` and `test` only read it.
+const GUARD_WRITERS: &[&str] = &["set", "add", "remove", "reset"];
 const KEYWORDS: &[&str] = &["if", "then", "else", "elif", "do", "while", "until", "!"];
 const SELF_FIXING_FLAGS: &[&str] =
     &["--fix", "--write", "--unsafe", "--apply", "--update", "--updatesnapshot", "-u", "--format"];
@@ -159,13 +163,30 @@ fn is_reserved_git(sub: &str) -> bool {
 }
 
 fn is_reserved_anvil(sub: &str, rest: &[String]) -> bool {
+    if asks_for_help(sub, rest) {
+        return false;
+    }
     let mentions = |words: &[&str]| rest.iter().any(|a| words.contains(&a.as_str()));
     matches!(sub, "orchestrator" | "init" | "sync" | "hook")
         || (sub == "plugin" && rest.first().is_none_or(|a| a != "status"))
+        || (sub == "guard" && rest.first().is_some_and(|a| GUARD_WRITERS.contains(&a.as_str())))
         || (sub == "circuit" && mentions(&["reset"]))
         || (sub == "ratchet" && mentions(&["promote"]))
         || (sub == "tasks" && mentions(&["start", "done", "skip", "record"]))
         || (sub == "review" && mentions(&["approve"]))
+}
+
+/// `anvil help ...` and `anvil <subcommand ...> --help|-h` print usage and never write. Words after
+/// `--` belong to a wrapped command, and `anvil run` hands every word after its first to that command.
+fn asks_for_help(sub: &str, rest: &[String]) -> bool {
+    let is_flag = |arg: &String| arg == "--help" || arg == "-h";
+    if sub == "help" {
+        return true;
+    }
+    if sub == "run" {
+        return rest.first().is_some_and(is_flag);
+    }
+    rest.iter().take_while(|arg| *arg != "--").any(is_flag)
 }
 
 /// The reserved `anvil` subcommand in `args`, if any. When the words before the subcommand cannot be
@@ -204,38 +225,6 @@ fn anvil_subcommand(args: &[String]) -> AnvilArgs<'_> {
     AnvilArgs::NoSub
 }
 
-/// Lists the paths `cmd` visibly writes: redirections and operands of file-writing commands.
-pub fn written_paths(cmd: &str) -> Vec<String> {
-    expand(cmd).invocations.iter().flat_map(invocation_writes).collect()
-}
-
-fn invocation_writes(inv: &Invocation) -> Vec<String> {
-    let mut paths: Vec<String> =
-        inv.outputs.iter().filter(|out| !is_discard(out)).cloned().collect();
-    let operands = || inv.args.iter().filter(|a| !a.starts_with('-')).cloned();
-    match inv.name.as_str() {
-        "rm" | "touch" | "tee" | "truncate" | "mkdir" | "rmdir" | "unlink" | "del" | "erase"
-        | "ri" | "remove-item" | "set-content" | "add-content" | "out-file" | "new-item"
-        | "clear-content" => {
-            paths.extend(operands());
-        }
-        "mv" | "move" | "move-item" | "rename-item" => paths.extend(operands()),
-        "cp" | "copy" | "copy-item" | "install" | "ln" => paths.extend(operands().next_back()),
-        "sed" | "perl" if inv.args.iter().any(|a| a.starts_with("-i") || a == "--in-place") => {
-            paths.extend(operands().skip(1));
-        }
-        _ => {}
-    }
-    paths
-}
-
-fn is_discard(out: &str) -> bool {
-    matches!(
-        out.to_ascii_lowercase().as_str(),
-        "/dev/null" | "nul" | "$null" | "1" | "2" | "/dev/stderr" | "/dev/stdout"
-    )
-}
-
 fn is_read_only_segment(seg: &Segment) -> bool {
     let words: Vec<&String> =
         seg.args.iter().skip_while(|w| KEYWORDS.contains(&w.as_str())).collect();
@@ -244,7 +233,8 @@ fn is_read_only_segment(seg: &Segment) -> bool {
     };
     let args: Vec<String> = rest.iter().map(|w| (*w).clone()).collect();
     match command_name(head).as_str() {
-        "git" => is_read_only_git(&args),
+        "git" => is_orchestrator_git(&args, GIT_READERS),
+        "gh" => is_orchestrator_gh(&args),
         "anvil" => is_read_only_anvil(&args),
         "find" => !args.iter().any(|a| {
             a.starts_with("-exec")
@@ -278,37 +268,15 @@ fn is_print_range(script: &str) -> bool {
         && script.chars().all(|c| c.is_ascii_digit() || matches!(c, ',' | '$' | 'p' | ';'))
 }
 
-fn is_read_only_git(args: &[String]) -> bool {
-    let launches = args.iter().any(|a| {
-        a == "-c"
-            || a == "-O"
-            || a == "--ext-diff"
-            || a.starts_with("--output")
-            || a.starts_with("--exec-path")
-            || a.starts_with("--open-files-in-pager")
-    });
-    let Some((sub, rest)) = split_git_subcommand(args) else {
-        return false;
-    };
-    let lists = |allowed: &[&str]| rest.iter().all(|a| allowed.contains(&a.as_str()));
-    let reads = GIT_READERS.contains(&sub)
-        || match sub {
-            "branch" => lists(&["-a", "-r", "-v", "-vv", "--list", "--show-current", "--all"]),
-            "remote" => lists(&["-v", "show", "origin"]),
-            "tag" => lists(&["-l", "--list"]),
-            "stash" => rest.first().is_some_and(|a| a == "list" || a == "show"),
-            "worktree" => rest.first().is_some_and(|a| a == "list"),
-            _ => false,
-        };
-    reads && !launches
-}
-
 fn is_read_only_anvil(args: &[String]) -> bool {
     let (sub, rest) = match anvil_subcommand(args) {
         AnvilArgs::Unparsed => return false,
         AnvilArgs::NoSub => return args.iter().any(|a| a == "--version" || a == "--help"),
         AnvilArgs::Sub(sub, rest) => (sub, rest),
     };
+    if asks_for_help(sub, rest) {
+        return true;
+    }
     match sub {
         "run" => {
             is_verification(&rest.iter().skip_while(|a| a.as_str() == "--").collect::<Vec<_>>())
@@ -316,6 +284,7 @@ fn is_read_only_anvil(args: &[String]) -> bool {
         "orchestrator" | "circuit" | "plugin" => rest.first().is_some_and(|a| a == "status"),
         "ratchet" => rest.first().is_some_and(|a| a != "promote"),
         "checkpoint" | "worktree" => rest.first().is_some_and(|a| a == "list"),
+        "guard" => rest.first().is_some_and(|a| a == "list" || a == "test"),
         sub => ANVIL_READERS.contains(&sub),
     }
 }
@@ -331,172 +300,4 @@ fn is_verification(words: &[&String]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn orchestrator_may_inspect_and_verify_only() {
-        for ok in [
-            "git status",
-            "git diff HEAD~1 -- src | head -50",
-            "git log --oneline | wc -l",
-            "ls -la",
-            "cat a.rs 2>/dev/null",
-            "rg -n foo src && echo done",
-            "sed -n '1,40p' a.rs",
-            "cargo test -p x",
-            "anvil check",
-            "anvil run -- cargo clippy",
-            "anvil diff",
-            "npm test",
-            "find . -name '*.rs'",
-            "git branch --show-current",
-            "echo $(git rev-parse HEAD)",
-            "anvil orchestrator status",
-            "for f in *.rs; do wc -l \"$f\"; done",
-            "Get-Content a.rs | Select-Object -First 5",
-        ] {
-            assert_eq!(why_not_read_only(ok), None, "{ok}");
-        }
-        for bad in [
-            "echo x > a.rs",
-            "cat a >> b",
-            "sed -i s/a/b/ a.rs",
-            "sed -n 'w out' a",
-            "tee a.rs",
-            "cp a b",
-            "python fix.py",
-            "python -c 'open(\"a\",\"w\")'",
-            "bash -c 'echo x > a'",
-            "git commit -m x",
-            "git checkout .",
-            "git apply p",
-            "git -c core.pager=sh log",
-            "git diff --output=a.rs",
-            "anvil orchestrator off",
-            "anvil sync",
-            "cargo clippy --fix",
-            "npx eslint --fix src",
-            "cargo fmt",
-            "npm install",
-            "node x.js",
-            "find . -delete",
-            "find . -exec rm {} +",
-            "echo $(touch a.rs)",
-            "ls; touch a",
-            "anvil run -- touch a.rs",
-            "Set-Content a.rs x",
-            "sort -o a.rs b",
-            "env touch a",
-            "anvil ratchet promote x",
-            "X=1 touch a",
-            "xargs rm",
-            "cat <<EOF > a.rs\nx\nEOF",
-        ] {
-            assert!(why_not_read_only(bad).is_some(), "{bad}");
-        }
-    }
-
-    #[test]
-    fn plugin_changes_are_for_the_user_and_status_is_readable() {
-        assert_eq!(why_not_read_only("anvil plugin status --json"), None);
-        for bad in ["anvil plugin install", "anvil plugin uninstall", "anvil plugin"] {
-            assert!(why_not_read_only(bad).is_some(), "orchestrator: {bad}");
-        }
-        for bad in ["anvil plugin install", "anvil plugin uninstall", "anvil plugin"] {
-            assert!(why_not_executor(bad).is_some(), "executor: {bad}");
-        }
-        assert_eq!(why_not_executor("anvil plugin status"), None);
-        assert_eq!(why_not_executor("anvil plugin status --json"), None);
-    }
-
-    #[test]
-    fn global_options_cannot_hide_a_reserved_anvil_subcommand() {
-        let spellings = [
-            "anvil --root . {}",
-            "anvil --root=. {}",
-            "anvil --no-color {}",
-            "anvil --no-color --root . {}",
-            "anvil --root . --no-color {}",
-            "anvil.exe --root . {}",
-            "./target/debug/anvil --root=x {}",
-            "C:\\tools\\anvil.exe --no-color {}",
-            "/usr/bin/anvil {}",
-            "bash -c 'anvil --root . {}'",
-            "sh -c \"anvil --root=. {}\"",
-            "anvil --unknown {}",
-            "anvil --unknown x {}",
-        ];
-        for tpl in spellings {
-            for reserved in [
-                "orchestrator off",
-                "orchestrator on",
-                "plugin install",
-                "init",
-                "sync",
-                "circuit reset",
-            ] {
-                let cmd = tpl.replace("{}", reserved);
-                assert!(why_not_executor(&cmd).is_some(), "executor: {cmd}");
-                assert!(why_not_read_only(&cmd).is_some(), "orchestrator: {cmd}");
-            }
-            // The orchestrator owns task bookkeeping; only executors are kept away from it.
-            let tasks = tpl.replace("{}", "tasks done T-1");
-            assert!(why_not_executor(&tasks).is_some(), "executor: {tasks}");
-        }
-        for flags_after in [
-            "anvil orchestrator off --root .",
-            "anvil orchestrator --no-color off",
-            "anvil --root . plugin --root . install",
-        ] {
-            assert!(why_not_executor(flags_after).is_some(), "{flags_after}");
-            assert!(why_not_read_only(flags_after).is_some(), "{flags_after}");
-        }
-    }
-
-    #[test]
-    fn global_options_keep_allowed_anvil_commands_allowed() {
-        for ok in [
-            "anvil --root . check",
-            "anvil --root=. check",
-            "anvil --no-color --root . diff",
-            "anvil.exe --root . plugin status",
-        ] {
-            assert_eq!(why_not_executor(ok), None, "executor: {ok}");
-            assert_eq!(why_not_read_only(ok), None, "orchestrator: {ok}");
-        }
-        assert_eq!(why_not_read_only("anvil --version"), None);
-        assert!(why_not_read_only("anvil --unknown check").is_some());
-        assert_eq!(why_not_executor("anvil --unknown check"), None);
-    }
-
-    #[test]
-    fn executor_cannot_take_orchestrator_decisions() {
-        for bad in [
-            "git commit -m x",
-            "sudo git push",
-            "bash -c 'git reset --hard'",
-            "anvil tasks done T-1 x",
-            "anvil review approve T-1 ok",
-            "anvil orchestrator off",
-            "anvil circuit reset",
-        ] {
-            assert!(why_not_executor(bad).is_some(), "{bad}");
-        }
-        for ok in [
-            "git status",
-            "cargo test",
-            "anvil check",
-            "anvil tasks list",
-            "anvil review packet T-1",
-            "anvil run -- npm test",
-        ] {
-            assert_eq!(why_not_executor(ok), None, "{ok}");
-        }
-        assert_eq!(
-            written_paths("echo x > src/a.rs && sed -i s/a/b/ b.rs && cp c d"),
-            vec!["src/a.rs", "b.rs", "d"]
-        );
-        assert_eq!(written_paths("bash -c 'echo x > in.rs'; cargo test 2>&1"), vec!["in.rs"]);
-    }
-}
+mod tests;

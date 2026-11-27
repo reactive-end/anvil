@@ -34,7 +34,7 @@ pub use curate::{
     record_curated_task_in_group, record_curated_task_with_id, record_session_edit,
     record_task_skip, untracked_edits_path, validate_curated_task_title,
 };
-pub use files::{collect_task_files, is_project_file};
+pub use files::{collect_task_files, is_git_ignored, is_project_file, without_ignored};
 pub use identity::{resolve_author, resolve_author_fast};
 pub use import_export::{
     ImportReport, ImportedFeature, ImportedFeatureList, export_feature_list, import_feature_list,

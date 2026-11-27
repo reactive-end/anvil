@@ -5,7 +5,9 @@ use std::path::Path;
 use std::process::Command;
 use std::time::SystemTime;
 
-use anvil_adapters::contract::{HookEvent, HookOutcome, NormalizedHookInput};
+use anvil_adapters::contract::{
+    HookEvent, HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput,
+};
 use anvil_core::locale::Lang;
 use anvil_tasks::ledger::tasks_root;
 use anvil_tasks::{
@@ -140,10 +142,12 @@ fn is_newer(path: &Path, baseline: SystemTime) -> bool {
 /// - Read-only turns, pure docs edits, and `<= 12`-line single-file micro-tweaks pass automatically (`0` tasks).
 /// - Never auto-creates tasks from raw user chat messages.
 /// - On substantive diffs, asks the LLM once to record a curated task, reuse the latest task, or call `task_skip`.
+/// - While an executor of the session is still working, the in-progress task is not closed yet.
 pub fn check_pending_task_summary(
     root: &Path,
     changed: &[String],
     lang: Lang,
+    executors_running: bool,
 ) -> Option<HookOutcome> {
     let project_changes: Vec<&String> =
         changed.iter().filter(|p| !p.starts_with(".harness/") && *p != "tasks.json").collect();
@@ -157,6 +161,9 @@ pub fn check_pending_task_summary(
             return None;
         }
         if st.status == TaskStatus::InProgress && st.summary_recorded_at.is_none() {
+            if executors_running {
+                return None;
+            }
             return Some(HookOutcome::block_stop(super::texts::task_in_progress(
                 lang,
                 &st.task_id,
@@ -192,6 +199,22 @@ pub fn check_pending_task_summary(
     }
 
     Some(HookOutcome::block_stop(build_curation_prompt(root, fresh_changes.len(), lang)))
+}
+
+/// A one-line note, instead of the demand to close the task, while an executor still works on it.
+pub fn executor_running_advisory(root: &Path) -> Option<InboxMessage> {
+    let active = load_active_task(root).ok().flatten()?;
+    (active.status == TaskStatus::InProgress && active.summary_recorded_at.is_none()).then(|| {
+        InboxMessage::new(
+            "anvil-tasks",
+            MessageLevel::Info,
+            format!(
+                "Task {} stays in progress while an executor is running; review it and call `task_done` once the executor finishes.",
+                active.task_id
+            ),
+            None,
+        )
+    })
 }
 
 fn is_trivial_edit_scope(root: &Path, fresh_changes: &[&String]) -> bool {

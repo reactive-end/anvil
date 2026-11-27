@@ -77,7 +77,7 @@ pub enum Command {
     Doctor,
     /// Execute an Antigravity or Claude Code lifecycle hook (`install-git` installs pre-commit hook).
     Hook {
-        /// Hook event name (`session-start`, `pre-tool-use`, `post-tool-use`, `pre-invocation`, `stop`, `install-git`).
+        /// Hook event name (`session-start`, `user-prompt-submit`, `pre-tool-use`, `post-tool-use`, `pre-invocation`, `stop`, `install-git`).
         event: String,
         /// Target adapter (`antigravity` or `claude`).
         #[arg(long, default_value = "antigravity")]

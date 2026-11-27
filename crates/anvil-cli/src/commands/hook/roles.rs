@@ -17,6 +17,11 @@ use super::payload::{
 };
 use super::roles_shell;
 use super::shell::targets::is_scratch_path;
+use writes::{clean, written_paths};
+
+mod cmdlets;
+pub(super) mod orchestrator_cmds;
+pub(super) mod writes;
 
 const EXECUTOR_FORBIDDEN_TOOLS: &[&str] = &[
     "Agent",
@@ -179,8 +184,8 @@ fn check_executor(root: &Path, input: &NormalizedHookInput) -> Option<HookOutcom
         return Some(HookOutcome::deny(format!("Orchestrator mode: {reason}.")));
     }
     let cwd = input.cwd.as_deref().map_or_else(|| root.to_path_buf(), PathBuf::from);
-    roles_shell::written_paths(cmd).into_iter().find_map(|raw| {
-        let abs = cwd.join(&raw);
+    written_paths(cmd).into_iter().find_map(|raw| {
+        let abs = clean(&cwd.join(&raw));
         if !is_within_root(root, &abs) {
             return (!is_scratch_path(&abs.to_string_lossy())).then(|| out_of_scope(&raw, &scope));
         }
