@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 50,
-  "updated_at": "2026-11-27T20:21:23.579755200Z",
+  "task_count": 51,
+  "updated_at": "2026-11-27T20:51:12.923047700Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -936,6 +936,25 @@
       "progress_file": ".harness/tasks/T-050/progress.md",
       "created_at": "2026-11-27T19:50:46.081240400Z",
       "updated_at": "2026-11-27T20:21:23.579755200Z"
+    },
+    {
+      "task_id": "T-051",
+      "request": "Architecture presets: hexagonal, clean, layered, FSD, modular monolith, event-driven",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Added architecture presets (hexagonal, clean, layered, feature-sliced, modular-monolith, event-driven): the style chosen at `anvil init --architecture` or `anvil architecture set` expands into import rules checked in Tier 1 and by `anvil architecture check` (including forbidden framework packages in domain), is detected from folder names, and is stated to agents in the managed instruction blocks and SessionStart.",
+      "evidence": "fmt/clippy PASS; cargo test --workspace PASS; anvil check --scope PASS; sandbox detect -> hexagonal (high confidence)",
+      "entry_count": 3,
+      "files_count": 31,
+      "progress_file": ".harness/tasks/T-051/progress.md",
+      "created_at": "2026-11-27T20:21:56.072300300Z",
+      "updated_at": "2026-11-27T20:51:12.923047700Z"
     }
   ]
 }
