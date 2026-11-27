@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 53,
-  "updated_at": "2026-11-27T23:44:47.425574700Z",
+  "task_count": 54,
+  "updated_at": "2026-11-27T23:50:24.292600600Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -993,6 +993,25 @@
       "progress_file": ".harness/tasks/T-053/progress.md",
       "created_at": "2026-11-27T21:46:11.574961600Z",
       "updated_at": "2026-11-27T23:44:47.425574700Z"
+    },
+    {
+      "task_id": "T-054",
+      "request": "Deflake the deps cache timing test",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "The deps cache timing test now asserts the fastest of 7 steady-state cache-hit samples under 2 ms, with the cache invariants checked on every sample, so parallel test load no longer fails it.",
+      "evidence": "cargo test -p anvil-deps 24 passed in 6 consecutive runs; cargo test --workspace passed twice; anvil check --scope PASS",
+      "entry_count": 3,
+      "files_count": 1,
+      "progress_file": ".harness/tasks/T-054/progress.md",
+      "created_at": "2026-11-27T23:45:00.802556900Z",
+      "updated_at": "2026-11-27T23:50:24.292600600Z"
     }
   ]
 }

@@ -1,0 +1,13 @@
+{
+  "entry_id": "01M8FPNMQ9RDBFNNTWWYC996E2",
+  "task_id": "T-054",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "The deps cache timing test now asserts the fastest of 7 steady-state cache-hit samples under 2 ms, with the cache invariants checked on every sample, so parallel test load no longer fails it.",
+  "evidence": "cargo test -p anvil-deps 24 passed in 6 consecutive runs; cargo test --workspace passed twice; anvil check --scope PASS",
+  "files_touched": [
+    "crates/anvil-deps/tests/audit_tests.rs"
+  ],
+  "timestamp": "2026-11-27T23:50:24.292600600Z"
+}
