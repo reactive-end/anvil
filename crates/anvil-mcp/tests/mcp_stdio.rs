@@ -74,7 +74,8 @@ fn mcp_initialize_and_tools_list() {
     assert_eq!(resps[1].result, Some(json!({})));
 
     let tools = resps[2].result.as_ref().unwrap()["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 25);
+    assert_eq!(tools.len(), 26);
+    assert!(tools.iter().any(|t| t["name"] == "grep"));
     assert!(tools.iter().any(|t| t["name"] == "graph_read_symbol"));
     assert!(tools.iter().any(|t| t["name"] == "context_pack"));
     assert!(tools.iter().any(|t| t["name"] == "code_exec"));

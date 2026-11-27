@@ -11,7 +11,7 @@
    - `anvil check` — Tiered verification (`Tier 0` AST, `Tier 1` impact + typecheck + targeted tests, `Tier 2` visual QA & deps).
    - `anvil run -- <cmd>` — Token-compressed runner (1-line PASS; <= 50-line structured failure; raw log in `.harness/.state/logs/`).
    - `anvil impact <files> --origin <target>` — Blast-radius via `anvil-graph`; fix the true origin, never patch downstream.
-   - `anvil diff` / `anvil grep` — Token-compressed diff and symbol-aware code search.
+   - `anvil diff` — Token-compressed diff. `anvil grep <pattern> [paths] [-i -F -w -g <glob> -C <n> -l]` — fast gitignore-aware code search grouped by file, with each match annotated with its enclosing symbol when a graph exists (`anvil graph build`); also exposed as the MCP `grep` tool.
    - `anvil daemon start|stop|status` & `anvil stats` — Warm background daemon and token/check telemetry.
    - `anvil circuit status|reset` — Stops blind retries after 3 identical failures (`N=3`); escalate and inspect root cause.
    - `anvil tasks start|update|done|resume|verify|record|skip|build` & `anvil mem save|search` — Crash-safe tasks (`tasks/<id>/progress.md` -> `tasks.json`) & persistent memory.

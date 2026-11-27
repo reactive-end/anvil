@@ -5,7 +5,7 @@ pub mod subcmds;
 use std::path::PathBuf;
 
 use clap::builder::styling::{AnsiColor, Effects, Styles};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
@@ -45,6 +45,57 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Command,
+}
+
+/// Arguments of `anvil grep` (ripgrep-style flags, token-bounded output).
+#[derive(Debug, Args)]
+pub struct GrepArgs {
+    /// Regex to search for (literal with `-F`).
+    pub pattern: String,
+    /// Repo-relative files or directories to search (default: the whole repository).
+    pub paths: Vec<String>,
+    /// Always ignore case.
+    #[arg(short = 'i', long)]
+    pub ignore_case: bool,
+    /// Ignore case unless the pattern has an uppercase letter (already the default).
+    #[arg(short = 'S', long)]
+    pub smart_case: bool,
+    /// Match case exactly (disables smart case).
+    #[arg(short = 's', long)]
+    pub case_sensitive: bool,
+    /// Treat the pattern as a literal string.
+    #[arg(short = 'F', long)]
+    pub fixed_strings: bool,
+    /// Match whole words only.
+    #[arg(short = 'w', long = "word-regexp")]
+    pub word: bool,
+    /// Only search files matching this glob (repeatable; prefix `!` to exclude).
+    #[arg(short = 'g', long = "glob")]
+    pub globs: Vec<String>,
+    /// Lines of context around every shown match.
+    #[arg(short = 'C', long, default_value_t = 0)]
+    pub context: usize,
+    /// List matching files with match counts instead of lines.
+    #[arg(short = 'l', long = "files-with-matches")]
+    pub files_only: bool,
+    /// Also search dot-files and dot-directories.
+    #[arg(long)]
+    pub hidden: bool,
+    /// Maximum matches shown across all files.
+    #[arg(long, default_value_t = 50)]
+    pub max_matches: usize,
+    /// Maximum matches shown per file.
+    #[arg(long, default_value_t = 10)]
+    pub max_per_file: usize,
+    /// Approximate token budget of the output.
+    #[arg(long, default_value_t = 1500)]
+    pub max_tokens: usize,
+    /// Print the full report as JSON.
+    #[arg(long)]
+    pub json: bool,
+    /// Search engine: `auto`, `builtin`, or `tgrep` (default: `search.backend` from the config).
+    #[arg(long)]
+    pub backend: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -191,14 +242,8 @@ pub enum Command {
         #[arg(long, default_value_t = 2000)]
         max_tokens: usize,
     },
-    /// Noise-filtered, binary-safe, token-bounded repository grep.
-    Grep {
-        pattern: String,
-        #[arg(long, default_value_t = 50)]
-        max_matches: usize,
-        #[arg(long, default_value_t = 1500)]
-        max_tokens: usize,
-    },
+    /// Fast gitignore-aware code search grouped by file, annotated with the enclosing symbol.
+    Grep(GrepArgs),
     /// Manage the resident local `anvil-graph` TCP daemon.
     Daemon {
         #[command(subcommand)]

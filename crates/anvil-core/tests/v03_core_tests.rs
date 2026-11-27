@@ -254,7 +254,7 @@ fn compressed_grep_skips_noise_binaries_and_oversized_files() {
     write_file(root, ".harness/.worktrees/wt1/sub.ts", b"const findUserToken = 2;\n");
     let clean = compressed_grep(root, "findUserToken", 10, 500).expect("clean gitignore/worktree");
     assert_eq!(clean.matches, res.matches, "ignored dirs, logs, and worktrees must not match");
-    assert_eq!(clean.files_searched, 2, "only src/service.ts and .gitignore are searched");
+    assert_eq!(clean.files_searched, 1, "only src/service.ts is searched; dot-files stay hidden");
 
     let long_match = format!("const findUserToken = \"{}\";\n", "x".repeat(400));
     write_file(root, "src/long.ts", long_match.as_bytes());

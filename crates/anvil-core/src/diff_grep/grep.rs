@@ -1,261 +1,250 @@
-//! Noise-filtered, binary-safe, token-bounded repository grep.
+//! Gitignore-aware, symbol-annotatable, token-bounded repository search.
+//!
+//! Entry points are [`grep`] (backend from `.harness/config.json`) and [`grep_with_backend`]. Results
+//! come back as a [`GrepReport`] that [`render`](crate::diff_grep::render) turns into compact text.
 
-use std::fs::{self, File};
-use std::io::Read;
 use std::path::Path;
 
-use anyhow::{Context, Result};
-use regex::Regex;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::diff_grep::is_noise_file;
-use crate::fs_util::relativize_path;
+use crate::config::AnvilConfig;
+use crate::config::search::SearchBackend;
+use crate::diff_grep::render::render;
+use crate::diff_grep::{builtin, tgrep};
 use crate::stats::estimate_tokens;
 
-const MAX_GREP_FILE_BYTES: u64 = 512 * 1024;
-const IGNORED_DIRS: [&str; 13] = [
-    ".git",
-    "target",
-    "node_modules",
-    "dist",
-    "build",
-    ".next",
-    "vendor",
-    ".venv",
-    "__pycache__",
-    ".dart_tool",
-    ".gradle",
-    ".godot",
-    "coverage",
-];
+/// Characters of rendered output the engine reserves per requested token.
+const CHARS_PER_TOKEN: usize = 4;
+/// Fixed rendering overhead per shown row (line number, indentation, separators).
+const ROW_OVERHEAD: usize = 8;
 
-/// Token-bounded grep output across non-noise repository text files.
+/// Search request. Build with [`GrepOptions::new`] and adjust the public fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CompressedGrep {
-    pub matches: Vec<String>,
+pub struct GrepOptions {
+    /// Regex (or literal when `fixed_strings`) to search for.
+    pub pattern: String,
+    /// Repo-relative files or directories to search; empty searches the whole repository.
+    pub paths: Vec<String>,
+    /// Ripgrep-style glob filters (`*.rs`, `!tests/**`); a positive glob whitelists matching files.
+    pub globs: Vec<String>,
+    /// Always ignore case.
+    pub ignore_case: bool,
+    /// Ignore case unless the pattern has an uppercase letter (default on, ignored with `ignore_case`).
+    pub smart_case: bool,
+    /// Treat `pattern` as a literal string.
+    pub fixed_strings: bool,
+    /// Match whole words only.
+    pub word: bool,
+    /// Also search dot-files and dot-directories (`.github`, `.harness`, `.claude`, `.agents` are always searched).
+    pub hidden: bool,
+    /// Lines of context before and after every shown match.
+    pub context: usize,
+    /// Maximum matches shown across all files.
+    pub max_matches: usize,
+    /// Maximum matches shown per file.
+    pub max_per_file: usize,
+    /// Approximate token budget of the shown output.
+    pub max_tokens: usize,
+    /// List matching files only (with per-file match counts).
+    pub files_only: bool,
+}
+
+impl GrepOptions {
+    /// Creates options for `pattern` with the documented defaults (50 matches, 10 per file, 1500 tokens, smart case).
+    pub fn new(pattern: impl Into<String>) -> Self {
+        Self {
+            pattern: pattern.into(),
+            paths: Vec::new(),
+            globs: Vec::new(),
+            ignore_case: false,
+            smart_case: true,
+            fixed_strings: false,
+            word: false,
+            hidden: false,
+            context: 0,
+            max_matches: 50,
+            max_per_file: 10,
+            max_tokens: 1500,
+            files_only: false,
+        }
+    }
+}
+
+/// One matching line plus its context and (when a code graph is available) enclosing symbol.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LineMatch {
+    pub line: u32,
     pub text: String,
+    pub before: Vec<(u32, String)>,
+    pub after: Vec<(u32, String)>,
+    /// Enclosing symbol such as `fn find_user`; filled by the graph-aware callers.
+    pub symbol: Option<String>,
+}
+
+/// Shown matches of one file; `total` counts every match in the file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileMatches {
+    pub path: String,
+    pub matches: Vec<LineMatch>,
+    pub total: usize,
+}
+
+/// Outcome of a search: shown matches plus exact totals.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GrepReport {
+    pub files: Vec<FileMatches>,
+    /// Exact number of matching lines, even when the shown output is truncated.
     pub total_matches: usize,
+    pub files_with_matches: usize,
     pub files_searched: usize,
     pub truncated: bool,
+    /// Engine that ran: `builtin` or `tgrep`.
+    pub backend: String,
+    /// Why a requested backend was not used, when applicable.
+    pub note: Option<String>,
     pub estimated_tokens_saved: u64,
 }
 
-struct GrepState {
-    matches: Vec<String>,
-    used_chars: usize,
-    char_budget: usize,
-    max_matches: usize,
-    total_matches: usize,
-    files_searched: usize,
-    raw_matched_bytes: usize,
-    truncated: bool,
+/// Per-file search result shared by every backend before caps are applied.
+pub(crate) struct FileHits {
+    pub path: String,
+    pub total: usize,
+    /// At most `max_per_file` matches, in line order.
+    pub matches: Vec<LineMatch>,
+    pub raw_bytes: usize,
 }
 
-/// Searches `repo_root` for `pattern`, skipping ignored dirs, noise files, binaries, and files > 512 KB.
-pub fn compressed_grep(
-    repo_root: &Path,
-    pattern: &str,
-    max_matches: usize,
-    max_tokens: usize,
-) -> Result<CompressedGrep> {
-    let regex = Regex::new(pattern).with_context(|| format!("invalid grep regex: {pattern}"))?;
-    let mut state = GrepState {
-        matches: Vec::new(),
-        used_chars: 0,
-        char_budget: max_tokens.saturating_mul(4),
-        max_matches,
-        total_matches: 0,
-        files_searched: 0,
-        raw_matched_bytes: 0,
-        truncated: false,
-    };
-
-    if repo_root.is_dir() {
-        let ignored = load_gitignore_patterns(repo_root);
-        walk_dir(repo_root, repo_root, &regex, &ignored, &mut state)?;
-    }
-
-    let text = state.matches.join("\n");
-    let estimated_tokens_saved =
-        estimate_tokens(state.raw_matched_bytes).saturating_sub(estimate_tokens(text.len()));
-
-    Ok(CompressedGrep {
-        matches: state.matches,
-        text,
-        total_matches: state.total_matches,
-        files_searched: state.files_searched,
-        truncated: state.truncated,
-        estimated_tokens_saved,
-    })
+/// Searches `root` using the backend configured in `.harness/config.json` (default `auto`).
+pub fn grep(root: &Path, opts: &GrepOptions) -> Result<GrepReport> {
+    let backend = AnvilConfig::load_or_default(root).map(|c| c.search.backend).unwrap_or_default();
+    grep_with_backend(root, opts, backend)
 }
 
-fn walk_dir(
+/// Searches `root` with an explicit `backend`; `tgrep` problems fall back to the built-in engine with a `note`.
+pub fn grep_with_backend(
     root: &Path,
-    dir: &Path,
-    regex: &Regex,
-    gitignore: &[(String, bool)],
-    state: &mut GrepState,
-) -> Result<()> {
-    if state.truncated {
-        return Ok(());
-    }
-    let entries = match fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(()),
+    opts: &GrepOptions,
+    backend: SearchBackend,
+) -> Result<GrepReport> {
+    grep_with_binary(root, opts, backend, tgrep::find_binary().as_deref())
+}
+
+/// Like [`grep_with_backend`] with the `tgrep` executable supplied by the caller (`None` = not installed).
+pub fn grep_with_binary(
+    root: &Path,
+    opts: &GrepOptions,
+    backend: SearchBackend,
+    tgrep_binary: Option<&Path>,
+) -> Result<GrepReport> {
+    let use_tgrep = match backend {
+        SearchBackend::Builtin => false,
+        SearchBackend::Tgrep => true,
+        SearchBackend::Auto => tgrep::auto_eligible(root, tgrep_binary),
     };
-
-    let mut children = Vec::new();
-    for entry in entries.flatten() {
-        children.push(entry.path());
+    if !use_tgrep {
+        return builtin::run(root, opts);
     }
-    children.sort();
+    match tgrep::run(root, opts, tgrep_binary) {
+        Ok(report) => Ok(report),
+        Err(err) => {
+            let mut report = builtin::run(root, opts)?;
+            report.note = Some(format!("tgrep unavailable ({err:#}); used the builtin engine"));
+            Ok(report)
+        }
+    }
+}
 
-    for path in children {
-        if state.truncated {
+/// Running totals while per-file hits are folded into a report.
+#[derive(Default)]
+struct Tally {
+    used: usize,
+    shown: usize,
+    raw_bytes: usize,
+    total_matches: usize,
+    files_with_matches: usize,
+}
+
+/// Applies the per-file, total-match and token caps to sorted per-file hits and builds the report.
+pub(crate) fn assemble(
+    opts: &GrepOptions,
+    hits: Vec<FileHits>,
+    files_searched: usize,
+    backend: &str,
+) -> GrepReport {
+    let budget = opts.max_tokens.saturating_mul(CHARS_PER_TOKEN);
+    let mut tally = Tally::default();
+    let mut files = Vec::new();
+
+    for hit in hits.into_iter().filter(|h| h.total > 0) {
+        tally.total_matches += hit.total;
+        tally.files_with_matches += 1;
+        tally.raw_bytes += hit.raw_bytes;
+        let kept = if opts.files_only {
+            take_listing(opts, budget, &mut tally, &hit.path)
+        } else {
+            take_matches(opts, budget, &mut tally, &hit)
+        };
+        if let Some(matches) = kept {
+            files.push(FileMatches { path: hit.path, matches, total: hit.total });
+        }
+    }
+
+    let items = if opts.files_only { tally.files_with_matches } else { tally.total_matches };
+    let mut report = GrepReport {
+        files,
+        total_matches: tally.total_matches,
+        files_with_matches: tally.files_with_matches,
+        files_searched,
+        truncated: tally.shown < items,
+        backend: backend.to_owned(),
+        note: None,
+        estimated_tokens_saved: 0,
+    };
+    let rendered = render(&report, opts.max_tokens);
+    report.estimated_tokens_saved =
+        estimate_tokens(tally.raw_bytes).saturating_sub(estimate_tokens(rendered.len()));
+    report
+}
+
+/// Files-only mode: one shown item per file, empty match list.
+fn take_listing(
+    opts: &GrepOptions,
+    budget: usize,
+    tally: &mut Tally,
+    path: &str,
+) -> Option<Vec<LineMatch>> {
+    let cost = path.len() + ROW_OVERHEAD;
+    if tally.shown >= opts.max_matches || (tally.shown > 0 && tally.used + cost > budget) {
+        return None;
+    }
+    tally.shown += 1;
+    tally.used += cost;
+    Some(Vec::new())
+}
+
+/// Keeps the matches of one file that fit the per-file, total and token caps.
+fn take_matches(
+    opts: &GrepOptions,
+    budget: usize,
+    tally: &mut Tally,
+    hit: &FileHits,
+) -> Option<Vec<LineMatch>> {
+    let mut kept: Vec<LineMatch> = Vec::new();
+    for m in hit.matches.iter().take(opts.max_per_file) {
+        let header = if kept.is_empty() { hit.path.len() + 1 } else { 0 };
+        let cost = row_cost(m) + header;
+        if tally.shown >= opts.max_matches || (tally.shown > 0 && tally.used + cost > budget) {
             break;
         }
-        let Ok(meta) = fs::symlink_metadata(&path) else {
-            continue;
-        };
-        if meta.file_type().is_symlink() {
-            continue;
-        }
-        let rel = relativize_path(root, &path);
-        if is_gitignored_rel(&rel, gitignore) {
-            continue;
-        }
-        if meta.is_dir() {
-            if should_skip_dir(&path, &rel) {
-                continue;
-            }
-            walk_dir(root, &path, regex, gitignore, state)?;
-        } else if meta.is_file() && meta.len() <= MAX_GREP_FILE_BYTES && !is_noise_file(&rel) {
-            search_file(&path, &rel, regex, state);
-        }
+        tally.shown += 1;
+        tally.used += cost;
+        kept.push(m.clone());
     }
-    Ok(())
+    if kept.is_empty() { None } else { Some(kept) }
 }
 
-fn should_skip_dir(path: &Path, rel: &str) -> bool {
-    if rel == ".harness/.state"
-        || rel.starts_with(".harness/.state/")
-        || rel == ".harness/.worktrees"
-        || rel.starts_with(".harness/.worktrees/")
-    {
-        return true;
-    }
-    path.file_name().and_then(|n| n.to_str()).is_some_and(|name| IGNORED_DIRS.contains(&name))
-}
-
-fn load_gitignore_patterns(root: &Path) -> Vec<(String, bool)> {
-    let Ok(raw) = fs::read_to_string(root.join(".gitignore")) else {
-        return Vec::new();
-    };
-    raw.lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
-                return None;
-            }
-            let anchored = trimmed.starts_with('/');
-            let mut pat = trimmed.trim_start_matches('/').trim_end_matches('/').to_owned();
-            if let Some(stripped) = pat.strip_suffix("/**") {
-                pat = stripped.trim_end_matches('/').to_owned();
-            } else if let Some(stripped) = pat.strip_suffix("/*") {
-                pat = stripped.trim_end_matches('/').to_owned();
-            }
-            if pat.is_empty() {
-                return None;
-            }
-            let single_segment = !anchored && !pat.contains('/');
-            Some((pat, single_segment))
-        })
-        .collect()
-}
-
-fn is_gitignored_rel(rel: &str, patterns: &[(String, bool)]) -> bool {
-    patterns.iter().any(|(pat, single_segment)| match_gitignore_pat(rel, pat, *single_segment))
-}
-
-fn match_gitignore_pat(rel: &str, pat: &str, single_segment: bool) -> bool {
-    if let Some(suffix) = pat.strip_prefix("*.") {
-        return rel.rsplit('/').next().is_some_and(|name| name.ends_with(&format!(".{suffix}")));
-    }
-    if pat.contains(['*', '?', '[']) {
-        return false;
-    }
-    if single_segment {
-        rel.split('/').any(|seg| seg == pat)
-    } else {
-        rel == pat || rel.starts_with(&format!("{pat}/"))
-    }
-}
-
-fn search_file(path: &Path, rel: &str, regex: &Regex, state: &mut GrepState) {
-    let Ok(mut file) = File::open(path) else {
-        return;
-    };
-    let mut buf = Vec::new();
-    if file.read_to_end(&mut buf).is_err() {
-        return;
-    }
-    if buf.contains(&0) {
-        return;
-    }
-    let Ok(content) = std::str::from_utf8(&buf) else {
-        return;
-    };
-
-    state.files_searched = state.files_searched.saturating_add(1);
-    for (idx, line) in content.lines().enumerate() {
-        if !regex.is_match(line) {
-            continue;
-        }
-        state.total_matches = state.total_matches.saturating_add(1);
-        state.raw_matched_bytes = state.raw_matched_bytes.saturating_add(line.len() + 1);
-        let formatted = format!("{rel}:{}: {}", idx + 1, line.trim());
-        push_match(state, formatted);
-    }
-}
-
-fn push_match(state: &mut GrepState, formatted: String) {
-    if state.truncated {
-        return;
-    }
-    if state.matches.len() >= state.max_matches || state.char_budget == 0 {
-        state.truncated = true;
-        return;
-    }
-    let sep = usize::from(!state.matches.is_empty());
-    let remaining = state.char_budget.saturating_sub(state.used_chars + sep);
-    if remaining == 0 || (remaining < 16 && !state.matches.is_empty()) {
-        state.truncated = true;
-        return;
-    }
-    let entry = if formatted.len() > remaining {
-        state.truncated = true;
-        truncate_utf8_ellipsis(&formatted, remaining)
-    } else {
-        formatted
-    };
-    state.used_chars += sep + entry.len();
-    state.matches.push(entry);
-}
-
-fn truncate_utf8_ellipsis(s: &str, max_bytes: usize) -> String {
-    if s.len() <= max_bytes {
-        return s.to_owned();
-    }
-    if max_bytes <= 3 {
-        let mut end = max_bytes.min(s.len());
-        while end > 0 && !s.is_char_boundary(end) {
-            end -= 1;
-        }
-        return s[..end].to_owned();
-    }
-    let mut end = (max_bytes - 3).min(s.len());
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}...", &s[..end])
+fn row_cost(m: &LineMatch) -> usize {
+    let context: usize = m.before.iter().chain(&m.after).map(|(_, t)| t.len() + ROW_OVERHEAD).sum();
+    m.text.len() + ROW_OVERHEAD + context
 }

@@ -1,10 +1,20 @@
 //! Compressed, noise-filtered diff and grep utilities for token-bounded context.
 
+mod builtin;
+mod compat;
 pub mod diff;
 pub mod grep;
+mod paths;
+mod render;
+pub mod tgrep;
+mod tgrep_parse;
 
+pub use compat::{CompressedGrep, compressed_grep};
 pub use diff::{CompressedDiff, compress_diff};
-pub use grep::{CompressedGrep, compressed_grep};
+pub use grep::{
+    FileMatches, GrepOptions, GrepReport, LineMatch, grep, grep_with_backend, grep_with_binary,
+};
+pub use render::render;
 
 const NOISE_EXACT_NAMES: [&str; 10] = [
     "Cargo.lock",

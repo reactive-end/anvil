@@ -1,4 +1,4 @@
-//! Unified stdio MCP server exposing `graph_*` and `mem_*` tools.
+//! Unified stdio MCP server exposing `graph_*`, `grep`, `mem_*`, `task_*`, and `review_*` tools.
 
 pub mod proxy;
 pub mod router;
@@ -7,6 +7,7 @@ pub mod tools_codemode;
 pub mod tools_graph;
 pub mod tools_memory;
 pub mod tools_review;
+pub mod tools_search;
 pub mod tools_tasks;
 pub mod transport;
 

@@ -1,6 +1,7 @@
 //! Schema and persistence for `.harness/config.json`.
 
 pub mod orchestrator;
+pub mod search;
 pub mod security_guard;
 
 use std::fs;
@@ -11,6 +12,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use orchestrator::OrchestratorConfig;
+use search::SearchConfig;
 use security_guard::SecurityGuardConfig;
 
 /// Target AI coding assistants whose adapter files are synchronized by `anvil init` / `anvil sync`.
@@ -312,6 +314,9 @@ pub struct AnvilConfig {
     /// Destructive-command policy of the `PreToolUse` security guard.
     #[serde(default)]
     pub security_guard: SecurityGuardConfig,
+    /// Engine behind `anvil grep` and the MCP `grep` tool.
+    #[serde(default)]
+    pub search: SearchConfig,
     /// Orchestrator/executor model pair; absent until `anvil orchestrator setup` runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orchestrator: Option<OrchestratorConfig>,
@@ -340,6 +345,7 @@ impl Default for AnvilConfig {
             duplication_min_lines: None,
             token_guard: TokenGuardConfig::default(),
             security_guard: SecurityGuardConfig::default(),
+            search: SearchConfig::default(),
             orchestrator: None,
             language: None,
         }

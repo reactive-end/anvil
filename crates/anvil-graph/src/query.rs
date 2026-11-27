@@ -1,5 +1,6 @@
-//! Token-scored BM25 graph query and structural tracing re-exports.
+//! Token-scored BM25 graph query, enclosing-symbol lookup, and structural tracing re-exports.
 
+mod enclosing;
 mod origin;
 mod outline;
 mod symbol_read;
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{CodeGraph, NodeId, NodeKind};
 
+pub use enclosing::{annotate_grep_report, enclosing_symbol, symbol_label};
 pub use origin::{OriginResult, find_origin};
 pub use outline::{FileOutline, OutlineSymbol, RepoOutline, outline};
 pub use symbol_read::{SymbolSlice, read_symbol};

@@ -57,7 +57,7 @@ Tracks tasks with short sequential codes (`T-001`, `T-002`, ...) or 1-level grou
 
 ### 8. Adapters, MCP Server & CLI (`anvil-adapters`, `anvil-mcp`, `anvil-cli`)
 - **Thin Adapters (`anvil-adapters`):** translate lifecycle hooks (`SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `Stop`), **Security Guard**, **Token Guard**, **Availability Guard** (gracefully skips `anvil:managed` blocks when `anvil` is absent from `PATH`), and synced configs/rules for Antigravity, Claude Code, Cursor, Windsurf, and Codex (including thin-umbrella multi-repo routing).
-- **Unified MCP Server (`anvil-mcp`):** exposes 23 code-graph, memory, task, review, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
+- **Unified MCP Server (`anvil-mcp`):** exposes 26 code-graph, search, memory, task, review, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
 - **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), a Claude Code orchestrator/executor model pair (`anvil orchestrator`), diagnostics (`anvil doctor`), and an optional resident TCP daemon.
 
 ## Install
@@ -132,6 +132,24 @@ anvil review list --since 7
 anvil sonar status
 anvil doctor
 ```
+
+## Code Search
+
+`anvil grep <pattern> [paths]...` and the MCP `grep` tool search the repository with ripgrep's own crates (`ignore`, `grep-regex`, `grep-searcher`). Nested `.gitignore` and `.ignore` files, negations, and global git excludes are honoured, binaries and files over 512 KB are skipped, and hidden files are skipped unless `--hidden` is passed (`.github/`, `.claude/`, and `.agents/` are always searched, and so are `.harness/docs/`, `.harness/rules/`, `.harness/skills/`, and `.harness/config.json`; the `.harness/` ledgers `tasks/`, `memory/`, and `candidates/` and the runtime `.state/` and `.worktrees/` are never searched). Lockfiles, minified bundles, and generated directories stay out, as in the other Anvil commands.
+
+Results are grouped by file in a token budget (`--max-tokens`, `--max-matches`, `--max-per-file`), and the footer reports the exact totals even when the listing is cut. When a code graph exists (`anvil graph build`), every match shows its enclosing symbol, for example `42: return find_user(id)  [fn handle_request]`. Flags: `-i`, `-s/--case-sensitive` (smart case is the default), `-F`, `-w`, `-g <glob>` (repeatable), `-C <n>`, `-l`, `--hidden`, `--json`, `--backend`. Exit status is 0 with matches, 1 without, and 2 on error.
+
+The engine is chosen with `search.backend` in `.harness/config.json` (`--backend` overrides it per call):
+
+```json
+{ "search": { "backend": "auto" } }
+```
+
+- `builtin`: the engine described above.
+- `tgrep`: use [Microsoft tgrep](https://github.com/microsoft/tgrep) (trigram index, ripgrep-compatible `--json`). Anvil applies its own noise filter, caps, and budget to the results. When `tgrep` is missing or fails, the built-in engine answers and the report carries a note.
+- `auto` (default): use `tgrep` only when it is on `PATH`, `<repo>/.tgrep/` exists, and `tgrep status` reports a running server with an active file watcher for the repository, so results are fresh. Otherwise the built-in engine runs.
+
+Anvil never builds a `.tgrep/` index or starts `tgrep serve`; run `tgrep serve` yourself on large repositories to get indexed search. Without a running server, `tgrep` results can lag file changes. Both backends apply the same hidden-file rules.
 
 ## Safety Model
 

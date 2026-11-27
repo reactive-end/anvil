@@ -1,17 +1,40 @@
-//! JSON Schema definitions for all 25 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_*` MCP tools.
+//! JSON Schema definitions for all 26 unified `graph_*`, `context_pack`, `grep`, `code_exec`, `mem_*`, `task_*`, and `review_*` MCP tools.
 
 use serde_json::{Value, json};
 
-/// Returns JSON Schema definitions for all 25 unified `graph_*`, `context_pack`, `code_exec`, `mem_*`, `task_*`, and `review_*` tools.
+/// Returns JSON Schema definitions for all 26 unified `graph_*`, `context_pack`, `grep`, `code_exec`, `mem_*`, `task_*`, and `review_*` tools.
 pub fn tool_definitions() -> Vec<Value> {
     let mut tools = graph_core_schemas();
     tools.extend(graph_inspect_schemas());
+    tools.push(grep_schema());
     tools.push(code_exec_schema());
     tools.extend(memory_tool_schemas());
     tools.extend(task_tool_schemas());
     tools.push(review_log_schema());
     tools.extend(review_gate_schemas());
     tools
+}
+
+fn grep_schema() -> Value {
+    tool_schema(
+        "grep",
+        "Fast code search (ripgrep engine, gitignore-aware) with results grouped by file and annotated with the enclosing symbol; use after graph_query/graph_outline for exact text.",
+        json!({
+            "type": "object",
+            "properties": {
+                "pattern": { "type": "string", "description": "Regex to search for (literal when `fixed_strings`); lowercase patterns match case-insensitively." },
+                "paths": { "type": "array", "items": { "type": "string" }, "description": "Repo-relative files or directories to search (default: whole repository)." },
+                "glob": { "description": "Ripgrep-style glob or list of globs, e.g. `*.rs` or `!tests/**`.", "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+                "ignore_case": { "type": "boolean", "default": false },
+                "fixed_strings": { "type": "boolean", "default": false },
+                "word": { "type": "boolean", "default": false, "description": "Match whole words only." },
+                "context": { "type": "integer", "minimum": 0, "maximum": 10, "default": 0, "description": "Context lines around each match." },
+                "max_matches": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 },
+                "max_tokens": { "type": "integer", "minimum": 100, "maximum": 16000, "default": 1500 }
+            },
+            "required": ["pattern"]
+        }),
+    )
 }
 
 fn review_log_schema() -> Value {

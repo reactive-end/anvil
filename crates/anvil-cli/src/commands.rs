@@ -104,9 +104,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Qa { sub } => qa::execute(&root, sub),
         Command::Context { sub } => context::execute(&root, sub),
         Command::Diff { max_lines, max_tokens } => diff::execute(&root, max_lines, max_tokens),
-        Command::Grep { pattern, max_matches, max_tokens } => {
-            grep::execute(&root, &pattern, max_matches, max_tokens)
-        }
+        Command::Grep(args) => grep::execute(&root, &args),
         Command::Daemon { sub } => daemon::execute(&root, sub),
         Command::Stats { reset, trajectories } => stats::execute(&root, reset, trajectories),
         Command::Orchestrator { sub } => orchestrator::execute(&root, sub),
