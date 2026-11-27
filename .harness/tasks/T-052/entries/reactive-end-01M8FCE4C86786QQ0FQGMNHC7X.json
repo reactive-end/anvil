@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FCE4C86786QQ0FQGMNHC7X",
+  "task_id": "T-052",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "`.harness/qa/flows/*.json` scripted browser flows (goto/fill/click/expect text/expect request method+url+status/screenshot) run through Playwright with captured network, console and page errors; `anvil qa baseline` + pixel diff; Tier 2 runs flows when UI changed and the app is reachable; `qa select-web chrome_dev_tools` registers a pinned, privacy-safe chrome-devtools-mcp in every adapter's MCP config and grants it to executors.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T20:51:32.403537600Z"
+}

@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 51,
-  "updated_at": "2026-11-27T20:51:12.923047700Z",
+  "task_count": 52,
+  "updated_at": "2026-11-27T21:43:02.320864Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -955,6 +955,25 @@
       "progress_file": ".harness/tasks/T-051/progress.md",
       "created_at": "2026-11-27T20:21:56.072300300Z",
       "updated_at": "2026-11-27T20:51:12.923047700Z"
+    },
+    {
+      "task_id": "T-052",
+      "request": "Web QA flows with network assertions, visual baselines and Chrome DevTools MCP registration",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Added web QA flows: JSON browser flows with request, text, visibility and count expectations run through Playwright with the network log captured, visual baselines with pixel diffs, `anvil qa run --flow/--all-flows/--start`, `qa baseline`, `qa flows`, a Tier 2 web QA step for UI changes, and a pinned privacy-safe Chrome DevTools MCP registration for every adapter.",
+      "evidence": "fmt/clippy PASS; cargo test --workspace 818 passed; anvil check --scope PASS; sandbox e2e: create-order 10/10 (POST /orders 201), invalid-quantity 9/9 (400 + banner), baseline rerun no diff, forced 200 expectation exits 1",
+      "entry_count": 3,
+      "files_count": 31,
+      "progress_file": ".harness/tasks/T-052/progress.md",
+      "created_at": "2026-11-27T20:51:32.268941800Z",
+      "updated_at": "2026-11-27T21:43:02.320864Z"
     }
   ]
 }
