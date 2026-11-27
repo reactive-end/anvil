@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 49,
-  "updated_at": "2026-11-27T19:50:35.690308600Z",
+  "task_count": 50,
+  "updated_at": "2026-11-27T20:21:23.579755200Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -917,6 +917,25 @@
       "progress_file": ".harness/tasks/T-049/progress.md",
       "created_at": "2026-11-27T19:26:36.187688800Z",
       "updated_at": "2026-11-27T19:50:35.690308600Z"
+    },
+    {
+      "task_id": "T-050",
+      "request": "Project prerequisites: detection, anvil prereqs check and standard init.sh wrappers",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Added project prerequisites: `anvil prereqs detect|check|script` (and `anvil doctor --prereqs`) detect runtimes and tools with versions from project files, check env files, MCP servers and leaked connection strings, and generate init.sh/init.ps1 wrappers; anvil init stores the detection.",
+      "evidence": "fmt/clippy PASS; cargo test --workspace PASS (41 crate + 10 e2e tests); anvil check --scope PASS; sandbox check flagged the missing orders-web/.env",
+      "entry_count": 3,
+      "files_count": 53,
+      "progress_file": ".harness/tasks/T-050/progress.md",
+      "created_at": "2026-11-27T19:50:46.081240400Z",
+      "updated_at": "2026-11-27T20:21:23.579755200Z"
     }
   ]
 }

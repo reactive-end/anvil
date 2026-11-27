@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F8YVMMPEW5ZETWDN6NPTV1",
+  "task_id": "T-050",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "New anvil-prereqs crate detects required tools and versions (node, python, java, rust, go, dart, php, terraform, docker, sonar-scanner, uv, gh, Android), env keys from .env.example, MCP servers in .mcp.json (resolvable commands, archived packages, inline credentials) and secrets in agent configs; `anvil prereqs detect|check|script`, `anvil doctor --prereqs`, init stores the detected list per project/subrepo.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T19:50:46.204553500Z"
+}

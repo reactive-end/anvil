@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F8YVJ48B9BBR07HNNCAAQ4",
+  "task_id": "T-050",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: Project prerequisites: detection, anvil prereqs check and standard init.sh wrappers",
+  "files_touched": [],
+  "timestamp": "2026-11-27T19:50:46.123896200Z"
+}
