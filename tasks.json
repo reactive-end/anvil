@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 46,
-  "updated_at": "2026-11-27T18:34:32.325721800Z",
+  "task_count": 47,
+  "updated_at": "2026-11-27T19:13:21.267487Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -860,6 +860,25 @@
       "progress_file": ".harness/tasks/T-046/progress.md",
       "created_at": "2026-11-27T18:06:45.529227600Z",
       "updated_at": "2026-11-27T18:34:32.325721800Z"
+    },
+    {
+      "task_id": "T-047",
+      "request": "Living OKF documentation per project and module under .harness/docs",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Added living OKF v0.3 documentation: one bundle per project under .harness/docs, module concepts with x-anvil-paths and synced commit, validation, drift detection, graph scaffold with a regenerated outline block, search, `anvil docs init|new|scaffold|list|check|refresh|verify|search`, edit reminders and Stop advisories, Tier 0 doc diagnostics, and a living-docs skill.",
+      "evidence": "fmt PASS; clippy PASS; cargo test --workspace PASS; docs_e2e 13/13 five runs; anvil check Tier0/Tier1 PASS, Tier2 deps false positive (pre-existing)",
+      "entry_count": 3,
+      "files_count": 57,
+      "progress_file": ".harness/tasks/T-047/progress.md",
+      "created_at": "2026-11-27T18:35:14.366008500Z",
+      "updated_at": "2026-11-27T19:13:21.267487Z"
     }
   ]
 }
