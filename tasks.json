@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 48,
-  "updated_at": "2026-11-27T19:26:12.740245Z",
+  "task_count": 49,
+  "updated_at": "2026-11-27T19:50:35.690308600Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -898,6 +898,25 @@
       "progress_file": ".harness/tasks/T-048/progress.md",
       "created_at": "2026-11-27T19:13:37.831369800Z",
       "updated_at": "2026-11-27T19:26:12.740245Z"
+    },
+    {
+      "task_id": "T-049",
+      "request": "Search cascade: graph, then docs, then code, enforced once per turn",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Lookups now follow graph -> docs -> code: `anvil search` / MCP `search` run the cascade with code as a fallback, the MCP server states the order on initialize, and PreToolUse answers the first code search of each turn (per agent) with the graph and docs results; search.cascade = enforce|advise|off.",
+      "evidence": "fmt/clippy PASS; cargo test --workspace PASS; anvil check --scope PASS; anvil search outputs verified on repo; guard ~10 ms in release in-process",
+      "entry_count": 3,
+      "files_count": 32,
+      "progress_file": ".harness/tasks/T-049/progress.md",
+      "created_at": "2026-11-27T19:26:36.187688800Z",
+      "updated_at": "2026-11-27T19:50:35.690308600Z"
     }
   ]
 }

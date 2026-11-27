@@ -1,0 +1,6 @@
+{
+  "task_id": "T-049",
+  "created_by": "reactive-end",
+  "request": "Search cascade: graph, then docs, then code, enforced once per turn",
+  "created_at": "2026-11-27T19:26:36.187688800Z"
+}

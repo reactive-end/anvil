@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F7JKQC4CT0FR8CWWFMN0KZ",
+  "task_id": "T-049",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "`anvil search` and MCP `search` run graph query -> docs search -> code grep fallback in one budget; PreToolUse answers the first code search of a turn (Grep/Glob tools, MCP grep, shell rg/grep/findstr/Select-String/anvil grep) with the graph+docs results when neither was consulted yet; search.cascade = enforce|advise|off; MCP instructions and templates describe the order.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T19:26:36.309359300Z"
+}

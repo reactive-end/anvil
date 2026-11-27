@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F7JKMYMYTJW74DQPW8YZD4",
+  "task_id": "T-049",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: Search cascade: graph, then docs, then code, enforced once per turn",
+  "files_touched": [],
+  "timestamp": "2026-11-27T19:26:36.227348700Z"
+}
