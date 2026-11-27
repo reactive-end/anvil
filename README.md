@@ -103,6 +103,36 @@ Anvil hooks only deny, ask, or stay silent. They never approve a tool call, so t
 
 Tier 1 has a latency target (`tier_budgets.tier1_secs`) and a separate hard limit per process (`tier_budgets.tier1_timeout_secs`, 300 by default). Runs that hit the limit are reported as `TIMEOUT`.
 
+## Security Guard
+
+The guard checks every shell command (and, for MCP tools other than `mcp__anvil__*`, the `cli_command`, `command`, `cmd`, `script`, `sql`, `query`, and `statement` fields) before it runs and sorts risky ones into categories. Each category has a decision, `ask`, `deny`, or `allow`, kept in the `security_guard` section of `.harness/config.json`:
+
+| Category | Covers | Default |
+|----------|--------|---------|
+| `cloud` | `aws`, `gcloud`, `gsutil`, `az` deletions (`terminate-*`, `delete-*`, `s3 rb`, `s3 rm`, `projects delete`, ...) | `deny` |
+| `infra` | `terraform`/`tofu`/`terragrunt destroy`, `state rm`, `apply -auto-approve`, `pulumi`, `cdk`, `serverless`, `sam`, `helm`, `kubectl delete`/`drain` | `deny` |
+| `disk` | `mkfs`, `dd` onto a device, `wipefs`, `diskpart` | `deny` |
+| `containers` | `docker`/`podman` `system prune`, `volume rm`, `compose down -v`, forced bulk removal | `ask` |
+| `database` | `DROP`, `TRUNCATE`, `DELETE` without `WHERE`, `ALTER TABLE ... DROP`, Mongo `dropDatabase()`, Redis `FLUSHALL` | `ask` |
+| `git` | `reset --hard`, force pushes (including `--force-with-lease`), `clean -f`, `branch -D` | `ask` |
+| `filesystem` | recursive deletion of the root, home, `.git`, or paths outside the repository | `ask` |
+| `secrets` | reading or copying `.env`, keys, and credential files | `ask` |
+| `opaque` | piped downloads, encoded or deeply nested shell code that cannot be inspected | `ask` |
+
+Custom regexes are matched against the raw command text. Precedence is `deny_patterns`, then `allow_patterns`, then `ask_patterns`, then the category decision, and `allow` makes the guard stay silent. Anchor patterns (`^terraform destroy -target=module\.sandbox$`), because a chained command is matched as a whole. An invalid regex is ignored when the hook runs and flagged by `anvil guard list`.
+
+```bash
+anvil guard list                       # decision per category and custom patterns
+anvil guard set cloud ask              # ask | deny | allow
+anvil guard add deny '^kubectl apply'  # also: ask, allow; anvil guard remove <regex>
+anvil guard reset                      # back to the defaults
+anvil guard test "aws s3 rb s3://b"    # decision, category, and reason; runs nothing
+```
+
+The writers keep every other key of `.harness/config.json` and refresh `permissions.deny` / `permissions.ask` in `.claude/settings.json` (`anvil sync` does the same) with a fixed list of Anvil-managed `Bash(<command>:*)` rules, for example `Bash(aws ec2 terminate-instances:*)` or `Bash(terraform destroy:*)`. Rules outside that list are never touched.
+
+The agent cannot relax its own guard: `anvil guard set|add|remove|reset` and edits of `.harness/config.json` that touch `security_guard` always ask, whatever the configuration says, and in orchestrator mode those subcommands are reserved (`guard list` and `guard test` stay readable). The guard inspects command text only, so scripts on disk and dynamically built commands escape it. Only Claude Code and Antigravity run the hook; Codex, Cursor, and Windsurf have no hooks, so there the guard does nothing.
+
 ## Orchestrator Mode
 
 While the mode is on, Anvil hooks enforce the roles in Claude Code. The main thread inspects, verifies, and delegates, but cannot edit files or write through the shell. `anvil-executor` is the only role that writes, limited to the `SCOPE:` paths of its own latest brief, and cannot commit, manage tasks, or spawn agents. Several executors can run at once: each one's scope is read from its own Claude Code transcript, a brief whose scope overlaps a running or starting executor is refused, and `anvil check --scope <paths>` verifies one executor's files. Agents cannot turn the mode off. File tools and visible shell writes are checked; a program the executor runs can still write elsewhere, so the orchestrator reviews the diff. Reviews are mandatory and cheap: `anvil review packet` (MCP `review_packet`) prints a compact digest of a task's change (files with line and test-assertion counts, the last check result, a review checklist, and a token-capped diff), and `anvil review approve <task> "<what you verified>"` approves it. The approval is bound to the content of the task's files, `task_done` is refused until the current content is approved, any later edit needs a new review, and executors cannot approve. Executors load only the tools they need to search, edit, build, test, and read docs, plus the Anvil MCP tools, which keeps each one's starting context small; `anvil orchestrator tools` lists the MCP servers Claude Code is configured with (project, local, user, and enabled plugins) and stores the ones you pick in `orchestrator.executor_tools`; `--add` also takes servers the desktop app adds by itself. The mode is enforced in Claude Code only; other tools working in the same repository are not affected.

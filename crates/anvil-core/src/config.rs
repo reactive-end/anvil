@@ -1,6 +1,7 @@
 //! Schema and persistence for `.harness/config.json`.
 
 pub mod orchestrator;
+pub mod security_guard;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,6 +11,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use orchestrator::OrchestratorConfig;
+use security_guard::SecurityGuardConfig;
 
 /// Target AI coding assistants whose adapter files are synchronized by `anvil init` / `anvil sync`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -307,6 +309,9 @@ pub struct AnvilConfig {
     pub duplication_min_lines: Option<usize>,
     #[serde(default)]
     pub token_guard: TokenGuardConfig,
+    /// Destructive-command policy of the `PreToolUse` security guard.
+    #[serde(default)]
+    pub security_guard: SecurityGuardConfig,
     /// Orchestrator/executor model pair; absent until `anvil orchestrator setup` runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orchestrator: Option<OrchestratorConfig>,
@@ -334,6 +339,7 @@ impl Default for AnvilConfig {
             sonar: SonarConfig::default(),
             duplication_min_lines: None,
             token_guard: TokenGuardConfig::default(),
+            security_guard: SecurityGuardConfig::default(),
             orchestrator: None,
             language: None,
         }

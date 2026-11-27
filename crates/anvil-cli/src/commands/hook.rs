@@ -7,7 +7,7 @@ pub mod git_install;
 mod payload;
 mod roles;
 mod roles_shell;
-mod security_guard;
+pub mod security_guard;
 mod session_scope;
 mod shell;
 mod task_auto;
@@ -284,7 +284,7 @@ fn run_pre_tool_guards(
     config: &AnvilConfig,
     input: &NormalizedHookInput,
 ) -> Option<HookOutcome> {
-    security_guard::check_security_guard(root, input)
+    security_guard::check_security_guard(root, &config.security_guard, input)
         .or_else(|| token_guard::check_read_token_guard(root, config, input))
         .or_else(|| token_guard_shell::check_shell_token_guard(root, config, input))
 }

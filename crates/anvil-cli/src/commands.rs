@@ -11,6 +11,7 @@ pub mod diff;
 pub mod doctor;
 pub mod graph;
 pub mod grep;
+pub mod guard;
 pub mod hook;
 pub mod impact;
 pub mod init;
@@ -98,6 +99,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Tasks { sub } => tasks::execute(&root, sub),
         Command::Ratchet { sub } => ratchet::execute(&root, sub),
         Command::Circuit { sub } => circuit::execute(&root, sub),
+        Command::Guard { sub } => guard::execute(&root, sub),
         Command::Deps { all, manifests } => deps::execute(&root, all, &manifests),
         Command::Qa { sub } => qa::execute(&root, sub),
         Command::Context { sub } => context::execute(&root, sub),

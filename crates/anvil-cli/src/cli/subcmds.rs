@@ -307,6 +307,36 @@ pub enum CircuitSubcmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum GuardSubcmd {
+    /// Show the decision per category and the custom patterns (invalid regexes are marked).
+    List,
+    /// Set the decision of a category (`git`, `filesystem`, `disk`, `database`, `cloud`, `infra`,
+    /// `containers`, `secrets`, `opaque`) to `ask`, `deny`, or `allow`.
+    Set { category: String, decision: String },
+    /// Add a regex that resolves matching commands to `ask`, `deny`, or `allow`.
+    Add {
+        decision: String,
+        #[arg(allow_hyphen_values = true)]
+        pattern: String,
+    },
+    /// Remove a regex from every pattern list.
+    Remove {
+        #[arg(allow_hyphen_values = true)]
+        pattern: String,
+    },
+    /// Restore the default decisions and drop every custom pattern.
+    Reset,
+    /// Print the decision, category, and reason for a command without running it.
+    Test {
+        #[arg(allow_hyphen_values = true)]
+        command: String,
+        /// Tool name the command would arrive from (`Bash`, `mcp__aws__call_aws`, `Read`, ...).
+        #[arg(long)]
+        tool: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum QaSubcmd {
     /// Detect UI platform and display onboarding driver options.
     Onboard,

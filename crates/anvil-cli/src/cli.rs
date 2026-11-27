@@ -10,8 +10,8 @@ use clap::{Parser, Subcommand};
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
     CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd,
-    MemSubcmd, OrchestratorSubcmd, PluginSubcmd, QaSubcmd, RatchetSubcmd, ReviewSubcmd,
-    SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
+    GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd, QaSubcmd, RatchetSubcmd,
+    ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -160,6 +160,11 @@ pub enum Command {
     Circuit {
         #[command(subcommand)]
         sub: CircuitSubcmd,
+    },
+    /// Inspect and configure the security guard for destructive commands (cloud, infra, SQL, git).
+    Guard {
+        #[command(subcommand)]
+        sub: GuardSubcmd,
     },
     /// Audit dependencies for deprecation or staleness across npm/PyPI/pub.dev/Maven/Cargo/Composer.
     Deps {
