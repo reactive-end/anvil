@@ -38,6 +38,8 @@ pub fn parse_libs_versions_toml(manifest_path: &str, content: &str) -> Result<Ve
                 name: coord,
                 version_req: version,
                 manifest_path: manifest_path.to_owned(),
+                resolved_version: None,
+                lockfile: None,
             });
         }
     }
@@ -82,6 +84,8 @@ fn parse_gradle_script(manifest_path: &str, content: &str) -> Result<Vec<Depende
                 name: coord,
                 version_req,
                 manifest_path: manifest_path.to_owned(),
+                resolved_version: None,
+                lockfile: None,
             });
         }
     }
@@ -144,6 +148,7 @@ pub fn parse_maven_search_json(package: &str, body: &str) -> Result<PackageHealt
         archived: false,
         repository_url: Some("https://central.sonatype.com/".to_owned()),
         vulnerabilities: Vec::new(),
+        informational: Vec::new(),
     })
 }
 

@@ -117,6 +117,9 @@ pub(crate) fn evaluate_health(
     if !info.vulnerabilities.is_empty() {
         issues.push(DepIssueKind::Vulnerable);
     }
+    if !info.informational.is_empty() {
+        issues.push(DepIssueKind::Informational);
+    }
 
     (!issues.is_empty()).then(|| DepFinding {
         ecosystem: spec.ecosystem,
@@ -128,5 +131,9 @@ pub(crate) fn evaluate_health(
         deprecation_message: info.deprecation_message.clone(),
         latest_version: info.latest_version.clone(),
         vulnerabilities: info.vulnerabilities.clone(),
+        informational: info.informational.clone(),
+        resolved_version: spec.resolved_version.clone(),
+        lockfile: spec.lockfile.clone(),
+        version_req: spec.version_req.clone(),
     })
 }

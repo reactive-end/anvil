@@ -9,6 +9,7 @@ rust-version.workspace = true
 anvil-core.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
+ignore.workspace = true
 regex.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true

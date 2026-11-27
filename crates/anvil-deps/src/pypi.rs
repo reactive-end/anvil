@@ -106,6 +106,7 @@ pub fn parse_pypi_registry_json(package: &str, body: &str) -> Result<PackageHeal
         archived: classifiers_inactive,
         repository_url,
         vulnerabilities: Vec::new(),
+        informational: Vec::new(),
     })
 }
 
@@ -170,6 +171,8 @@ fn push_poetry_table(
                 name: norm,
                 version_req,
                 manifest_path: manifest_path.to_owned(),
+                resolved_version: None,
+                lockfile: None,
             });
         }
     }
@@ -201,6 +204,8 @@ fn push_pep508(
         name,
         version_req,
         manifest_path: manifest_path.to_owned(),
+        resolved_version: None,
+        lockfile: None,
     });
 }
 

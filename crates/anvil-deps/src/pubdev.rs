@@ -54,6 +54,8 @@ pub fn parse_pubspec_yaml(manifest_path: &str, content: &str) -> Result<Vec<Depe
                     name,
                     version_req: ver,
                     manifest_path: manifest_path.to_owned(),
+                    resolved_version: None,
+                    lockfile: None,
                 });
             }
             skip_nested_indent = Some(indent);
@@ -110,6 +112,7 @@ pub fn parse_pubdev_registry_json(package: &str, body: &str) -> Result<PackageHe
         archived: discontinued,
         repository_url,
         vulnerabilities: Vec::new(),
+        informational: Vec::new(),
     })
 }
 

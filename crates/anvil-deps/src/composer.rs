@@ -33,6 +33,8 @@ pub fn parse_composer_json(manifest_path: &str, content: &str) -> Result<Vec<Dep
                     name: name.clone(),
                     version_req: version.as_str().map(str::to_owned),
                     manifest_path: manifest_path.to_owned(),
+                    resolved_version: None,
+                    lockfile: None,
                 });
             }
         }
@@ -97,6 +99,7 @@ pub fn parse_packagist_json(package: &str, body: &str) -> Result<PackageHealthIn
         archived: false,
         repository_url,
         vulnerabilities: Vec::new(),
+        informational: Vec::new(),
     })
 }
 

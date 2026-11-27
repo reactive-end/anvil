@@ -45,6 +45,21 @@ pub struct DependencySpec {
     pub name: String,
     pub version_req: Option<String>,
     pub manifest_path: String,
+    /// Exact version pinned by the lockfile next to the manifest, when one was found.
+    #[serde(default)]
+    pub resolved_version: Option<String>,
+    /// Repo-relative path of the lockfile `resolved_version` came from.
+    #[serde(default)]
+    pub lockfile: Option<String>,
+}
+
+/// Describes how the audited version was determined (exact lock version vs unresolved requirement).
+fn version_text(resolved: Option<&str>, req: Option<&str>) -> String {
+    match (resolved, req) {
+        (Some(version), _) => version.to_owned(),
+        (None, Some(req)) => format!("version=unresolved(req \"{req}\")"),
+        (None, None) => "version=unresolved".to_owned(),
+    }
 }
 
 /// Metadata retrieved from a package registry (or local TTL cache).
@@ -60,6 +75,9 @@ pub struct PackageHealthInfo {
     pub repository_url: Option<String>,
     #[serde(default)]
     pub vulnerabilities: Vec<String>,
+    /// Informational advisories (`unmaintained`, `unsound`, `notice`): warnings, not vulnerabilities.
+    #[serde(default)]
+    pub informational: Vec<String>,
 }
 
 /// Health risk classification for a dependency.
@@ -70,6 +88,8 @@ pub enum DepIssueKind {
     Archived,
     Stale,
     Vulnerable,
+    /// Informational advisory (RustSec `unmaintained`/`unsound`/`notice`); warns but never blocks.
+    Informational,
 }
 
 /// Actionable finding produced when a dependency violates health policies.
@@ -85,6 +105,33 @@ pub struct DepFinding {
     pub latest_version: Option<String>,
     #[serde(default)]
     pub vulnerabilities: Vec<String>,
+    /// Informational advisory ids (unmaintained/unsound/notice).
+    #[serde(default)]
+    pub informational: Vec<String>,
+    /// Version audited against OSV: the lockfile-resolved one, or `None` when only a requirement exists.
+    #[serde(default)]
+    pub resolved_version: Option<String>,
+    /// Lockfile (repo-relative) that pinned `resolved_version`.
+    #[serde(default)]
+    pub lockfile: Option<String>,
+    /// Manifest requirement, kept so unresolved findings can explain themselves.
+    #[serde(default)]
+    pub version_req: Option<String>,
+}
+
+impl DepFinding {
+    /// True unless every issue is informational; only blocking findings fail Tier 2.
+    pub fn is_blocking(&self) -> bool {
+        self.issues.iter().any(|kind| *kind != DepIssueKind::Informational)
+    }
+
+    /// Display label such as `cargo:regex 1.12.2 (Cargo.lock)` or
+    /// `cargo:regex version=unresolved(req "1") (Cargo.toml)`.
+    pub fn label(&self) -> String {
+        let version = version_text(self.resolved_version.as_deref(), self.version_req.as_deref());
+        let source = self.lockfile.as_deref().unwrap_or(&self.manifest_path);
+        format!("{}:{} {version} ({source})", self.ecosystem, self.package)
+    }
 }
 
 /// Summary report returned by `anvil-deps` audits.
@@ -98,6 +145,13 @@ pub struct DepsAuditReport {
     pub errors: Vec<String>,
 }
 
+impl DepsAuditReport {
+    /// Number of findings that fail Tier 2 (informational-only findings excluded).
+    pub fn blocking_count(&self) -> usize {
+        self.findings.iter().filter(|f| f.is_blocking()).count()
+    }
+}
+
 /// Abstracts registry HTTP lookups so tests can inject deterministic offline mocks.
 pub trait RegistryFetcher: Send + Sync {
     fn fetch(&self, ecosystem: Ecosystem, package: &str) -> Result<PackageHealthInfo>;
@@ -107,5 +161,10 @@ pub trait RegistryFetcher: Send + Sync {
         _specs: &[DependencySpec],
     ) -> rustc_hash::FxHashMap<usize, Vec<String>> {
         rustc_hash::FxHashMap::default()
+    }
+
+    /// Returns the subset of advisory `ids` that are informational (unmaintained/unsound/notice).
+    fn fetch_informational_advisories(&self, _ids: &[String]) -> rustc_hash::FxHashSet<String> {
+        rustc_hash::FxHashSet::default()
     }
 }

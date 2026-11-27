@@ -54,6 +54,7 @@ impl RegistryFetcher for SlowBoundedFetcher {
             archived: false,
             repository_url: None,
             vulnerabilities: Vec::new(),
+            informational: Vec::new(),
         })
     }
 }

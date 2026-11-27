@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::DepsCache;
 use crate::cargo_toml::{fetch_cargo, parse_cargo_toml};
 use crate::composer::{fetch_composer, parse_composer_json};
+use crate::lockfile::resolve_specs;
 use crate::maven::{
     fetch_maven, parse_build_gradle, parse_build_gradle_kts, parse_libs_versions_toml,
 };
@@ -46,6 +47,10 @@ impl RegistryFetcher for LiveRegistryFetcher {
 
     fn fetch_vulnerabilities(&self, specs: &[DependencySpec]) -> FxHashMap<usize, Vec<String>> {
         crate::osv::query_osv_batch(specs)
+    }
+
+    fn fetch_informational_advisories(&self, ids: &[String]) -> FxHashSet<String> {
+        crate::osv::fetch_informational_ids(ids)
     }
 }
 
@@ -112,7 +117,7 @@ pub fn parse_manifest(repo_root: &Path, path: &Path) -> Result<Vec<DependencySpe
     let content = fs::read_to_string(&abs)
         .with_context(|| format!("failed to read manifest {}", abs.display()))?;
 
-    match abs.file_name().and_then(|n| n.to_str()) {
+    let specs = match abs.file_name().and_then(|n| n.to_str()) {
         Some("package.json") => parse_package_json(&rel, &content),
         Some("pyproject.toml") => parse_pyproject_toml(&rel, &content),
         Some(name) if is_requirements_txt_name(name) => parse_requirements_txt(&rel, &content),
@@ -123,7 +128,8 @@ pub fn parse_manifest(repo_root: &Path, path: &Path) -> Result<Vec<DependencySpe
         Some("Cargo.toml") => parse_cargo_toml(&rel, &content),
         Some("composer.json") => parse_composer_json(&rel, &content),
         _ => bail!("unsupported dependency manifest: {}", abs.display()),
-    }
+    }?;
+    Ok(resolve_specs(repo_root, &abs, &content, specs))
 }
 
 /// Audits only the supported dependency manifests inside `changed_paths`.
@@ -235,13 +241,26 @@ fn merge_osv_vulnerabilities(
     fetcher: &dyn RegistryFetcher,
 ) {
     let vulns_map = fetcher.fetch_vulnerabilities(specs);
+    if vulns_map.is_empty() {
+        return;
+    }
+    let mut all_ids: Vec<String> = vulns_map.values().flatten().cloned().collect();
+    all_ids.sort();
+    all_ids.dedup();
+    let informational = fetcher.fetch_informational_advisories(&all_ids);
+
     for (idx, maybe_info) in resolved.iter_mut().enumerate() {
         if let Some(vulns) = vulns_map.get(&idx)
             && let Some(info) = maybe_info.as_mut()
         {
             for vuln in vulns {
-                if !info.vulnerabilities.contains(vuln) {
-                    info.vulnerabilities.push(vuln.clone());
+                let bucket = if informational.contains(vuln) {
+                    &mut info.informational
+                } else {
+                    &mut info.vulnerabilities
+                };
+                if !bucket.contains(vuln) {
+                    bucket.push(vuln.clone());
                 }
             }
         }
@@ -253,7 +272,9 @@ fn collect_unique_specs(repo_root: &Path, manifests: &[PathBuf]) -> Result<Vec<D
     let mut specs = Vec::new();
     for manifest in manifests {
         for spec in parse_manifest(repo_root, manifest)? {
-            if seen.insert((spec.ecosystem, spec.name.clone(), spec.version_req.clone())) {
+            // A lock-resolved version identifies the dependency; the manifest requirement only matters when unresolved.
+            let version_key = spec.resolved_version.clone().or_else(|| spec.version_req.clone());
+            if seen.insert((spec.ecosystem, spec.name.clone(), version_key)) {
                 specs.push(spec);
             }
         }

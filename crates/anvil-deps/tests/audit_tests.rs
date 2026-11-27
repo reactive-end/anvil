@@ -61,6 +61,7 @@ fn mk_pkg(
         archived,
         repository_url: None,
         vulnerabilities: Vec::new(),
+        informational: Vec::new(),
     }
 }
 
@@ -228,6 +229,7 @@ impl RegistryFetcher for EcosystemConcurrencyFetcher {
             archived: false,
             repository_url: None,
             vulnerabilities: Vec::new(),
+            informational: Vec::new(),
         })
     }
 }
