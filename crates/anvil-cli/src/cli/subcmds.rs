@@ -657,3 +657,28 @@ pub enum DocsSubcmd {
         json: bool,
     },
 }
+
+#[derive(Debug, Subcommand)]
+pub enum PrereqsSubcmd {
+    /// Print what the project files say a machine needs; `--write` stores it in `.harness/config.json`.
+    Detect {
+        /// Store the detected set under `prerequisites.detected` (your overrides are kept).
+        #[arg(long)]
+        write: bool,
+    },
+    /// Check this machine; exits 1 when a required tool is missing or at the wrong version.
+    Check {
+        /// Print the full report as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Check only this subrepo (plus the workspace-level tools).
+        #[arg(long)]
+        subrepo: Option<String>,
+    },
+    /// Write `init.sh` and `init.ps1`, thin wrappers around `anvil prereqs check`.
+    Script {
+        /// Directory to write them to (default: the repository root).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+}

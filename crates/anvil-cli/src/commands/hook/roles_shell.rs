@@ -298,7 +298,17 @@ fn is_read_only_anvil(args: &[String]) -> bool {
         "checkpoint" | "worktree" => rest.first().is_some_and(|a| a == "list"),
         "guard" => rest.first().is_some_and(|a| a == "list" || a == "test"),
         "docs" => rest.first().is_some_and(|a| DOCS_READERS.contains(&a.as_str())),
+        "prereqs" => is_prereqs_reader(rest),
         sub => ANVIL_READERS.contains(&sub),
+    }
+}
+
+/// `anvil prereqs check` and `detect` only read; `script` and `detect --write` create or change files.
+fn is_prereqs_reader(rest: &[String]) -> bool {
+    match rest.first().map(String::as_str) {
+        Some("check") => true,
+        Some("detect") => !rest.iter().any(|a| a == "--write"),
+        _ => false,
     }
 }
 
@@ -314,3 +324,40 @@ fn is_verification(words: &[&String]) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod prereqs_tests {
+    use super::*;
+
+    #[test]
+    fn orchestrator_reads_prereqs_but_cannot_write_them() {
+        for ok in [
+            "anvil prereqs check",
+            "anvil prereqs check --json --subrepo api",
+            "anvil prereqs detect",
+            "anvil --root sandbox prereqs check",
+        ] {
+            assert_eq!(why_not_read_only(ok), None, "{ok}");
+        }
+        for bad in [
+            "anvil prereqs script",
+            "anvil prereqs script --out .",
+            "anvil prereqs detect --write",
+            "anvil prereqs",
+        ] {
+            assert!(why_not_read_only(bad).is_some(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn executors_may_run_every_prereqs_command() {
+        for cmd in [
+            "anvil prereqs check",
+            "anvil prereqs script",
+            "anvil prereqs detect --write",
+            "anvil doctor --prereqs",
+        ] {
+            assert_eq!(why_not_executor(cmd), None, "{cmd}");
+        }
+    }
+}

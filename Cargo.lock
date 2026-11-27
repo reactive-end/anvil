@@ -149,6 +149,7 @@ dependencies = [
  "anvil-graph",
  "anvil-mcp",
  "anvil-memory",
+ "anvil-prereqs",
  "anvil-qa",
  "anvil-tasks",
  "anyhow",
@@ -276,6 +277,20 @@ dependencies = [
  "serde_json",
  "tempfile",
  "ulid",
+]
+
+[[package]]
+name = "anvil-prereqs"
+version = "0.4.0"
+dependencies = [
+ "anvil-core",
+ "anyhow",
+ "ignore",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

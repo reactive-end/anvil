@@ -2,6 +2,7 @@
 
 pub mod docs;
 pub mod orchestrator;
+pub mod prereqs;
 pub mod search;
 pub mod security_guard;
 
@@ -14,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use docs::DocsConfig;
 use orchestrator::OrchestratorConfig;
+use prereqs::PrerequisitesConfig;
 use search::SearchConfig;
 use security_guard::SecurityGuardConfig;
 
@@ -322,6 +324,9 @@ pub struct AnvilConfig {
     /// Living documentation (OKF bundles under `.harness/docs/`).
     #[serde(default)]
     pub docs: DocsConfig,
+    /// What a machine needs to work on the project (`anvil prereqs`).
+    #[serde(default, skip_serializing_if = "PrerequisitesConfig::is_empty")]
+    pub prerequisites: PrerequisitesConfig,
     /// Orchestrator/executor model pair; absent until `anvil orchestrator setup` runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orchestrator: Option<OrchestratorConfig>,
@@ -352,6 +357,7 @@ impl Default for AnvilConfig {
             security_guard: SecurityGuardConfig::default(),
             search: SearchConfig::default(),
             docs: DocsConfig::default(),
+            prerequisites: PrerequisitesConfig::default(),
             orchestrator: None,
             language: None,
         }
@@ -480,6 +486,9 @@ fn default_root_allowlist() -> Vec<String> {
         "CLAUDE.md",
         "LICENSE",
         "README.md",
+        "init.cmd",
+        "init.ps1",
+        "init.sh",
         "tasks.json",
     ]
     .into_iter()

@@ -10,8 +10,8 @@ use clap::{Args, Parser, Subcommand};
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
     CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, DocsSubcmd,
-    GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd, QaSubcmd, RatchetSubcmd,
-    ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
+    GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd, PrereqsSubcmd, QaSubcmd,
+    RatchetSubcmd, ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -144,7 +144,11 @@ pub enum Command {
         adapter: String,
     },
     /// Audit harness health, strict configs, graph, memory, identity, and stack tools.
-    Doctor,
+    Doctor {
+        /// Run the full `anvil prereqs check` inside doctor (required failures fail doctor).
+        #[arg(long)]
+        prereqs: bool,
+    },
     /// Execute an Antigravity or Claude Code lifecycle hook (`install-git` installs pre-commit hook).
     Hook {
         /// Hook event name (`session-start`, `user-prompt-submit`, `pre-tool-use`, `post-tool-use`, `pre-invocation`, `stop`, `install-git`).
@@ -318,6 +322,11 @@ pub enum Command {
     Docs {
         #[command(subcommand)]
         sub: DocsSubcmd,
+    },
+    /// Detect and check what a machine needs for this project: runtimes, tools, env files, MCP servers.
+    Prereqs {
+        #[command(subcommand)]
+        sub: PrereqsSubcmd,
     },
     /// Execute sandboxed JS Code Mode queries against `anvil-graph` and `anvil-memory`.
     Code {

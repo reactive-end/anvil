@@ -58,7 +58,7 @@ Tracks tasks with short sequential codes (`T-001`, `T-002`, ...) or 1-level grou
 ### 8. Adapters, MCP Server & CLI (`anvil-adapters`, `anvil-mcp`, `anvil-cli`)
 - **Thin Adapters (`anvil-adapters`):** translate lifecycle hooks (`SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `Stop`), **Security Guard**, **Token Guard**, **Availability Guard** (gracefully skips `anvil:managed` blocks when `anvil` is absent from `PATH`), and synced configs/rules for Antigravity, Claude Code, Cursor, Windsurf, and Codex (including thin-umbrella multi-repo routing).
 - **Unified MCP Server (`anvil-mcp`):** exposes 27 code-graph, search, memory, task, review, and Code Mode tools over `stdio` JSON-RPC 2.0, plus `--proxy` gateway mode.
-- **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), a Claude Code orchestrator/executor model pair (`anvil orchestrator`), diagnostics (`anvil doctor`), and an optional resident TCP daemon.
+- **CLI & Daemon (`anvil-cli`):** provides interactive arrow-key Clack-style TUI initialization (`anvil init`), Git ref snapshots (`anvil checkpoint`), isolated agent worktrees (`anvil worktree`), spec contracts (`anvil spec`), opt-in SonarQube commands (`anvil sonar`), a Claude Code orchestrator/executor model pair (`anvil orchestrator`), diagnostics (`anvil doctor`), machine prerequisites (`anvil prereqs`, crate `anvil-prereqs`), and an optional resident TCP daemon.
 
 ## Install
 
@@ -132,6 +132,39 @@ anvil review list --since 7
 anvil sonar status
 anvil doctor
 ```
+
+## Prerequisites
+
+`anvil prereqs` answers "does this machine have everything the project needs?" from the files the project already has, so a hand-written `init.sh` can no longer drift from `engines.node`, `requires-python` or the Gradle daemon JVM.
+
+```bash
+anvil prereqs detect [--write]     # what the project files ask for; --write stores it in .harness/config.json
+anvil prereqs check [--json] [--subrepo NAME]   # table of checks; exit 1 when a required item fails
+anvil prereqs script [--out DIR]   # writes init.sh and init.ps1, thin wrappers around the check
+anvil doctor --prereqs             # the same check inside doctor (plain doctor shows a one-line summary)
+```
+
+`anvil init` stores the detection in the `prerequisites` section of `.harness/config.json`; `detect --write` refreshes it. Per repo and per subrepo it reads `package.json` (`engines`, `packageManager`, `volta`), `.nvmrc`, `.node-version`, `.tool-versions`, `mise.toml`, lockfiles, `.npmrc` (`legacy-peer-deps`), `pyproject.toml` (`requires-python`, uv, Poetry, `.venv`), `Cargo.toml` (`rust-version`), `go.mod`, Gradle (`gradle-daemon-jvm.properties`, `jvmToolchain`; `JAVA_HOME` must match), Android and iOS markers (SDK, `adb`, Xcode and CocoaPods on macOS only), `pubspec.yaml`, `composer.json`, Terraform (`required_version` and the CI `terraform_version` pin; inside WSL on Windows), Docker Compose (with the DB clients behind it), `sonar-project.properties` (`sonar-scanner` and its env names), `.github/` (`gh`), Karma, Playwright and `.mcp.json` (Chrome), and always `git` and `anvil`.
+
+A check reports `ok`, `missing`, `wrong_version` or `warning` per item, with the version found, the constraint, where it came from and an install hint. Besides tools it checks:
+
+- **Env files:** every key of `.env.example` must exist in `.env` (BOM and CRLF tolerated). Only key names are ever printed, never values.
+- **MCP servers in `.mcp.json`:** the command resolves on `PATH` (or the absolute path exists); a path inside another user's profile is flagged; archived packages such as `@modelcontextprotocol/server-postgres` (archived 2025-05, unpatched) and `server-github` are flagged with a replacement; inline credentials in args or env are flagged by scheme and host only.
+- **Secret hygiene scan (warnings):** `scheme://user:password@host` connection strings in `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.claude/settings*.json`, `.agents/*.json`, `.mimocode/*.json` and files under `scripts/` and `harness/` (up to 512 KB). Output is `file:line` and `scheme://host`; the password is never printed.
+
+Only required items that are missing or outdated make `check` exit 1; warnings never do. Overrides live next to the detected set and survive `detect --write`:
+
+```json
+{ "prerequisites": {
+    "extra_tools": [{ "name": "psql", "version": ">=16", "required": false, "hint": "brew install libpq" }],
+    "ignore": ["gh"],
+    "custom": [{ "name": "db reachable", "command": "pg_isready -h localhost", "hint": "docker compose up -d" }]
+} }
+```
+
+Custom checks run through the shell under a timeout; exit 0 means ok. In a monorepo every entry carries its `subrepo`, so one flat list in `prerequisites` covers all of them.
+
+`anvil prereqs script` writes `init.sh` and `init.ps1` to the repository root and adds them (and `init.cmd`) to the root-hygiene allowlist. They check that `anvil` is on `PATH` (otherwise they print the install commands from the Install section above), run `anvil prereqs check "$@"` and exit with its code, so `./init.sh --json` and `.\init.ps1 --subrepo api` work.
 
 ## Code Search
 

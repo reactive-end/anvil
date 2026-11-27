@@ -20,6 +20,7 @@ pub mod mcp;
 pub mod mem;
 pub mod orchestrator;
 pub mod plugin;
+pub mod prereqs;
 pub mod qa;
 pub mod ratchet;
 pub mod review;
@@ -77,7 +78,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             init::InitOptions { adapter: &adapter, git_hooks, sonar: &sonar, layout: &layout },
         ),
         Command::Sync { adapter } => sync::execute(&root, &adapter),
-        Command::Doctor => doctor::execute(&root),
+        Command::Doctor { prereqs } => doctor::execute(&root, prereqs),
         Command::Hook { event, adapter } => hook::execute(&root, &event, &adapter),
         Command::Run { cmd } => run::execute(&root, &cmd),
         Command::Check { full, tier, no_tests, no_cache, staged, sonar, no_sonar, scope } => {
@@ -119,6 +120,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Spec { sub } => spec::execute(&root, sub),
         Command::Code { sub } => code::execute(&root, sub),
         Command::Docs { sub } => docs::execute(&root, sub),
+        Command::Prereqs { sub } => prereqs::execute(&root, sub),
     }
 }
 

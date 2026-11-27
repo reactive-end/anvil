@@ -1,5 +1,7 @@
 //! `anvil init`: single-repo and multi-subproject `.harness/`, adapter, git, graph, and task setup.
 
+mod prereqs;
+
 use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
@@ -507,6 +509,7 @@ fn init_single_repo(
         config.sonar = sonar;
         config.save(dir)?;
     }
+    let prereqs_line = prereqs::detect_and_store(dir, &mut config)?;
 
     let merge_driver_status = if dir.join(".git").exists() {
         install_git_merge_driver(dir)?;
@@ -539,6 +542,7 @@ fn init_single_repo(
         graph_bin: &graph_bin,
         task_count: tasks.task_count,
         files_written: report.written_files.len(),
+        prereqs: &prereqs_line,
     });
     Ok(config)
 }
@@ -555,6 +559,7 @@ struct InitSummary<'a> {
     graph_bin: &'a Path,
     task_count: usize,
     files_written: usize,
+    prereqs: &'a str,
 }
 
 fn print_init_summary(s: InitSummary<'_>) {
@@ -592,6 +597,7 @@ fn print_init_summary(s: InitSummary<'_>) {
             ui::dim(&format!("({})", s.graph_bin.display()))
         ),
     );
+    ui::print_kv("prereqs", s.prereqs);
     ui::print_kv("summary", &format!("tasks={}  files_written={}", s.task_count, s.files_written));
     if ui::colors_enabled() {
         println!();
