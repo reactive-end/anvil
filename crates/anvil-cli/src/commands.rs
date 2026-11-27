@@ -7,6 +7,7 @@ pub mod circuit;
 pub mod code;
 pub mod context;
 pub mod daemon;
+pub mod db;
 pub mod deps;
 pub mod diff;
 pub mod docs;
@@ -112,6 +113,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Guard { sub } => guard::execute(&root, sub),
         Command::Deps { all, manifests } => deps::execute(&root, all, &manifests),
         Command::Qa { sub } => qa::execute(&root, sub),
+        Command::Db { sub } => db::execute(&root, sub),
         Command::Context { sub } => context::execute(&root, sub),
         Command::Diff { max_lines, max_tokens } => diff::execute(&root, max_lines, max_tokens),
         Command::Search(args) => search::execute(&root, &args),

@@ -38,6 +38,10 @@ Never rely on screenshots alone. Run objective checks first via `anvil qa`:
 - **Repeatable checks**: describe the journey as a flow in `.harness/qa/flows/<name>.json` and run `anvil qa run --flow <name>` (or `--all-flows`, `--start` to boot the app from `qa.web.start_command`). A flow asserts requests (`expect_request` with method, URL part, and status; `expect_no_request`), text, visibility, counts, and screenshots. `anvil qa flows` validates the files; `anvil qa baseline` stores screenshots as baselines and later runs report pixel diffs above `qa.web.diff_threshold`. Exit code 1 means a failed expectation, page error, console error, or visual diff: fix the cause, not the flow, unless the behaviour change is intended.
 - If the app is not running, start it (`qa.web.start_command`) before declaring the UI verified; say so explicitly when it cannot be run.
 
+### Backend changes: API scenarios and database checks
+
+When a change touches an API (`qa.api.url` is set), prove it against the running service instead of reading the handlers: describe the journey in `.harness/qa/api/<name>.json` (HTTP calls with `expect` and `capture`, then `db` steps that check the rows through Toolbox) and run `anvil qa api <name> --start`. Check the database after every write, not only the response: a `201` does not prove the row exists, and a rejected request (`400`/`404`) must leave the row count unchanged. Use `{{$run}}` for unique emails and names, `tool` + `params` for untrusted values, and keep `sql` to one `SELECT` (anything else is refused). Exit 1 prints the step, the expected value, and what came back. When `db.mcp` is on, the `anvil-db` MCP server (`anvil_select`) lets you inspect the data interactively; use `anvil db query "SELECT ..."` otherwise. `anvil db check` diagnoses a broken setup.
+
 ## 4. Directed Visual Inspection
 
 Capture **before/after** screenshots across desktop and mobile viewports and evaluate them alongside the compressed JSON assertion report from `anvil qa`.

@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
+use crate::listing::{file_id, json_files, same_name};
 use crate::web::{DESKTOP_VIEWPORT, MOBILE_VIEWPORT};
 
 /// Longest pause a `wait_ms` step may take; larger values are clamped.
@@ -299,20 +300,11 @@ pub struct FlowEntry {
 
 /// Reads every `*.json` file of `dir` (sorted by name); a missing directory has no flows.
 pub fn load_flows(dir: &Path) -> Result<Vec<FlowEntry>> {
-    if !dir.is_dir() {
-        return Ok(Vec::new());
-    }
-    let mut paths: Vec<PathBuf> = fs::read_dir(dir)
-        .with_context(|| format!("failed to read {}", dir.display()))?
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|ext| ext == "json") && p.is_file())
-        .collect();
-    paths.sort();
-    Ok(paths.into_iter().map(read_entry).collect())
+    Ok(json_files(dir)?.into_iter().map(read_entry).collect())
 }
 
 fn read_entry(path: PathBuf) -> FlowEntry {
-    let id = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let id = file_id(&path);
     let flow = fs::read_to_string(&path)
         .map_err(|err| format!("failed to read {}: {err}", path.display()))
         .and_then(|raw| Flow::parse(&raw).map_err(|err| format!("{err:#}")));
@@ -321,12 +313,9 @@ fn read_entry(path: PathBuf) -> FlowEntry {
 
 /// Picks the flow whose file stem or `name` equals `wanted` (ignoring case, spaces, and `-`/`_`).
 pub fn find_flow<'a>(entries: &'a [FlowEntry], wanted: &str) -> Option<&'a FlowEntry> {
-    let key = |text: &str| {
-        text.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()
-    };
-    let wanted = key(wanted);
     entries.iter().find(|entry| {
-        key(&entry.id) == wanted || entry.flow.as_ref().is_ok_and(|flow| key(&flow.name) == wanted)
+        same_name(&entry.id, wanted)
+            || entry.flow.as_ref().is_ok_and(|flow| same_name(&flow.name, wanted))
     })
 }
 

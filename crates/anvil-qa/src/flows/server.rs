@@ -6,7 +6,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anvil_core::config::qa::WebQaConfig;
+use anvil_core::config::qa::{ApiQaConfig, WebQaConfig};
 use anyhow::{Context, Result, bail};
 
 /// `true` when something answers HTTP at `url` within `timeout` (any status counts as an answer).
@@ -18,26 +18,74 @@ pub fn answers(url: &str, timeout: Duration) -> bool {
     }
 }
 
-/// Starts the app from `qa.web.start_command` and waits until it answers. Returns `None` when the
-/// app already answers, so a running dev server is never started twice.
+/// What `ensure_target` needs to know about an app to start: its configuration section is only
+/// used to word the errors, so web and API share one implementation.
+#[derive(Debug, Clone)]
+pub struct AppTarget<'a> {
+    /// Config section (`qa.web`, `qa.api`) named in error messages.
+    pub section: &'a str,
+    pub ready_url: Option<String>,
+    pub start_command: Option<&'a str>,
+    pub start_cwd: Option<&'a str>,
+    pub ready_timeout_secs: u64,
+    /// File name (inside the runs folder) that receives the app's output.
+    pub log_name: &'a str,
+}
+
+impl<'a> AppTarget<'a> {
+    pub fn web(web: &'a WebQaConfig) -> Self {
+        Self {
+            section: "qa.web",
+            ready_url: web.ready_url(),
+            start_command: web.start_command.as_deref(),
+            start_cwd: web.start_cwd.as_deref(),
+            ready_timeout_secs: web.ready_timeout_secs,
+            log_name: "app.log",
+        }
+    }
+
+    pub fn api(api: &'a ApiQaConfig) -> Self {
+        Self {
+            section: "qa.api",
+            ready_url: api.ready_url(),
+            start_command: api.start_command.as_deref(),
+            start_cwd: api.start_cwd.as_deref(),
+            ready_timeout_secs: api.ready_timeout_secs,
+            log_name: "api-app.log",
+        }
+    }
+}
+
+/// Starts the web app from `qa.web.start_command` and waits until it answers. Returns `None` when
+/// the app already answers, so a running dev server is never started twice.
 pub fn ensure_app(root: &Path, web: &WebQaConfig) -> Result<Option<AppProcess>> {
-    let Some(ready_url) = web.ready_url() else {
-        bail!("`qa.web.url` is not set in .harness/config.json");
+    ensure_target(root, &AppTarget::web(web))
+}
+
+/// Same as [`ensure_app`] for the API under test (`qa.api`).
+pub fn ensure_api(root: &Path, api: &ApiQaConfig) -> Result<Option<AppProcess>> {
+    ensure_target(root, &AppTarget::api(api))
+}
+
+fn ensure_target(root: &Path, target: &AppTarget<'_>) -> Result<Option<AppProcess>> {
+    let section = target.section;
+    let Some(ready_url) = target.ready_url.as_deref() else {
+        bail!("`{section}.url` is not set in .harness/config.json");
     };
-    if answers(&ready_url, Duration::from_secs(2)) {
+    if answers(ready_url, Duration::from_secs(2)) {
         return Ok(None);
     }
-    let Some(command) = web.start_command.as_deref() else {
-        bail!("{ready_url} does not answer and `qa.web.start_command` is not set");
+    let Some(command) = target.start_command else {
+        bail!("{ready_url} does not answer and `{section}.start_command` is not set");
     };
-    let cwd = web.start_cwd.as_deref().map_or_else(|| root.to_path_buf(), |dir| root.join(dir));
-    let log = super::run::runs_dir(root).join("app.log");
+    let cwd = target.start_cwd.map_or_else(|| root.to_path_buf(), |dir| root.join(dir));
+    let log = super::run::runs_dir(root).join(target.log_name);
     let mut app = AppProcess::start(command, &cwd, &log)?;
-    app.wait_ready(&ready_url, Duration::from_secs(web.ready_timeout_secs.max(1)))?;
+    app.wait_ready(ready_url, Duration::from_secs(target.ready_timeout_secs.max(1)))?;
     Ok(Some(app))
 }
 
-/// The app started from `qa.web.start_command`, stopped (with every child it spawned) on drop.
+/// The app started from its `start_command`, stopped (with every child it spawned) on drop.
 #[derive(Debug)]
 pub struct AppProcess {
     child: Child,

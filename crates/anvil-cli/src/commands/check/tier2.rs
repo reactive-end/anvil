@@ -1,5 +1,6 @@
 //! Tier 2 dependency health and visual QA verification helpers for `anvil check`.
 
+mod api_qa;
 mod web_qa;
 
 use std::path::{Path, PathBuf};
@@ -29,6 +30,7 @@ pub fn run_tier2(
     if run_sonar {
         failed |= crate::commands::sonar::run_tier2_quality_gate(root, config);
     }
+    failed |= api_qa::run(root, config, changed, full);
     if classification.needs_visual_qa || full {
         let qa = QaEngine::new(root);
         if let Some(prompt) = qa.onboarding_prompt(config) {

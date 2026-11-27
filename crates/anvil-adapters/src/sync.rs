@@ -11,7 +11,9 @@ use anvil_core::config::{AdapterTarget, AnvilConfig, StackKind};
 use anvil_core::fs_util::atomic_write;
 use anvil_core::stack_detector;
 
-use crate::{antigravity, architecture, claude_code, codex, cursor, templates, web_qa, windsurf};
+use crate::{
+    antigravity, architecture, claude_code, codex, cursor, db_mcp, templates, web_qa, windsurf,
+};
 
 const MANAGED_START: &str = "<!-- anvil:managed:start -->";
 pub(crate) const MANAGED_END: &str = "<!-- anvil:managed:end -->";
@@ -380,6 +382,9 @@ fn sync_into(repo_root: &Path, target: AdapterTarget, report: &mut SyncReport) -
     }
 
     for path in web_qa::apply(repo_root, target)? {
+        report.written_files.push(path);
+    }
+    for path in db_mcp::apply(repo_root, target)? {
         report.written_files.push(path);
     }
     sync_gitignore(repo_root, report)?;

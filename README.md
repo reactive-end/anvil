@@ -298,6 +298,67 @@ Steps: `goto`, `wait_for`, `fill {selector, value}`, `select {selector, index | 
 
 **Chrome DevTools MCP.** `anvil qa select-web chrome_dev_tools` (and every `anvil sync` afterwards) registers Google's `chrome-devtools-mcp` as the `chrome-devtools` server in each adapter's MCP config (`.mcp.json`, `.agents/mcp_config.json`, Cursor, Windsurf, Codex) and adds `mcp__chrome-devtools__*` to `orchestrator.executor_tools` when an orchestrator is configured. The command is `npx -y chrome-devtools-mcp@1.14.0 --isolated --headless --no-usage-statistics --no-performance-crux` (`cmd /c npx ...` on Windows, where `npx` is a `.cmd` shim); the version is pinned in `anvil_adapters::web_qa::CHROME_DEVTOOLS_MCP_VERSION`. The flags matter for privacy: the server sends usage statistics to Google unless `--no-usage-statistics` is given, and performance traces look up the visited URLs in the Chrome UX Report unless `--no-performance-crux` is given, which must be off for local apps. `--isolated` uses a temporary browser profile. Changing the driver to anything else removes the entry again; an entry named `chrome-devtools` that Anvil did not write (different arguments) is never changed or removed. The `visual-qa` skill tells agents to use the tools for interactive checks (`take_snapshot` before screenshots, `list_console_messages`, `list_network_requests` to confirm the expected calls, a performance trace for Core Web Vitals) and flows for repeatable ones.
 
+## API QA and database checks
+
+An agent that changes a backend should prove the change works: call the running API, then look in the database. A scenario is a JSON file in `.harness/qa/api/` (`qa.api.scenarios_dir`) whose steps make HTTP calls and run read-only database queries through [Google MCP Toolbox for Databases](https://github.com/googleapis/mcp-toolbox) (`toolbox invoke`). The same Toolbox file can be registered as an MCP server so agents query the database themselves.
+
+**Configuration** (`.harness/config.json`; defaults are left out of the saved file):
+
+```json
+"qa": { "api": {
+  "url": "http://localhost:3100", "start_command": "npm start", "start_cwd": "orders-api",
+  "ready_path": "/health", "ready_timeout_secs": 60,
+  "scenarios_dir": ".harness/qa/api", "autostart": false, "paths": ["orders-api"] } },
+"db": { "toolbox": ".tools/toolbox.exe", "config": ".harness/db/tools.yaml", "mcp": false }
+```
+
+`qa.api.paths` are the path prefixes whose changes trigger the Tier 2 step (`start_cwd` when empty). `db.toolbox` is a name on `PATH` (default `toolbox`) or a path relative to the repository root. Toolbox always runs from the repository root, so a SQLite `database:` path inside the tools file is written relative to the root (that is also the directory MCP clients start servers in).
+
+**Set up the database.** `anvil db init --kind sqlite|postgres|mysql [--database <file|name>] [--name app-db] [--toolbox <binary>] [--force]` writes `.harness/db/tools.yaml`: one source plus the managed `anvil_select` tool (`sqlite-execute-sql`, `postgres-execute-sql`, or `mysql-execute-sql`, which takes one `sql` parameter) and saves the `db` section. For SQLite without `--database` it reads only the `DB_PATH`-style variables (`DB_PATH`, `DATABASE_PATH`, `SQLITE_PATH`, `DATABASE_URL=sqlite:...`) of the `.env*` files of the root and its direct subfolders; no other value is read or printed. Server databases get `${DB_HOST}`, `${DB_PORT}`, `${DB_USER}`, `${DB_PASSWORD}`, `${DB_NAME}` placeholders: Toolbox substitutes environment variables itself, so credentials never go into the file (`--database` names the database literally instead of `${DB_NAME}`). It refuses to overwrite an existing file without `--force`. Install the Toolbox binary from the [releases page](https://github.com/googleapis/mcp-toolbox/releases) (v1.18.0 is what Anvil was verified with).
+
+- `anvil db check` reports the Toolbox binary and version, the tools file, every credential-like key (`password`, `secret`, `token`, ...) whose value is not a `${VAR}` placeholder (the value is never printed), and runs `SELECT 1` through `anvil_select`. Exit 1 on any failure. `anvil doctor` shows the binary when `db` is configured.
+- `anvil db query "SELECT ..."` prints the rows as JSON.
+- `anvil db mcp on|off` registers or removes the `anvil-db` MCP server (`<toolbox> --stdio --config <db.config>`) in `.mcp.json`, `.agents/mcp_config.json`, Cursor, Windsurf, and Codex, and grants `mcp__anvil-db__*` to executors when an orchestrator is configured. `anvil sync` keeps it in line with `db.mcp`. An `anvil-db` entry Anvil did not write (different arguments) is never changed or removed. The MCP server can run any statement its tools allow, and calls with a `sql` field already go through the security guard (destructive SQL asks); use a read-only database user for anything beyond local development.
+
+**Read-only rule.** `db.sql` steps, `anvil db query`, and the `anvil_select` tool when named in a scenario only run one `SELECT` or `WITH ... SELECT`: anything else (another first keyword, a second statement after `;`, or a write keyword such as `INSERT`, `UPDATE`, `DELETE`, `DROP`, `INTO`, `PRAGMA` outside string literals and comments) is refused as a step error before Toolbox is called. This is a guard against mistakes, not a permission system; the real defense is a database user that can only read.
+
+**Scenario format.** A step has exactly one of `http` or `db`, plus an optional `name`, `expect`, and `capture`:
+
+```json
+{ "name": "create and pay order",
+  "vars": { "email": "qa-{{$run}}@example.com" },
+  "steps": [
+    { "name": "create customer",
+      "http": { "method": "POST", "path": "/customers", "json": { "name": "QA", "email": "{{email}}" } },
+      "expect": { "status": 201, "json": { "/email": "{{email}}" } },
+      "capture": { "customerId": "/id" } },
+    { "name": "customer row exists",
+      "db": { "sql": "SELECT id, email FROM customers WHERE email = '{{email}}'" },
+      "expect": { "rows": 1, "row": { "id": "{{customerId}}" } } },
+    { "name": "create order",
+      "http": { "method": "POST", "path": "/orders", "json": { "customerId": "{{customerId}}", "item": "keyboard", "quantity": 2 } },
+      "expect": { "status": 201, "json": { "/status": "created", "/quantity": 2 } },
+      "capture": { "orderId": "/id" } },
+    { "name": "order stored",
+      "db": { "tool": "order_by_id", "params": { "id": "{{orderId}}" } },
+      "expect": { "row": { "status": "created", "quantity": 2 } } },
+    { "name": "orders count",
+      "db": { "sql": "SELECT COUNT(*) AS total FROM orders" },
+      "capture": { "total": "/0/total" } }
+  ] }
+```
+
+- `http`: `method`, `path` (relative to `qa.api.url`, or an absolute URL), optional `headers`, and one of `json` or `body`. Redirects are not followed. `expect`: `status` (without it any status below 400 passes, so a forgotten status cannot hide a server error), `json` (JSON pointer to expected value, RFC 6901), `body_contains`, `headers` (name to substring).
+- `db`: `{ "tool": "<tool of the tools file>", "params": {...} }` or `{ "sql": "SELECT ..." }` (run through `anvil_select`). `expect`: `rows` (count), `row` (columns the first row must have), `contains` (columns some row must have).
+- `capture`: variable name to JSON pointer into the response body (HTTP) or the rows array (database, e.g. `/0/total`). A missing pointer fails the step.
+- Comparison is exact JSON equality, except two numbers compare by value (SQLite returns `2`, an API may return `2.0`).
+- `{{name}}` works in every string value. A string that is exactly `{{name}}` takes the variable with its JSON type (a captured count stays a number); elsewhere the value is written into the text. `{{$run}}` is unique for every scenario execution (use it for emails). An unknown variable is a step error, never an empty string. Inside `sql`, a `'` in a substituted value is doubled so it cannot end the literal around the placeholder; `tool` plus `params` is the safe form for untrusted values.
+- A scenario stops at its first failing step (the later ones are reported as not run); the next scenario still runs.
+
+**Running.** `anvil qa api [NAMES...] [--start] [--list] [--json]` runs every scenario, or the named ones (file name or `name`). `--start` runs `qa.api.start_command` in `qa.api.start_cwd` when the API does not answer at `url + ready_path`, waits up to `ready_timeout_secs`, and stops the whole process tree afterwards; without it an unreachable API is one clear error. `--list` validates the files. Exit 1 when a step fails, a file is invalid, or the API cannot be reached. A failure shows the step, what was expected and what came back (status, the offending JSON pointer with its actual value, or the first rows of a database check, truncated), and the full structured result lands in `.harness/.state/qa/api/<run-id>/report.json`.
+
+**Tier 2.** When `qa.api.url` is set and a changed file is under `qa.api.paths` (or `anvil check --full`), `anvil check` runs the scenarios if the API answers, or starts it when `autostart` is true; otherwise it prints one advisory line. Failing scenarios fail Tier 2. A backend logic change classifies as Tier 1, so a plain `anvil check` raises the tier to Tier 2 for such changes and prints `tier raised to Tier2: qa.api.paths touched`; nothing else changes (the deps audit, visual QA, and Sonar keep their own conditions). An explicit `--tier 0` or `--tier 1` opts out, which keeps the pre-commit hook and the Stop gate fast.
+
 ## Safety Model
 
 Anvil hooks only deny, ask, or stay silent. They never approve a tool call, so the permission system of the host stays in charge. The Security Guard inspects command text (including wrappers, nested shells, substitutions, here-documents, and PowerShell) as a safety net against accidents. It is not a sandbox: scripts on disk and dynamically built commands are outside its reach.

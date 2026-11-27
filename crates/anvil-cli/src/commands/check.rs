@@ -1,5 +1,6 @@
 //! `anvil check`: diff-classified Tier 0 / Tier 1 / Tier 2 verification.
 
+mod api_tier;
 mod docs;
 mod tier1;
 mod tier2;
@@ -56,7 +57,10 @@ pub fn execute(root: &Path, opts: CheckOptions, scope: &[String]) -> Result<()> 
     };
     let mut added_lines = git::added_line_ranges(root, opts.staged).unwrap_or_default();
     added_lines.retain(|path, _| keep(path));
-    let effective_tier = resolve_tier(opts.full, opts.tier_override, classification.minimum_tier);
+    let base_tier = resolve_tier(opts.full, opts.tier_override, classification.minimum_tier);
+    let api_raise =
+        api_tier::raises_to_tier2(&config, opts.tier_override, base_tier, &changed_paths);
+    let effective_tier = if api_raise { Tier::Tier2 } else { base_tier };
 
     println!(
         "{} category={} tier={} changed={} skip_logic_tests={}",
@@ -66,6 +70,9 @@ pub fn execute(root: &Path, opts: CheckOptions, scope: &[String]) -> Result<()> 
         ui::cyan(&changed_paths.len().to_string()),
         classification.skip_logic_tests
     );
+    if api_raise {
+        println!("  tier raised to Tier2: qa.api.paths touched (--tier 0|1 opts out)");
+    }
 
     let tier0_errors =
         run_timed_tier0(root, &config, &changed_paths, opts, run_sonar, &added_lines)?;
@@ -91,8 +98,10 @@ pub fn execute(root: &Path, opts: CheckOptions, scope: &[String]) -> Result<()> 
     let mut tier2_failed = false;
     if effective_tier >= Tier::Tier2 || (opts.sonar && !opts.no_sonar) {
         ui::print_section("Tier 2 · Dependencies & Visual QA");
+        // Raising the tier for the API must not start Sonar, which only ran at Tier 2 or on request.
+        let sonar_now = run_sonar && (base_tier >= Tier::Tier2 || (opts.sonar && !opts.no_sonar));
         tier2_failed =
-            tier2::run_tier2(root, &config, &changed_paths, &classification, opts.full, run_sonar);
+            tier2::run_tier2(root, &config, &changed_paths, &classification, opts.full, sonar_now);
     }
 
     let passed = tier0_errors == 0 && !tier1_failed && !tier2_failed;

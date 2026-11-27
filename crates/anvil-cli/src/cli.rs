@@ -10,7 +10,7 @@ use clap::{Args, Parser, Subcommand};
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
     ArchitectureSubcmd, CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd,
-    DocsSubcmd, GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd,
+    DbSubcmd, DocsSubcmd, GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd,
     PrereqsSubcmd, QaSubcmd, RatchetSubcmd, ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd,
     WorktreeSubcmd,
 };
@@ -256,6 +256,11 @@ pub enum Command {
     Qa {
         #[command(subcommand)]
         sub: QaSubcmd,
+    },
+    /// Database checks through Google MCP Toolbox: set it up, query it, share it with agents.
+    Db {
+        #[command(subcommand)]
+        sub: DbSubcmd,
     },
     /// Build compact minimal context packets for subagent delegation.
     Context {

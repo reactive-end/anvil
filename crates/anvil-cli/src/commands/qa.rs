@@ -1,5 +1,6 @@
 //! `anvil qa`: hybrid Web & Mobile visual QA onboarding, DOM evaluation, and view-tree scans.
 
+mod api_cmds;
 mod flow_cmds;
 
 use std::fs;
@@ -54,6 +55,9 @@ pub fn execute(root: &Path, sub: QaSubcmd) -> Result<()> {
             flow_cmds::baseline(root, flow.as_deref(), start, json)
         }
         QaSubcmd::Flows => flow_cmds::list(root),
+        QaSubcmd::Api { names, start, list, json } => {
+            api_cmds::run(root, &names, &api_cmds::Options { start, list, json })
+        }
         QaSubcmd::ScanMobile { xml, logcat, width, height } => {
             cmd_scan_mobile(root, &engine, xml.as_deref(), logcat.as_deref(), width, height)
         }

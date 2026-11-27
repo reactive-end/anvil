@@ -12,7 +12,23 @@ use clap::Parser;
 use cli::Cli;
 use commands::ExitCodeError;
 
+/// Stack of the thread that runs the CLI. The derived argument parser and the command dispatch
+/// keep large frames in debug builds, and a Windows main thread only has 1 MiB.
+const CLI_STACK_BYTES: usize = 16 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    let spawned = std::thread::Builder::new().stack_size(CLI_STACK_BYTES).spawn(run);
+    match spawned.map(std::thread::JoinHandle::join) {
+        Ok(Ok(code)) => code,
+        Ok(Err(_)) => ExitCode::FAILURE,
+        Err(err) => {
+            eprintln!("failed to start the CLI thread: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> ExitCode {
     let parsed = Cli::parse();
     ui::init_color_mode(parsed.no_color);
     match commands::dispatch(parsed) {

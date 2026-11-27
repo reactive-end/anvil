@@ -1,6 +1,7 @@
 //! Schema and persistence for `.harness/config.json`.
 
 pub mod architecture;
+pub mod db;
 pub mod docs;
 pub mod orchestrator;
 pub mod prereqs;
@@ -16,6 +17,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use architecture::ArchitectureConfig;
+use db::DbConfig;
 use docs::DocsConfig;
 use orchestrator::OrchestratorConfig;
 use prereqs::PrerequisitesConfig;
@@ -307,6 +309,9 @@ pub struct AnvilConfig {
     /// Web app under test: URL, start command, flows directory, visual diff threshold.
     #[serde(default, skip_serializing_if = "QaConfig::is_default")]
     pub qa: QaConfig,
+    /// Google MCP Toolbox for Databases: database checks for API scenarios and an optional MCP server.
+    #[serde(default, skip_serializing_if = "DbConfig::is_default")]
+    pub db: DbConfig,
     #[serde(default)]
     pub adapters: AdapterTarget,
     #[serde(default = "default_allowed_escapes")]
@@ -358,6 +363,7 @@ impl Default for AnvilConfig {
             deps_max_age_months: default_deps_max_age_months(),
             qa_driver: QaDriverConfig::default(),
             qa: QaConfig::default(),
+            db: DbConfig::default(),
             adapters: AdapterTarget::default(),
             allowed_escapes: default_allowed_escapes(),
             boundaries: Vec::new(),

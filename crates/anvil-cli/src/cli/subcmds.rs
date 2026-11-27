@@ -395,6 +395,20 @@ pub enum QaSubcmd {
     },
     /// List the flows in `qa.web.flows_dir` and validate them.
     Flows,
+    /// Run API scenarios (HTTP calls to the backend, then database checks through Toolbox).
+    Api {
+        /// Scenarios to run (file name or `name`); every scenario in `qa.api.scenarios_dir` when omitted.
+        names: Vec<String>,
+        /// Start the API (`qa.api.start_command`) when it does not answer and stop it afterwards.
+        #[arg(long)]
+        start: bool,
+        /// List and validate the scenarios without running them.
+        #[arg(long)]
+        list: bool,
+        /// Print the full structured report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Scan Android `uiautomator` XML, `logcat`, and Roborazzi diffs.
     ScanMobile {
         #[arg(long)]
@@ -736,5 +750,39 @@ pub enum ArchitectureSubcmd {
         /// Print the full report as JSON.
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DbSubcmd {
+    /// Write `.harness/db/tools.yaml` (source plus the read-only `anvil_select` tool) for Toolbox.
+    Init {
+        /// Database engine.
+        #[arg(long, value_parser = ["sqlite", "postgres", "mysql"])]
+        kind: String,
+        /// SQLite file (relative to the repository root) or server database name.
+        #[arg(long)]
+        database: Option<String>,
+        /// Name of the Toolbox source.
+        #[arg(long, default_value = "app-db")]
+        name: String,
+        /// Toolbox binary: a name on `PATH` or a path relative to the repository root.
+        #[arg(long)]
+        toolbox: Option<String>,
+        /// Overwrite an existing tools file.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Check the Toolbox binary, the tools file, literal passwords, and `SELECT 1`; exits 1 on a failure.
+    Check,
+    /// Run one read-only SELECT through Toolbox and print the rows as JSON.
+    Query {
+        /// A single `SELECT` (or `WITH ... SELECT`) statement.
+        sql: String,
+    },
+    /// Register (`on`) or remove (`off`) the `anvil-db` MCP server in every adapter.
+    Mcp {
+        #[arg(value_parser = ["on", "off"])]
+        state: String,
     },
 }

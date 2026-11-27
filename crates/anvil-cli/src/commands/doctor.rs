@@ -1,5 +1,6 @@
 //! `anvil doctor`: audits config, adapters, strict TS, graph, memory, identity, circuit, and tools.
 
+mod db;
 mod prereqs;
 mod stack_tools;
 
@@ -37,6 +38,7 @@ pub fn execute(root: &Path, with_prereqs: bool) -> Result<()> {
     check_memory(root, &author);
     check_circuit(root, config.circuit_breaker_limit);
     stack_tools::check_stack_tools(root, &config);
+    db::check(root, &config);
     prereqs::check(root, &config, with_prereqs, &mut failures);
 
     if failures > 0 {
