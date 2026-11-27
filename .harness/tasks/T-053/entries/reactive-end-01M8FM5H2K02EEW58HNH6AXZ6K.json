@@ -1,0 +1,43 @@
+{
+  "entry_id": "01M8FM5H2K02EEW58HNH6AXZ6K",
+  "task_id": "T-053",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Implemented ApiQaConfig + DbConfig, anvil-qa api engine (spec/interpolate/http/db/eval/exec/run/report/summary), shared managed_mcp + db_mcp adapters, anvil db and anvil qa api commands, Tier 2 api_qa, doctor toolbox row. Everything compiles; unit tests for qa and adapters pass.",
+  "files_touched": [
+    "crates/anvil-adapters/src/db_mcp.rs",
+    "crates/anvil-adapters/src/managed_mcp.rs",
+    "crates/anvil-adapters/src/web_qa.rs",
+    "crates/anvil-cli/src/commands/check/tier2/api_qa.rs",
+    "crates/anvil-cli/src/commands/db.rs",
+    "crates/anvil-cli/src/commands/db/",
+    "crates/anvil-cli/src/commands/qa/api_cmds.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/config/db.rs",
+    "crates/anvil-core/src/config/qa.rs",
+    "crates/anvil-qa/src/api.rs",
+    "crates/anvil-qa/src/api/",
+    "crates/anvil-qa/src/flows/server.rs",
+    "crates/anvil-qa/src/listing.rs"
+  ],
+  "done_steps": [
+    "core config qa.api + db",
+    "anvil-qa api engine with DbClient trait + ToolboxClient",
+    "generalized ensure_app via AppTarget",
+    "managed_mcp shared helper + db_mcp",
+    "anvil db init/check/query/mcp",
+    "anvil qa api",
+    "tier2 api_qa",
+    "doctor toolbox"
+  ],
+  "next_steps": [
+    "cli unit tests + clippy",
+    "sandbox config/scenarios + real runs",
+    "MCP stdio round trip",
+    "e2e ignored test",
+    "README + visual-qa skill",
+    "full cargo test + anvil check"
+  ],
+  "timestamp": "2026-11-27T23:06:39.105334700Z"
+}

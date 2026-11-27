@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 52,
-  "updated_at": "2026-11-27T21:43:02.320864Z",
+  "task_count": 53,
+  "updated_at": "2026-11-27T23:44:47.425574700Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -974,6 +974,25 @@
       "progress_file": ".harness/tasks/T-052/progress.md",
       "created_at": "2026-11-27T20:51:32.268941800Z",
       "updated_at": "2026-11-27T21:43:02.320864Z"
+    },
+    {
+      "task_id": "T-053",
+      "request": "API QA scenarios with HTTP calls and database checks through MCP Toolbox",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Added API QA: `.harness/qa/api/*.json` scenarios with HTTP steps (expect status, JSON pointers, body, headers; capture) and read-only DB steps through Google MCP Toolbox (`toolbox invoke`), `anvil qa api [--start]`, `anvil db init|check|query|mcp`, a Tier 2 step that a plain `anvil check` reaches when `qa.api.paths` change, the managed `anvil-db` MCP server for every adapter, and a doctor check.",
+      "evidence": "fmt/clippy PASS; cargo test --workspace 879 passed, 2 ignored; sandbox qa api --start 3/3 PASS (create-and-pay-order 6/6, invalid-quantity 3/3, unknown-customer 3/3); forced DB and HTTP mismatches exit 1; Toolbox MCP stdio tools/list returns anvil_select; port 3100 free afterwards",
+      "entry_count": 3,
+      "files_count": 46,
+      "progress_file": ".harness/tasks/T-053/progress.md",
+      "created_at": "2026-11-27T21:46:11.574961600Z",
+      "updated_at": "2026-11-27T23:44:47.425574700Z"
     }
   ]
 }
