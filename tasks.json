@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 45,
-  "updated_at": "2026-11-27T18:03:32.129748500Z",
+  "task_count": 46,
+  "updated_at": "2026-11-27T18:34:32.325721800Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -841,6 +841,25 @@
       "progress_file": ".harness/tasks/T-045/progress.md",
       "created_at": "2026-11-27T17:54:24.134727300Z",
       "updated_at": "2026-11-27T18:03:32.129748500Z"
+    },
+    {
+      "task_id": "T-046",
+      "request": "anvil grep on ripgrep crates with symbol annotation, MCP tool and optional tgrep backend",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "anvil grep now uses ripgrep's crates (nested gitignore, negations, binary detection), ripgrep-style flags, results grouped by file with the enclosing graph symbol and exact totals, exit codes 0/1/2, an MCP `grep` tool, and `search.backend = auto|builtin|tgrep` that uses a running tgrep server when available.",
+      "evidence": "fmt PASS; clippy -D warnings PASS; cargo test core/graph/mcp/cli 383 then 328 passed; anvil check --scope PASS; manual run on repo OK",
+      "entry_count": 3,
+      "files_count": 40,
+      "progress_file": ".harness/tasks/T-046/progress.md",
+      "created_at": "2026-11-27T18:06:45.529227600Z",
+      "updated_at": "2026-11-27T18:34:32.325721800Z"
     }
   ]
 }

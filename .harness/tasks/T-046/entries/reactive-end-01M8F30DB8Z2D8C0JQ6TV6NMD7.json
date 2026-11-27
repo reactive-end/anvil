@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F30DB8Z2D8C0JQ6TV6NMD7",
+  "task_id": "T-046",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Replace the hand-written walker with ignore::WalkBuilder + grep-searcher, add ripgrep-style options, group results by file with the enclosing graph symbol, exact totals, an MCP `grep` tool, and a `search.backend = auto|builtin|tgrep` setting that uses a running tgrep server when present.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T18:06:45.646129800Z"
+}
