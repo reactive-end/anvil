@@ -67,12 +67,23 @@ const ALIASES: &[(&str, &[&str])] = &[
 ];
 
 /// The `DB_*` values Toolbox needs, from (lowest to highest priority) the local defaults, the
-/// project's `env_file` (aliases and a `DATABASE_URL` included), and the process environment.
+/// ambient environment (`DATABASE_URL`, `PGUSER`, `MYSQL_PASSWORD`, ...), the project's
+/// `env_file` (aliases and a `DATABASE_URL` included), and `DB_*` set in the environment.
 pub fn connection_env(root: &Path, db: &DbConfig) -> Vec<(String, String)> {
+    connection_env_from(root, db, &std::env::vars().collect())
+}
+
+/// [`connection_env`] with the process environment given. Generic variables such as `PGUSER`
+/// are often set machine-wide (CI runners do), so they never override the project's own file;
+/// only the exact `DB_*` names are an explicit override.
+fn connection_env_from(
+    root: &Path,
+    db: &DbConfig,
+    process: &BTreeMap<String, String>,
+) -> Vec<(String, String)> {
     let file = db.env_file.as_deref().map(|f| read_env_file(&root.join(f))).unwrap_or_default();
-    let process: BTreeMap<String, String> = std::env::vars().collect();
     let mut out = db.defaults.clone();
-    for layer in [&file, &process] {
+    for layer in [process, &file] {
         if let Some(url) = layer.get("DATABASE_URL").and_then(|u| parse_url(u)) {
             out.extend(url);
         }
@@ -80,6 +91,11 @@ pub fn connection_env(root: &Path, db: &DbConfig) -> Vec<(String, String)> {
             if let Some(value) = names.iter().find_map(|n| layer.get(*n)) {
                 out.insert((*placeholder).to_owned(), value.clone());
             }
+        }
+    }
+    for (placeholder, _) in ALIASES {
+        if let Some(value) = process.get(*placeholder) {
+            out.insert((*placeholder).to_owned(), value.clone());
         }
     }
     out.into_iter().collect()
@@ -192,7 +208,11 @@ mod tests {
         defaults.insert("DB_HOST".to_owned(), "localhost".to_owned());
         defaults.insert("DB_PORT".to_owned(), "5432".to_owned());
         let db = DbConfig { env_file: Some(".env".to_owned()), defaults, ..DbConfig::default() };
-        let env: BTreeMap<String, String> = connection_env(dir.path(), &db).into_iter().collect();
+        let ambient: BTreeMap<String, String> = [("PGUSER", "runner"), ("PGPASSWORD", "root")]
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .into();
+        let env: BTreeMap<String, String> =
+            connection_env_from(dir.path(), &db, &ambient).into_iter().collect();
         assert_eq!(env.get("DB_HOST").map(String::as_str), Some("db.local"));
         assert_eq!(env.get("DB_PORT").map(String::as_str), Some("6543"));
         assert_eq!(env.get("DB_USER").map(String::as_str), Some("app"), "alias beats the URL");
@@ -200,8 +220,14 @@ mod tests {
         assert_eq!(env.get("DB_PASSWORD").map(String::as_str), Some("p%40ss"));
         let local = DbConfig { defaults: db.defaults.clone(), ..DbConfig::default() };
         let env: BTreeMap<String, String> =
-            connection_env(dir.path(), &local).into_iter().collect();
+            connection_env_from(dir.path(), &local, &ambient).into_iter().collect();
         assert_eq!(env.get("DB_PORT").map(String::as_str), Some("5432"), "local fallback");
+        assert_eq!(env.get("DB_PASSWORD").map(String::as_str), Some("root"), "ambient fills gaps");
+        let explicit: BTreeMap<String, String> =
+            [("DB_USER".to_owned(), "override".to_owned())].into();
+        let env: BTreeMap<String, String> =
+            connection_env_from(dir.path(), &db, &explicit).into_iter().collect();
+        assert_eq!(env.get("DB_USER").map(String::as_str), Some("override"), "DB_* wins");
     }
 
     #[test]

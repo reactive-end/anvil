@@ -376,7 +376,7 @@ An agent that changes a backend should prove the change works: call the running 
 
 - **The project's database first.** When a non-example env file holds a connection (`DATABASE_URL`, `DB_HOST`, `POSTGRES_HOST`, `PGHOST`, `MYSQL_HOST`, ...), `db.env_file` names it and Anvil reads it each time it starts Toolbox: `DATABASE_URL` is split into the five values and common names (`DB_USERNAME`, `DB_DATABASE`, `POSTGRES_USER`, `PGPASSWORD`, `MYSQL_PASSWORD`, ...) map onto them; the local defaults below fill any value it lacks. Nothing is copied into Anvil's files.
 - **A local database otherwise.** With no connection configured, `db.defaults` points at a local server: `localhost`, port 5432 and user `postgres` (Postgres) or 3306 and `root` (MySQL/MariaDB), the same word as the password (the usual local-development setup; `DB_PASSWORD`, `PGPASSWORD` or `MYSQL_PASSWORD` in the environment override it), and a database named after `--database` or the folder.
-- Variables set in the environment always win over both.
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` and `DB_NAME` set in the environment win over both. Other variables in the environment (`DATABASE_URL`, `PGUSER`, `MYSQL_PASSWORD`, ...) are often machine-wide, so they only fill what the env file leaves out.
 
 It refuses to overwrite an existing file without `--force`. Install the Toolbox binary from the [releases page](https://github.com/googleapis/mcp-toolbox/releases) (v1.18.0 is what Anvil was verified with).
 
