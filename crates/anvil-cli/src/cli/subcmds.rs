@@ -754,6 +754,24 @@ pub enum ArchitectureSubcmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum PromptSubcmd {
+    /// Print a rough request as a structured prompt: goal, context, constraints, acceptance criteria, verification, open questions.
+    Improve {
+        /// The request; reads stdin when missing or `-`.
+        text: Option<String>,
+        /// Print the same content as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show or set what the prompt hook adds to each prompt: `off`, `context` (default), or `coach`.
+    Assist {
+        /// New mode; shows the current one when omitted.
+        #[arg(value_parser = ["off", "context", "coach"])]
+        mode: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum DbSubcmd {
     /// Write `.harness/db/tools.yaml` (source plus the read-only `anvil_select` tool) for Toolbox.
     Init {

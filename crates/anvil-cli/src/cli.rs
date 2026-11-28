@@ -11,8 +11,8 @@ use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
     ArchitectureSubcmd, CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd,
     DbSubcmd, DocsSubcmd, GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd,
-    PrereqsSubcmd, QaSubcmd, RatchetSubcmd, ReviewSubcmd, SonarSubcmd, SpecSubcmd, TasksSubcmd,
-    WorktreeSubcmd,
+    PrereqsSubcmd, PromptSubcmd, QaSubcmd, RatchetSubcmd, ReviewSubcmd, SonarSubcmd, SpecSubcmd,
+    TasksSubcmd, WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -341,6 +341,11 @@ pub enum Command {
     Architecture {
         #[command(subcommand)]
         sub: ArchitectureSubcmd,
+    },
+    /// Turn a rough request into a structured prompt, or choose how much the prompt hook adds.
+    Prompt {
+        #[command(subcommand)]
+        sub: PromptSubcmd,
     },
     /// Execute sandboxed JS Code Mode queries against `anvil-graph` and `anvil-memory`.
     Code {

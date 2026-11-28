@@ -260,6 +260,60 @@ Concepts carry two Anvil extensions: `x-anvil-paths` (repo-relative globs of the
 
 Hooks keep it current: after an agent edits a file a concept documents, it gets one reminder per concept per turn; edits of a concept are validated; `Stop` lists concepts whose code changed but which were not refreshed; and `anvil check` reports invalid changed docs as Tier 0 errors and stale concepts as warnings. `anvil docs verify` always asks the user and is refused in orchestrator mode. Config (`.harness/config.json`): `"docs": { "project": "name", "remind_on_edit": true }`.
 
+## Prompt Assist
+
+Rough requests get worse results. Anvil helps without calling a model or the network: everything below is deterministic and comes from the repository's own graph, docs, memory, and config.
+
+**What every prompt gets.** The `UserPromptSubmit` hook (and Antigravity's `PreInvocation`) adds one short line for the agent so it starts in the right place:
+
+```
+[info][prompt-context]: Likely relevant (verify before relying): code: applyDiscount (src/orders/order.ts:7); docs: shop/orders — Orders [stale]; memory: Totals use integer cents (decision).
+```
+
+Code symbols come from identifiers in the prompt (`camelCase`, `snake_case`, `kebab-case`, `a.b.c`, paths like `src/x.ts`, backticked or quoted names) that resolve in the graph, plus symbols whose own name shares two words with the prompt; docs concepts and memories need two words in common as well. English and Spanish filler words are ignored. Nothing relevant means no line at all. The whole block is capped at `prompt_assist.max_tokens` (default 450, estimated at 4 characters per token); an item shown in the last 3 prompts of the same session is not repeated. Slash commands, injected text starting with `<`, prompts shorter than `min_words` (default 4), and repositories without `.harness/` are skipped. Gathering has a 250 ms budget and never runs a text search; the code graph is read from disk, never built.
+
+**Modes** (`anvil prompt assist [off|context|coach]`, saved under `prompt_assist.mode`; `context` is the default and is not written to the file):
+
+| Mode | What is added |
+| --- | --- |
+| `off` | Nothing. |
+| `context` | The line above. |
+| `coach` | The line above, plus, when the request has no target, no statement of the expected result, or a very broad scope ("everything", "toda la app"), a `prompt-coach` note for the agent: restate the goal, propose acceptance criteria and how to verify them (`anvil check`, `anvil qa api` and `anvil qa run --all-flows` when scenarios and flows exist), and ask the user to confirm before editing. The user sees one short tip (Claude Code `systemMessage`), at most once per session per kind of gap. |
+
+```json
+{ "prompt_assist": { "mode": "coach", "max_tokens": 450, "min_words": 4 } }
+```
+
+**Improve a request.** `anvil prompt improve "<text>"` (or `-` / no argument to read stdin; `--json` for structured output) prints the request as a prompt you can review and edit. Sections are built from the repo: the goal unchanged, the symbols, docs, and memories found (with a text search for the words the graph cannot name), the architecture guidance, the escape-hatch rule and the security guard, acceptance criteria (a checklist with derived items and `<describe ...>` placeholders), the verification commands this repo really has, and open questions for each gap.
+
+```
+$ anvil prompt improve "add a discount when quantity is over 10"
+## Goal
+add a discount when quantity is over 10
+
+## Context
+- code: `Order` (class orders-api/src/orders/domain/order.ts:28)
+
+## Constraints
+- Architecture: hexagonal (ports & adapters) in this repository: domain imports no framework or other layer; ...
+- Do not add suppressions or escape hatches (...); if one is truly needed, justify it as `anvil-allow(<rule>): <reason>`.
+
+## Acceptance criteria
+- [ ] `anvil check` passes (lint, types, architecture rules)
+- [ ] API scenarios pass: `anvil qa api`
+- [ ] <describe what done looks like>
+
+## Verification
+- `anvil check`: lint, types, architecture rules, and the tests related to the changed files
+- `anvil qa api`: 3 API scenario(s): create-and-pay-order, invalid-quantity, unknown-customer
+- `anvil qa run --flow create-order`
+
+## Open questions
+- What should be true when this is done (expected result, error cases)?
+```
+
+The built-in `improve-prompt` skill tells the agent to run it when a request is vague, show the result, and wait for the user's confirmation before editing. In orchestrator mode `anvil prompt improve` is read-only; `anvil prompt assist <mode>` is not.
+
 ## Web QA
 
 Agents should verify web changes in a running browser, not by reading the code. Anvil offers two complementary ways.

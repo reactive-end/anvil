@@ -23,6 +23,7 @@ pub mod mem;
 pub mod orchestrator;
 pub mod plugin;
 pub mod prereqs;
+pub mod prompt;
 pub mod qa;
 pub mod ratchet;
 pub mod review;
@@ -131,6 +132,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Docs { sub } => docs::execute(&root, sub),
         Command::Prereqs { sub } => prereqs::execute(&root, sub),
         Command::Architecture { sub } => architecture::execute(&root, sub),
+        Command::Prompt { sub } => prompt::execute(&root, sub),
     }
 }
 

@@ -1,7 +1,7 @@
 //! `anvil hook`: unified Antigravity & Claude Code hook dispatcher.
 
 mod docs_watch;
-mod error_log;
+pub(crate) mod error_log;
 mod executors;
 mod gates;
 pub mod git_install;
@@ -44,6 +44,7 @@ use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author_fast;
 use serde_json::Value;
 
+use crate::commands::prompt::assist;
 use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
 use crate::daemon::try_request;
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
@@ -90,14 +91,14 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         docs_watch::clear_turn(&effective_root);
         search_guard::clear_turn(&effective_root);
     }
+    let mut user_tip = None;
     let outcome = match event {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
         HookEvent::UserPromptSubmit | HookEvent::PreInvocation => {
             if effective_root.join(".harness").is_dir() {
-                let mut outcome = task_auto::handle_prompt_hook(&effective_root, &input);
-                if event == HookEvent::UserPromptSubmit && adapter == AdapterKind::ClaudeCode {
-                    outcome.messages.extend(roles::mode_reminder(&effective_root));
-                }
+                let (outcome, tip) =
+                    handle_prompt(&effective_root, &config, &input, event, adapter);
+                user_tip = tip;
                 outcome
             } else if event == HookEvent::PreInvocation {
                 collect_umbrella_inbox_outcome(&effective_root)
@@ -116,6 +117,7 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         AdapterKind::Antigravity => antigravity::render_output(&effective_root, event, &outcome)?,
         AdapterKind::ClaudeCode => claude_code::render_output(&effective_root, event, &outcome)?,
     };
+    let rendered = with_user_tip(rendered, event, adapter, user_tip.as_deref());
     println!("{}", serde_json::to_string(&rendered)?);
 
     if effective_root.join(".harness").is_dir() {
@@ -129,6 +131,40 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Prompt bookkeeping plus the standing reminders and the prompt-assist context; the second value
+/// is the one-line tip for the user, when there is one.
+fn handle_prompt(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+    event: HookEvent,
+    adapter: AdapterKind,
+) -> (HookOutcome, Option<String>) {
+    let mut outcome = task_auto::handle_prompt_hook(root, input);
+    if event == HookEvent::UserPromptSubmit && adapter == AdapterKind::ClaudeCode {
+        outcome.messages.extend(roles::mode_reminder(root));
+    }
+    let assist = assist::on_prompt(root, config, input);
+    outcome.messages.extend(assist.messages);
+    (outcome, assist.user_tip)
+}
+
+/// Adds the prompt-assist tip as Claude Code's `systemMessage`, the only field shown to the user
+/// rather than the model. Antigravity has no such channel, so it never gets a tip.
+fn with_user_tip(
+    mut rendered: Value,
+    event: HookEvent,
+    adapter: AdapterKind,
+    tip: Option<&str>,
+) -> Value {
+    if let (HookEvent::UserPromptSubmit, AdapterKind::ClaudeCode, Some(tip)) = (event, adapter, tip)
+        && let Some(obj) = rendered.as_object_mut()
+    {
+        obj.insert("systemMessage".to_owned(), Value::String(format!("Anvil · {tip}")));
+    }
+    rendered
 }
 
 /// Records which files were already dirty so `Stop` only judges work done in this session.

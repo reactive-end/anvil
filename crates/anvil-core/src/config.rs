@@ -5,6 +5,7 @@ pub mod db;
 pub mod docs;
 pub mod orchestrator;
 pub mod prereqs;
+pub mod prompt_assist;
 pub mod qa;
 pub mod search;
 pub mod security_guard;
@@ -21,6 +22,7 @@ use db::DbConfig;
 use docs::DocsConfig;
 use orchestrator::OrchestratorConfig;
 use prereqs::PrerequisitesConfig;
+use prompt_assist::PromptAssistConfig;
 use qa::QaConfig;
 use search::SearchConfig;
 use security_guard::SecurityGuardConfig;
@@ -348,6 +350,9 @@ pub struct AnvilConfig {
     /// Language of the messages Anvil shows the user (`en`, `es`); detected when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Context and coaching the `UserPromptSubmit` hook adds to each prompt (`anvil prompt assist`).
+    #[serde(default, skip_serializing_if = "PromptAssistConfig::is_default")]
+    pub prompt_assist: PromptAssistConfig,
 }
 
 impl Default for AnvilConfig {
@@ -378,6 +383,7 @@ impl Default for AnvilConfig {
             prerequisites: PrerequisitesConfig::default(),
             orchestrator: None,
             language: None,
+            prompt_assist: PromptAssistConfig::default(),
         }
     }
 }

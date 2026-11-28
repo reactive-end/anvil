@@ -284,3 +284,13 @@ fn executors_may_set_the_architecture() {
         assert_eq!(why_not_executor(cmd), None, "{cmd}");
     }
 }
+
+#[test]
+fn orchestrator_reads_prompt_improve_but_cannot_change_prompt_assist() {
+    for ok in ["anvil prompt improve \"fix the login\"", "anvil prompt improve --json \"x\""] {
+        assert_eq!(why_not_read_only(ok), None, "{ok}");
+    }
+    for bad in ["anvil prompt assist coach", "anvil prompt assist off", "anvil prompt"] {
+        assert!(why_not_read_only(bad).is_some(), "{bad}");
+    }
+}
