@@ -17,7 +17,7 @@ use anvil_tasks::resolve_author_fast;
 
 use super::grep_stage;
 use super::refs::{CodeRef, DocRef, Gathered, MemoryRef};
-use super::stopwords::fold_accents;
+use super::stem::{stem, stem_set, with_stems};
 use super::terms::{Ident, IdentKind, Terms, has_file_extension, tokens};
 
 /// Hits examined per content search before the strength filter.
@@ -213,10 +213,11 @@ pub(super) fn is_noise_path(file: &str) -> bool {
             .any(|part| SETUP_NAMES.contains(&part.to_ascii_lowercase().as_str()))
 }
 
-/// Distinct `words` that appear among the words of `text`.
+/// Distinct stems of `words` that appear among the stems of the words of `text`, so "cancelled"
+/// meets `CancelOrderUseCase`.
 fn overlap(text: &str, words: &[String]) -> usize {
-    let tokens = tokens(text);
-    words.iter().filter(|w| tokens.contains(w)).count()
+    let present = stem_set(&tokens(text));
+    stem_set(words).iter().filter(|w| present.contains(*w)).count()
 }
 
 /// Symbols and files whose own name (not their folder) shares two words with the prompt, or is
@@ -226,13 +227,14 @@ fn content_code(run: &Run<'_>, out: &mut Gathered) {
         return;
     };
     let words = &run.terms.words;
-    let hits = query::query(graph, &words.join(" "), CANDIDATES * 2);
+    let hits = query::query(graph, &with_stems(words), CANDIDATES * 2);
     let mut strong: Vec<(usize, query::QueryHit)> = hits
         .into_iter()
         .filter(|h| matches!(h.kind, NodeKind::Symbol | NodeKind::File) && !is_noise_path(&h.file))
         .filter_map(|h| {
             let shared = overlap(&h.label, words);
-            let named = words.iter().any(|w| fold_accents(&h.label) == *w)
+            let label_stem = stem(&h.label);
+            let named = words.iter().any(|w| stem(w) == label_stem)
                 && has_long_word(&h.label)
                 && !matches!(node_kind(graph, &h).as_str(), "variable" | "constant" | "unknown");
             (shared >= 2 || named).then_some((shared, h))
@@ -270,7 +272,7 @@ fn content_docs(run: &Run<'_>, out: &mut Gathered) {
         return;
     }
     let concepts = concept::scan_all(run.root, &bundles, true);
-    let hits = docs_search::search(&concepts, &words.join(" "), CANDIDATES);
+    let hits = docs_search::search(&concepts, &with_stems(&words), CANDIDATES);
     let strong = hits.into_iter().filter(|h| {
         let text = format!("{} {} {}", h.id, h.title.as_deref().unwrap_or_default(), h.snippet);
         overlap(&text, &words) >= 2
@@ -300,7 +302,7 @@ fn content_memories(run: &Run<'_>, out: &mut Gathered) {
             return;
         }
     };
-    match engine.search(&words.join(" "), None, CANDIDATES) {
+    match engine.search(&with_stems(&words), None, CANDIDATES) {
         Ok(hits) => {
             let strong = hits.into_iter().filter(|h| {
                 overlap(&format!("{} {} {}", h.title, h.topic_key, h.snippet), &words) >= 2
@@ -358,6 +360,13 @@ mod tests {
         ] {
             assert!(!is_noise_path(kept), "{kept}");
         }
+    }
+
+    #[test]
+    fn overlap_counts_inflected_forms_as_the_same_word() {
+        let words = vec!["cancelled".to_owned(), "orders".to_owned(), "stock".to_owned()];
+        assert_eq!(overlap("CancelOrderUseCase", &words), 2);
+        assert_eq!(overlap("cancelación", &["cancelado".to_owned()]), 1);
     }
 
     #[test]

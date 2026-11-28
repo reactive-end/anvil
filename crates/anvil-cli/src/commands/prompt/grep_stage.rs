@@ -9,11 +9,14 @@ use anvil_graph::model::{CodeGraph, GraphNode, NodeKind};
 
 use super::gather::{MAX_CONTENT_CODE, Run, is_noise_path, push_code};
 use super::refs::{CodeRef, Gathered};
+use super::stem::stem;
 
 /// Words searched, longest first: short ones match everywhere.
 const MAX_WORDS: usize = 3;
 /// Shorter words are not worth a text search.
 const MIN_WORD_CHARS: usize = 5;
+/// A stem shorter than this would match everywhere, so the whole word is searched instead.
+const MIN_STEM_CHARS: usize = 4;
 /// The stage is skipped once the graph already found this many items.
 const ENOUGH: usize = 3;
 const MAX_MATCHES: usize = 80;
@@ -30,11 +33,9 @@ pub fn content_grep(run: &Run<'_>, out: &mut Gathered) {
     if !run.limits.grep || out.code.len() >= ENOUGH {
         return;
     }
-    let mut words: Vec<&String> =
-        run.terms.words.iter().filter(|w| w.chars().count() >= MIN_WORD_CHARS).collect();
-    words.sort_by_key(|w| Reverse(w.chars().count()));
+    let words = search_words(&run.terms.words);
     let mut tally: Vec<(CodeRef, usize)> = Vec::new();
-    for word in words.into_iter().take(MAX_WORDS) {
+    for word in words.iter().take(MAX_WORDS) {
         if run.out_of_time() {
             break;
         }
@@ -48,6 +49,21 @@ pub fn content_grep(run: &Run<'_>, out: &mut Gathered) {
     for (found, _) in tally {
         push_code(out, found, room);
     }
+}
+
+/// What to search for: the stem of each long enough word (a substring, so it also finds the other
+/// inflections of the word), longest first, once each.
+fn search_words(words: &[String]) -> Vec<String> {
+    let mut terms: Vec<String> = Vec::new();
+    for word in words.iter().filter(|w| w.chars().count() >= MIN_WORD_CHARS) {
+        let stemmed = stem(word);
+        let term = if stemmed.chars().count() >= MIN_STEM_CHARS { stemmed } else { word.clone() };
+        if !terms.contains(&term) {
+            terms.push(term);
+        }
+    }
+    terms.sort_by_key(|t| Reverse(t.chars().count()));
+    terms
 }
 
 fn search(run: &Run<'_>, word: &str) -> anyhow::Result<GrepReport> {
@@ -95,4 +111,20 @@ fn outermost_symbol<'g>(graph: &'g CodeGraph, file: &str, line: u32) -> Option<&
 fn code_ref(node: &GraphNode) -> CodeRef {
     let kind = node.symbol_kind.map_or("symbol".to_owned(), |k| format!("{k:?}").to_lowercase());
     CodeRef { name: node.label.clone(), kind, file: node.file.clone(), line: Some(node.line) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn searches_the_stem_so_other_inflections_match() {
+        let words = vec!["cancelled".to_owned(), "stock".to_owned(), "orders".to_owned()];
+        assert_eq!(search_words(&words), ["cancel", "stock", "order"]);
+    }
+
+    #[test]
+    fn a_short_stem_falls_back_to_the_whole_word() {
+        assert_eq!(search_words(&["creaciones".to_owned()]), ["creaciones"]);
+    }
 }

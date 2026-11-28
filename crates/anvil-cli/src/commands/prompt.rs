@@ -6,11 +6,14 @@ pub mod assist;
 mod constraints;
 mod gaps;
 mod gather;
+#[cfg(test)]
+mod gather_tests;
 mod grep_stage;
 mod improve;
 mod refs;
 mod render;
 mod session;
+mod stem;
 mod stopwords;
 mod terms;
 mod verify;
