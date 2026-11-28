@@ -226,7 +226,7 @@ fn db_mcp_registers_and_removes_the_toolbox_server() {
     let servers: Value =
         serde_json::from_str(&fs::read_to_string(root.join(".mcp.json")).expect("mcp"))
             .expect("json");
-    assert_eq!(servers["mcpServers"]["anvil-db"]["args"][0], json!("--stdio"));
+    assert_eq!(servers["mcpServers"]["anvil-db"]["args"], json!(["db", "serve"]));
     assert!(servers["mcpServers"]["postgres"].is_object());
     let off = anvil(root, &["db", "mcp", "off"]);
     assert!(off.status.success(), "{}", text(&off));

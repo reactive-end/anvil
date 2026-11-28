@@ -8,11 +8,13 @@ use anvil_core::fs_util::atomic_write;
 use anvil_qa::api::db::SELECT_TOOL;
 use anyhow::{Context, Result, bail};
 
+use super::detect::{Detected, detect, local_defaults};
 use super::env_path::find_sqlite_path;
 use crate::ui;
 
 pub(super) struct InitArgs<'a> {
-    pub kind: &'a str,
+    /// The engine; detected from the project when `None`.
+    pub kind: Option<&'a str>,
     pub database: Option<&'a str>,
     pub name: &'a str,
     pub toolbox: Option<&'a str>,
@@ -25,8 +27,10 @@ pub(super) fn run(root: &Path, args: &InitArgs<'_>) -> Result<()> {
     if target.exists() && !args.force {
         bail!("{} already exists; pass --force to overwrite it", config.db.config);
     }
-    let database = resolve_database(root, args)?;
-    let yaml = tools_yaml(args.kind, args.name, database.as_deref())?;
+    let detected = detect(root);
+    let kind = choose_kind(args.kind, &detected)?;
+    let database = resolve_database(root, kind, args.database)?;
+    let yaml = tools_yaml(kind, args.name, database.as_deref())?;
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -35,18 +39,75 @@ pub(super) fn run(root: &Path, args: &InitArgs<'_>) -> Result<()> {
     if let Some(toolbox) = args.toolbox {
         config.db.toolbox = toolbox.to_owned();
     }
+    set_connection(root, &mut config, kind, &detected, args.database);
     config.save(root)?;
-    println!("wrote {} ({} source `{}`)", config.db.config, args.kind, args.name);
-    print_next_steps(args.kind, &config.db.toolbox);
+    println!("wrote {} ({kind} source `{}`)", config.db.config, args.name);
+    print_next_steps(kind, &config.db.toolbox);
     Ok(())
 }
 
+fn choose_kind(given: Option<&str>, detected: &Detected) -> Result<&'static str> {
+    let kind = match given {
+        Some("sqlite") => "sqlite",
+        Some("postgres") => "postgres",
+        Some("mysql") => "mysql",
+        Some(other) => {
+            bail!("unsupported database kind `{other}` (use sqlite, postgres, or mysql)")
+        }
+        None => {
+            let Some(kind) = detected.kind else {
+                bail!(
+                    "could not tell which database the project uses (no DB_CONNECTION/DATABASE_URL in its .env files, no known driver in its dependencies); pass --kind sqlite|postgres|mysql"
+                );
+            };
+            let origin = detected.origin.as_deref().unwrap_or("the project");
+            println!("detected {kind} from {origin}");
+            kind
+        }
+    };
+    Ok(kind)
+}
+
+/// Server databases read `${DB_*}` from the project's env file when it has a connection, else
+/// from local defaults (localhost and the engine's default port and user).
+fn set_connection(
+    root: &Path,
+    config: &mut AnvilConfig,
+    kind: &str,
+    detected: &Detected,
+    database: Option<&str>,
+) {
+    config.db.env_file = None;
+    config.db.defaults.clear();
+    if kind == "sqlite" {
+        return;
+    }
+    let name = database.map(str::to_owned).unwrap_or_else(|| {
+        root.file_name()
+            .map_or_else(|| "app".to_owned(), |n| n.to_string_lossy().replace([' ', '-'], "_"))
+    });
+    // The local defaults also fill whatever the env file leaves out: Toolbox refuses a file
+    // with an unset placeholder.
+    config.db.defaults = local_defaults(kind, &name);
+    if let Some(env_file) = &detected.env_file {
+        println!(
+            "connection: the DB_* / DATABASE_URL variables of {env_file} (read when Toolbox runs; nothing is copied), local defaults for any it lacks"
+        );
+        config.db.env_file = Some(env_file.clone());
+        return;
+    }
+    let port = config.db.defaults.get("DB_PORT").cloned().unwrap_or_default();
+    println!(
+        "connection: the project configures no {kind} database, so a local one is used (localhost:{port}, database `{name}`); set DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME or DATABASE_URL to use another"
+    );
+}
+
 /// The `database` value: given, found in `.env*` files (SQLite), or left to an env placeholder.
-fn resolve_database(root: &Path, args: &InitArgs<'_>) -> Result<Option<String>> {
-    if let Some(database) = args.database {
+fn resolve_database(root: &Path, kind: &str, given: Option<&str>) -> Result<Option<String>> {
+    if let Some(database) = given {
         return Ok(Some(database.replace('\\', "/")));
     }
-    if args.kind != "sqlite" {
+    if kind != "sqlite" {
         return Ok(None);
     }
     let Some(found) = find_sqlite_path(root) else {
@@ -105,10 +166,7 @@ fn print_next_steps(kind: &str, toolbox: &str) {
     println!("next steps:");
     if kind != "sqlite" {
         println!(
-            "  1. export DB_HOST, DB_PORT, DB_USER and DB_PASSWORD (and DB_NAME unless you passed --database)"
-        );
-        println!(
-            "     use a read-only database user: the SELECT-only rule is a guard, not a permission system"
+            "  - use a read-only database user: the SELECT-only rule is a guard, not a permission system"
         );
     }
     println!(

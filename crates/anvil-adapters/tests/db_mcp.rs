@@ -46,8 +46,8 @@ fn sync_registers_the_toolbox_in_every_adapter_and_removes_it_when_off() {
         assert_eq!(
             servers[DB_SERVER],
             json!({
-                "command": ".tools/toolbox.exe",
-                "args": ["--stdio", "--config", ".harness/db/tools.yaml"]
+                "command": "anvil",
+                "args": ["db", "serve"]
             })
         );
     }
@@ -113,7 +113,7 @@ fn the_codex_config_gets_the_section_too() {
     sync_repo(root).expect("sync on");
     let toml = fs::read_to_string(root.join(".codex").join("config.toml")).expect("codex config");
     assert!(toml.contains("[mcp_servers.anvil-db]"), "{toml}");
-    assert!(toml.contains("\"--stdio\""), "{toml}");
+    assert!(toml.contains("\"serve\""), "{toml}");
     configure(root, false);
     sync_repo(root).expect("sync off");
     let toml = fs::read_to_string(root.join(".codex").join("config.toml")).expect("codex config");

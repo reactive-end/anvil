@@ -782,9 +782,9 @@ pub enum PromptSubcmd {
 pub enum DbSubcmd {
     /// Write `.harness/db/tools.yaml` (source plus the read-only `anvil_select` tool) for Toolbox.
     Init {
-        /// Database engine.
+        /// Database engine; detected from the project's .env files and dependencies when omitted.
         #[arg(long, value_parser = ["sqlite", "postgres", "mysql"])]
-        kind: String,
+        kind: Option<String>,
         /// SQLite file (relative to the repository root) or server database name.
         #[arg(long)]
         database: Option<String>,
@@ -800,6 +800,8 @@ pub enum DbSubcmd {
     },
     /// Check the Toolbox binary, the tools file, literal passwords, and `SELECT 1`; exits 1 on a failure.
     Check,
+    /// Run Toolbox as an MCP server on stdio with the project's connection (what `anvil-db` starts).
+    Serve,
     /// Run one read-only SELECT through Toolbox and print the rows as JSON.
     Query {
         /// A single `SELECT` (or `WITH ... SELECT`) statement.

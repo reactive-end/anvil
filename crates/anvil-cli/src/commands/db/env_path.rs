@@ -27,23 +27,41 @@ pub(super) struct Found {
 /// The first SQLite path in `.env*` files of the root or its direct subfolders. Nothing but the
 /// path variables is read; no other value leaves this function.
 pub(super) fn find_sqlite_path(root: &Path) -> Option<Found> {
-    let mut dirs = vec![(root.to_path_buf(), String::new())];
-    let mut subdirs: Vec<_> = fs::read_dir(root)
-        .ok()?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.path().is_dir())
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| !name.starts_with('.') && !SKIPPED_DIRS.contains(&name.as_str()))
-        .collect();
-    subdirs.sort();
-    dirs.extend(subdirs.into_iter().map(|name| (root.join(&name), format!("{name}/"))));
-    ENV_FILES.iter().find_map(|file| {
-        dirs.iter().find_map(|(dir, prefix)| {
-            let text = fs::read_to_string(dir.join(file)).ok()?;
-            let (variable, value) = pick_path(&text)?;
-            Some(Found { path: anchor(&value, prefix), variable, file: format!("{prefix}{file}") })
-        })
+    env_files(root).into_iter().find_map(|(rel, prefix)| {
+        let text = fs::read_to_string(root.join(&rel)).ok()?;
+        let (variable, value) = pick_path(&text)?;
+        Some(Found { path: anchor(&value, &prefix), variable, file: rel })
     })
+}
+
+/// Existing `.env*` files of the root and its direct subfolders, real ones before examples, as
+/// (repo-relative file, folder prefix such as `api/`).
+pub(super) fn env_files(root: &Path) -> Vec<(String, String)> {
+    let mut prefixes = vec![String::new()];
+    let mut subdirs: Vec<String> = fs::read_dir(root)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.path().is_dir())
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .filter(|name| !name.starts_with('.') && !SKIPPED_DIRS.contains(&name.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    subdirs.sort();
+    prefixes.extend(subdirs.into_iter().map(|name| format!("{name}/")));
+    ENV_FILES
+        .iter()
+        .flat_map(|file| {
+            prefixes.iter().map(move |prefix| (format!("{prefix}{file}"), prefix.clone()))
+        })
+        .filter(|(rel, _)| root.join(rel).is_file())
+        .collect()
+}
+
+/// `KEY=value` pairs of one env file's text (comments, quotes and `export` handled).
+pub(super) fn parse_env(text: &str) -> Vec<(String, String)> {
+    text.lines().filter_map(parse_line).collect()
 }
 
 /// The first path-like variable of `text`, with its value.

@@ -2,6 +2,7 @@
 //! for API scenarios (`anvil qa api`) and, as an MCP server, for agents.
 
 mod check;
+mod detect;
 mod env_path;
 mod init;
 
@@ -21,7 +22,7 @@ pub fn execute(root: &Path, sub: DbSubcmd) -> Result<()> {
         DbSubcmd::Init { kind, database, name, toolbox, force } => init::run(
             root,
             &init::InitArgs {
-                kind: &kind,
+                kind: kind.as_deref(),
                 database: database.as_deref(),
                 name: &name,
                 toolbox: toolbox.as_deref(),
@@ -29,6 +30,7 @@ pub fn execute(root: &Path, sub: DbSubcmd) -> Result<()> {
             },
         ),
         DbSubcmd::Check => check::run(root),
+        DbSubcmd::Serve => serve(root),
         DbSubcmd::Query { sql } => query(root, &sql),
         DbSubcmd::Mcp { state } => set_mcp(root, state == "on"),
     }
@@ -39,6 +41,21 @@ fn query(root: &Path, sql: &str) -> Result<()> {
     let rows = select(&ToolboxClient::new(root, &config.db), sql)?;
     println!("{}", serde_json::to_string_pretty(&rows)?);
     Ok(())
+}
+
+/// `anvil db serve`: Toolbox as an MCP server on stdio, with the connection values of the project's
+/// env file (or the local defaults) set, so `.mcp.json` never holds credentials.
+fn serve(root: &Path) -> Result<()> {
+    let config = AnvilConfig::load_or_default(root)?;
+    let status = ToolboxClient::new(root, &config.db)
+        .stdio_command()
+        .status()
+        .map_err(|err| anyhow::anyhow!("failed to start Toolbox: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(crate::commands::ExitCodeError::silent(status.code().unwrap_or(1)).into())
+    }
 }
 
 fn set_mcp(root: &Path, on: bool) -> Result<()> {
@@ -54,7 +71,7 @@ fn set_mcp(root: &Path, on: bool) -> Result<()> {
         );
         if !config.db.config_path(root).is_file() {
             println!(
-                "  {} {} does not exist yet; run `anvil db init --kind <sqlite|postgres|mysql>`",
+                "  {} {} does not exist yet; run `anvil db init`",
                 ui::yellow("note:"),
                 config.db.config
             );

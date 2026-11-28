@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use anvil_core::config::db::DbConfig;
+use anvil_core::config::db::{DbConfig, connection_env};
 use anvil_core::proc_util::run_command_with_timeout;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
@@ -119,6 +119,8 @@ pub struct ToolboxClient {
     config: PathBuf,
     cwd: PathBuf,
     timeout: Duration,
+    /// Connection values for the tools file's `${DB_*}` placeholders (see `connection_env`).
+    envs: Vec<(String, String)>,
 }
 
 impl ToolboxClient {
@@ -129,7 +131,17 @@ impl ToolboxClient {
             config: db.config_path(root),
             cwd: root.to_path_buf(),
             timeout: INVOKE_TIMEOUT,
+            envs: connection_env(root, db),
         }
+    }
+
+    /// `toolbox --stdio --config <file>` with the connection values set: the MCP server agents
+    /// talk to (`anvil db serve`), so credentials stay in the project's `.env`.
+    pub fn stdio_command(&self) -> Command {
+        let mut command = Command::new(&self.program);
+        command.arg("--stdio").arg("--config").arg(&self.config).current_dir(&self.cwd);
+        command.envs(self.envs.iter().map(|(k, v)| (k, v)));
+        command
     }
 
     /// The binary as configured (a bare name or a resolved path), for messages.
@@ -172,7 +184,7 @@ impl DbClient for ToolboxClient {
         }
         // ERROR keeps the startup log out of stdout, which must hold only the rows.
         command.arg("--config").arg(&self.config).args(["--log-level", "ERROR"]);
-        command.current_dir(&self.cwd);
+        command.current_dir(&self.cwd).envs(self.envs.iter().map(|(k, v)| (k, v)));
         let output = run_command_with_timeout(&mut command, self.timeout)
             .with_context(|| self.spawn_hint())?;
         if output.timed_out {
@@ -186,14 +198,16 @@ impl DbClient for ToolboxClient {
     }
 }
 
-/// The `Error: ...` line Toolbox ends with, else the last line.
+/// The `Error: ...` line Toolbox ends with plus the detail lines after it (a failed connection
+/// lists one cause per address there), else the last line.
 fn failure_message(stderr: &str) -> String {
     let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-    let line = lines.iter().rev().find(|l| l.starts_with("Error:")).or(lines.last());
-    line.map_or_else(
-        || "exited with an error and no message".to_owned(),
-        |l| l.strip_prefix("Error:").unwrap_or(l).trim().to_owned(),
-    )
+    let start = lines.iter().rposition(|l| l.starts_with("Error:"));
+    let Some(first) = start.or_else(|| lines.len().checked_sub(1)) else {
+        return "exited with an error and no message".to_owned();
+    };
+    let message = lines[first..].join(" ");
+    message.strip_prefix("Error:").unwrap_or(&message).trim().to_owned()
 }
 
 fn parse_rows(stdout: &str) -> Result<Vec<Value>> {
@@ -256,6 +270,11 @@ mod tests {
         let stderr = "2026-11-27T13:13:19-04:00 ERROR \"tool execution failed\"\nError: tool execution failed: no such table: nope (1)\n";
         assert_eq!(failure_message(stderr), "tool execution failed: no such table: nope (1)");
         assert_eq!(failure_message(""), "exited with an error and no message");
+        let refused = "Error: unable to connect: failed to connect to `user=postgres`:\n\t[::1]:5432 (localhost): failed SASL auth (SQLSTATE 28P01)\n";
+        assert_eq!(
+            failure_message(refused),
+            "unable to connect: failed to connect to `user=postgres`: [::1]:5432 (localhost): failed SASL auth (SQLSTATE 28P01)"
+        );
     }
 
     #[test]
