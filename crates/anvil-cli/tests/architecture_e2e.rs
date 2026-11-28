@@ -1,8 +1,9 @@
 //! `anvil architecture`, `anvil init --architecture`, and `anvil sync` end to end on a tiny hexagonal tree.
 
 use std::fs;
+use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 use serde_json::Value;
 use tempfile::TempDir;
@@ -298,4 +299,55 @@ fn init_without_a_prompt_only_suggests_the_detected_style() {
         !config.contains("\"architecture\""),
         "a guessed style must not be enforced silently: {config}"
     );
+}
+
+/// Runs `anvil init` with the prompts forced on (no TTY in tests) and `stdin_data` as the answers.
+fn init_prompted(root: &Path, stdin_data: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_anvil"))
+        .arg("--root")
+        .arg(root)
+        .args(["init", "--adapter", "claude"])
+        .env("NO_COLOR", "1")
+        .env("ANVIL_NO_AUTO_DAEMON", "1")
+        .env("ANVIL_LANG", "en")
+        .env("ANVIL_INIT_FORCE_PROMPT", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn anvil");
+    child.stdin.take().expect("stdin").write_all(stdin_data.as_bytes()).expect("answers");
+    child.wait_with_output().expect("wait")
+}
+
+#[test]
+fn interactive_init_in_an_empty_folder_offers_the_architecture_choice() {
+    let dir = TempDir::new().expect("tempdir");
+    let root = dir.path();
+
+    // Answers: SonarQube "n", then architecture 1 (hexagonal).
+    let init = init_prompted(root, "n\n1\n");
+    assert!(init.status.success(), "{}", describe(&init));
+    let text = stdout(&init);
+    assert!(text.contains("Which architecture should Anvil enforce?"), "{text}");
+    assert!(text.contains("rules apply once code exists there"), "{text}");
+
+    let config: Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".harness/config.json")).expect("config"),
+    )
+    .expect("json");
+    assert_eq!(config["architecture"]["style"], "hexagonal");
+}
+
+#[test]
+fn interactive_init_keeps_none_when_the_answer_is_empty() {
+    let dir = TempDir::new().expect("tempdir");
+    let root = dir.path();
+
+    let init = init_prompted(root, "n\n\n");
+    assert!(init.status.success(), "{}", describe(&init));
+    let text = stdout(&init);
+    assert!(text.contains("Which architecture should Anvil enforce?"), "{text}");
+    let config = fs::read_to_string(root.join(".harness/config.json")).expect("config");
+    assert!(!config.contains("\"style\": \"hexagonal\""), "{config}");
 }

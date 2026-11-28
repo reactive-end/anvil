@@ -147,7 +147,8 @@ fn plan_single_architecture(
     reader: &mut dyn BufRead,
 ) -> Result<architecture::ArchPlan> {
     let candidate = architecture::Candidate::root("this project", root)?;
-    let mut io = architecture::PromptIo { interactive, use_tui, reader };
+    let mut stdout = io::stdout();
+    let mut io = architecture::PromptIo { interactive, use_tui, reader, writer: &mut stdout };
     architecture::plan(mode, &[candidate], &mut io)
 }
 
@@ -323,10 +324,12 @@ fn plan_monorepo_architecture(
             &root_config,
         ));
     }
+    let mut stdout = io::stdout();
     let mut io = architecture::PromptIo {
         interactive: ctx.interactive,
         use_tui: ctx.use_tui,
         reader: &mut *reader,
+        writer: &mut stdout,
     };
     architecture::plan(ctx.arch_mode, &candidates, &mut io)
 }
@@ -397,10 +400,12 @@ fn init_thin_umbrella(ctx: &MultiInitCtx<'_>, reader: &mut dyn BufRead) -> Resul
     for repo in ctx.child_repos {
         let sub_dir = ctx.root.join(&repo.rel_path);
         let candidate = architecture::Candidate::root(&repo.rel_path, &sub_dir)?;
+        let mut stdout = io::stdout();
         let mut io = architecture::PromptIo {
             interactive: ctx.interactive,
             use_tui: ctx.use_tui,
             reader: &mut *reader,
+            writer: &mut stdout,
         };
         plans.push(architecture::plan(ctx.arch_mode, &[candidate], &mut io)?);
     }

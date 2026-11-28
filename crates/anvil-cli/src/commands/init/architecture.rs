@@ -1,14 +1,15 @@
 //! `anvil init` step that records the architecture style of each project.
 //!
 //! `--architecture <style>` is applied as given. With `auto`, the style is detected from the folder
-//! names and, when one is found, the user picks it interactively (default: the detected one); without a
-//! prompt it is only suggested, because enforcing a guessed style could fail builds unexpectedly.
+//! names and an interactive run always offers every preset (default: the detected one, else `none`),
+//! even for an empty folder; without a prompt it is only suggested, because enforcing a guessed style
+//! could fail builds unexpectedly.
 //!
 //! In a monorepo an explicit style only goes to the subrepos it fits: a client app (Vite, React, Vue,
 //! Angular or Svelte with no server framework) is skipped with a hint, a style already chosen for a
 //! subrepo is kept, and the repository root gets none when subrepos carry their own.
 
-use std::io::{self, BufRead, Write};
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use anvil_adapters::sync;
@@ -93,6 +94,7 @@ pub(super) struct PromptIo<'a> {
     pub interactive: bool,
     pub use_tui: bool,
     pub reader: &'a mut dyn BufRead,
+    pub writer: &'a mut dyn Write,
 }
 
 /// Decides the style of every candidate. Subrepos come first: the root only gets a style when no
@@ -159,6 +161,9 @@ fn decide_explicit(
     Some(style)
 }
 
+/// `--architecture auto`: a project that already has a style keeps it. Otherwise an interactive run
+/// always offers every preset (default: the detected style, else `none`); a non-interactive one only
+/// suggests the detected style, because enforcing a guessed style could fail builds unexpectedly.
 fn decide_auto(
     candidate: &Candidate,
     io: &mut PromptIo<'_>,
@@ -168,44 +173,74 @@ fn decide_auto(
         return Ok(None);
     }
     let suggestion = detect_style(&candidate.source_dir);
-    if suggestion.style == ArchitectureStyle::None {
-        return Ok(None);
-    }
     if !io.interactive {
-        hints.push(format!(
-            "{}: looks {}; enforce with `anvil architecture set {}{}`",
-            candidate.label,
-            suggestion.describe(),
-            suggestion.style,
-            candidate.subrepo.as_ref().map(|n| format!(" --subrepo {n}")).unwrap_or_default()
-        ));
+        if suggestion.style != ArchitectureStyle::None {
+            hints.push(format!(
+                "{}: looks {}; enforce with `anvil architecture set {}{}`",
+                candidate.label,
+                suggestion.describe(),
+                suggestion.style,
+                candidate.subrepo.as_ref().map(|n| format!(" --subrepo {n}")).unwrap_or_default()
+            ));
+        }
         return Ok(None);
     }
+    let note = context_note(candidate, &suggestion);
     let chosen = if io.use_tui {
-        ask_tui(&candidate.label, &suggestion)?
+        ask_tui(&candidate.label, &note, suggestion.style)?
     } else {
-        ask_text(&candidate.label, &suggestion, io.reader)?
+        ask_text(&candidate.label, &note, suggestion.style, io.reader, io.writer)?
     };
-    Ok((chosen != ArchitectureStyle::None).then_some(chosen))
+    if chosen == ArchitectureStyle::None {
+        return Ok(None);
+    }
+    if source_is_empty(&candidate.source_dir) {
+        hints.push(format!(
+            "{}: no code under `{DEFAULT_SOURCE_ROOT}` yet; {chosen} rules apply once code exists there",
+            candidate.label
+        ));
+    }
+    Ok(Some(chosen))
+}
+
+/// What init knows about the project, shown under the question.
+fn context_note(candidate: &Candidate, suggestion: &Suggestion) -> String {
+    if suggestion.style != ArchitectureStyle::None {
+        return format!("Detected {}", suggestion.describe());
+    }
+    if source_is_empty(&candidate.source_dir) {
+        return format!("No code under `{DEFAULT_SOURCE_ROOT}` yet, so nothing to detect");
+    }
+    match candidate.client_app {
+        Some(stack) => format!(
+            "No style detected; {} client app (no server framework), feature-sliced fits it",
+            format!("{stack:?}").to_ascii_lowercase()
+        ),
+        None => format!("No style detected ({})", suggestion.note),
+    }
+}
+
+/// `true` when `dir` is missing or has no entries yet.
+fn source_is_empty(dir: &Path) -> bool {
+    std::fs::read_dir(dir).map(|mut entries| entries.next().is_none()).unwrap_or(true)
 }
 
 fn default_index(style: ArchitectureStyle) -> usize {
     ArchitectureStyle::ALL.iter().position(|s| *s == style).unwrap_or(0)
 }
 
-fn ask_tui(label: &str, suggestion: &Suggestion) -> Result<ArchitectureStyle> {
+fn ask_tui(label: &str, note: &str, default: ArchitectureStyle) -> Result<ArchitectureStyle> {
     let options: Vec<SelectOption> =
         ArchitectureStyle::ALL.iter().map(|s| SelectOption::new(s.as_str(), s.label())).collect();
-    let sub = format!("Detected {}", suggestion.describe());
     match prompt::select(
         &format!("Which architecture does {label} follow?"),
         "Architecture",
-        Some(&sub),
+        Some(note),
         &options,
-        default_index(suggestion.style),
+        default_index(default),
     )? {
         PromptOutcome::Confirmed(idx) => {
-            Ok(ArchitectureStyle::ALL.get(idx).copied().unwrap_or(suggestion.style))
+            Ok(ArchitectureStyle::ALL.get(idx).copied().unwrap_or(default))
         }
         PromptOutcome::Cancelled => Err(ExitCodeError::silent(130).into()),
     }
@@ -213,17 +248,23 @@ fn ask_tui(label: &str, suggestion: &Suggestion) -> Result<ArchitectureStyle> {
 
 fn ask_text(
     label: &str,
-    suggestion: &Suggestion,
+    note: &str,
+    default: ArchitectureStyle,
     reader: &mut dyn BufRead,
+    writer: &mut dyn Write,
 ) -> Result<ArchitectureStyle> {
-    println!("Detected {} in {label}.", suggestion.describe());
-    println!("Which architecture should Anvil enforce?");
+    writeln!(writer, "{label}: {note}.")?;
+    writeln!(writer, "Which architecture should Anvil enforce?")?;
     for (idx, style) in ArchitectureStyle::ALL.iter().enumerate() {
-        println!("  [{idx}] {style} ({})", style.label());
+        writeln!(writer, "  [{idx}] {style} ({})", style.label())?;
     }
-    let default = default_index(suggestion.style);
-    print!("Select architecture [0-{}] (default: {default}): ", ArchitectureStyle::ALL.len() - 1);
-    io::stdout().flush()?;
+    write!(
+        writer,
+        "Select architecture [0-{}] (default: {}): ",
+        ArchitectureStyle::ALL.len() - 1,
+        default_index(default)
+    )?;
+    writer.flush()?;
     let mut answer = String::new();
     let _ = reader.read_line(&mut answer)?;
     let answer = answer.trim();
@@ -231,7 +272,7 @@ fn ask_text(
     Ok(by_number
         .copied()
         .or_else(|| answer.parse::<ArchitectureStyle>().ok().filter(|_| !answer.is_empty()))
-        .unwrap_or(suggestion.style))
+        .unwrap_or(default))
 }
 
 /// Records the plan in `config` (saving it and refreshing the agent files) and returns the summary line.
@@ -261,4 +302,120 @@ fn summary(config: &AnvilConfig, plan: &ArchPlan) -> String {
     let mut parts = if configured.is_empty() { vec!["none".to_owned()] } else { configured };
     parts.extend(plan.hints.iter().cloned());
     parts.join("; ")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::io::Cursor;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    /// Runs `plan` in `Auto` mode over `candidates` with scripted `input`; returns the plan and the
+    /// text the prompt printed.
+    fn run(candidates: &[Candidate], interactive: bool, input: &str) -> (ArchPlan, String) {
+        let mut reader = Cursor::new(input.as_bytes().to_vec());
+        let mut written = Vec::new();
+        let plan = {
+            let mut io =
+                PromptIo { interactive, use_tui: false, reader: &mut reader, writer: &mut written };
+            plan(ArchMode::Auto, candidates, &mut io).expect("plan")
+        };
+        (plan, String::from_utf8(written).expect("utf8"))
+    }
+
+    fn root_candidate(dir: &Path) -> Vec<Candidate> {
+        vec![Candidate::root("this project", dir).expect("candidate")]
+    }
+
+    fn hexagonal_tree(dir: &Path) {
+        for module in ["orders", "customers"] {
+            for layer in ["domain", "application", "infrastructure"] {
+                let layer_dir = dir.join("src").join(module).join(layer);
+                fs::create_dir_all(&layer_dir).expect("mkdir");
+                fs::write(layer_dir.join("a.ts"), "export const a = 1;\n").expect("write");
+            }
+        }
+    }
+
+    fn applied_style(dir: &Path, plan: &ArchPlan) -> (ArchitectureStyle, String) {
+        let mut config = AnvilConfig::load_or_default(dir).expect("config");
+        let line = apply(dir, &mut config, plan).expect("apply");
+        (AnvilConfig::load_or_default(dir).expect("reload").architecture.repo.style, line)
+    }
+
+    #[test]
+    fn empty_folder_offers_every_preset_and_records_the_pick() {
+        let dir = TempDir::new().expect("tempdir");
+        let (plan, shown) = run(&root_candidate(dir.path()), true, "1\n");
+        println!("{shown}");
+        for style in ArchitectureStyle::ALL {
+            assert!(shown.contains(&format!("{style} ({})", style.label())), "missing {style}");
+        }
+        assert!(shown.contains("No code under `src` yet"), "{shown}");
+        assert!(shown.contains("(default: 0)"), "{shown}");
+        let (style, line) = applied_style(dir.path(), &plan);
+        assert_eq!(style, ArchitectureStyle::Hexagonal);
+        assert!(line.contains("hexagonal"), "{line}");
+        assert!(line.contains("rules apply once code exists there"), "{line}");
+    }
+
+    #[test]
+    fn enter_on_an_empty_folder_keeps_none() {
+        let dir = TempDir::new().expect("tempdir");
+        let (plan, shown) = run(&root_candidate(dir.path()), true, "\n");
+        assert!(shown.contains("Which architecture should Anvil enforce?"), "{shown}");
+        assert!(plan.root.is_none() && plan.hints.is_empty());
+        let (style, line) = applied_style(dir.path(), &plan);
+        assert_eq!(style, ArchitectureStyle::None);
+        assert_eq!(line, "none");
+    }
+
+    #[test]
+    fn a_detected_style_is_preselected() {
+        let dir = TempDir::new().expect("tempdir");
+        hexagonal_tree(dir.path());
+        let (plan, shown) = run(&root_candidate(dir.path()), true, "\n");
+        println!("{shown}");
+        assert!(shown.contains("Detected hexagonal"), "{shown}");
+        assert!(shown.contains("(default: 1)"), "{shown}");
+        assert_eq!(plan.root, Some(ArchitectureStyle::Hexagonal));
+        assert!(plan.hints.is_empty(), "code exists, so no empty-source hint");
+    }
+
+    #[test]
+    fn a_client_app_subrepo_defaults_to_none_and_lists_feature_sliced() {
+        let dir = TempDir::new().expect("tempdir");
+        let candidate = Candidate::subrepo(
+            "web",
+            "web",
+            dir.path(),
+            &[StackKind::React],
+            &AnvilConfig::default(),
+        );
+        fs::create_dir_all(dir.path().join("src/components")).expect("mkdir");
+        let (plan, shown) = run(&[candidate], true, "\n");
+        println!("{shown}");
+        assert!(shown.contains("react client app"), "{shown}");
+        assert!(shown.contains("feature-sliced (feature-sliced design)"), "{shown}");
+        assert!(shown.contains("(default: 0)"), "{shown}");
+        assert!(plan.subrepos.is_empty());
+    }
+
+    #[test]
+    fn non_interactive_never_prompts_and_only_suggests() {
+        let empty = TempDir::new().expect("tempdir");
+        let (plan, shown) = run(&root_candidate(empty.path()), false, "1\n");
+        assert!(shown.is_empty(), "{shown}");
+        assert!(plan.root.is_none() && plan.hints.is_empty());
+
+        let detected = TempDir::new().expect("tempdir");
+        hexagonal_tree(detected.path());
+        let (plan, shown) = run(&root_candidate(detected.path()), false, "1\n");
+        assert!(shown.is_empty(), "{shown}");
+        assert!(plan.root.is_none());
+        assert!(plan.hints[0].contains("anvil architecture set hexagonal"), "{:?}", plan.hints);
+    }
 }
