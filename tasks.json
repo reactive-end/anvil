@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 61,
-  "updated_at": "2026-11-28T03:16:21.515682100Z",
+  "task_count": 62,
+  "updated_at": "2026-11-28T03:23:37.326729800Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1145,6 +1145,25 @@
       "progress_file": ".harness/tasks/T-061/progress.md",
       "created_at": "2026-11-28T03:07:52.769822600Z",
       "updated_at": "2026-11-28T03:16:21.515682100Z"
+    },
+    {
+      "task_id": "T-062",
+      "request": "Check the tools a repo needs when a session starts",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Session start runs a cached readiness check (prerequisites, a local SonarQube scanner and server where Sonar is enabled, MCP Toolbox binary + tools file + anvil-db MCP for projects that use a database) and tells the agent what is missing with the fix; prereqs check and doctor list the same items.",
+      "evidence": "readiness_e2e 3 tests + database detection unit tests PASS; clippy PASS; anvil-cli suite green; tests-anvil SessionStart warns about the missing anvil-db MCP (1.2 s uncached); with sonar enabled, scanner found and the stopped server reported",
+      "entry_count": 2,
+      "files_count": 8,
+      "progress_file": ".harness/tasks/T-062/progress.md",
+      "created_at": "2026-11-28T03:16:51.363057400Z",
+      "updated_at": "2026-11-28T03:23:37.326729800Z"
     }
   ]
 }

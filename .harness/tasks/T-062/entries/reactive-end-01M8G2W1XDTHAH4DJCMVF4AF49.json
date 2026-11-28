@@ -1,0 +1,20 @@
+{
+  "entry_id": "01M8G2W1XDTHAH4DJCMVF4AF49",
+  "task_id": "T-062",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Session start runs a cached readiness check (prerequisites, a local SonarQube scanner and server where Sonar is enabled, MCP Toolbox binary + tools file + anvil-db MCP for projects that use a database) and tells the agent what is missing with the fix; prereqs check and doctor list the same items.",
+  "evidence": "readiness_e2e 3 tests + database detection unit tests PASS; clippy PASS; anvil-cli suite green; tests-anvil SessionStart warns about the missing anvil-db MCP (1.2 s uncached); with sonar enabled, scanner found and the stopped server reported",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/commands.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/prereqs.rs",
+    "crates/anvil-cli/src/commands/readiness.rs",
+    "crates/anvil-cli/src/commands/readiness/database.rs",
+    "crates/anvil-cli/src/commands/readiness/sonar.rs",
+    "crates/anvil-cli/tests/readiness_e2e.rs"
+  ],
+  "timestamp": "2026-11-28T03:23:37.326729800Z"
+}
