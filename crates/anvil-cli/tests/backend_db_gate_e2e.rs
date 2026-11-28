@@ -89,7 +89,11 @@ fn backend_edits_need_the_database_setup_a_scenario_and_a_fresh_passing_run() {
     git(root, &["config", "user.email", "t@example.com"]);
     git(root, &["config", "user.name", "Tester"]);
     write(root, ".gitignore", "anvil-home/\n.harness/.state/\n");
-    write(root, "package.json", r#"{"name":"api","dependencies":{"better-sqlite3":"11"}}"#);
+    write(
+        root,
+        "package.json",
+        r#"{"name":"api","dependencies":{"express":"5","better-sqlite3":"11"}}"#,
+    );
     write(root, ".env", "PORT=3000\nDB_PATH=data/app.sqlite\n");
     write(root, "src/orders.ts", SERVICE);
     let config = json!({ "qa": { "api": { "url": serve_api(), "ready_path": "/health" } } });

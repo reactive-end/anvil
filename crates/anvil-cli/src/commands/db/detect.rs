@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use super::env_path::{env_files, parse_env};
-use crate::commands::readiness::{DbKind, database_use};
+use crate::commands::readiness::{DbKind, driver_kind};
 
 /// Variables that say which engine a project talks to.
 const ENGINE_VARS: &[&str] =
@@ -91,7 +91,7 @@ fn dependency_kind(root: &Path) -> Option<(&'static str, String)> {
         dirs.extend(subdirs.into_iter().map(|n| (root.join(&n), format!("{n}/"))));
     }
     dirs.into_iter().find_map(|(dir, prefix)| {
-        let kind = match database_use(&dir)? {
+        let kind = match driver_kind(&dir)? {
             DbKind::Postgres => "postgres",
             DbKind::Mysql => "mysql",
             DbKind::Sqlite => "sqlite",

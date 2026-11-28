@@ -15,7 +15,7 @@ use anvil_core::config::AnvilConfig;
 use anvil_prereqs::{Item, Project, Report};
 use serde::{Deserialize, Serialize};
 
-pub use database::{DbKind, database_use};
+pub use database::{DbKind, database_use, driver_kind};
 
 /// How long a session-start result is reused before the machine is probed again.
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
