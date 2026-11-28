@@ -62,11 +62,13 @@ pub(crate) fn run_check(
     } else {
         (projects_for(root, config)?, prerequisites.effective())
     };
+    let all_projects = projects.clone();
     let (projects, set) = match subrepo {
         Some(name) => restrict_to_subrepo(&projects, &set, name)?,
         None => (projects, set),
     };
-    Ok(check(&SystemHost, root, &projects, &set, &CheckOptions::default()))
+    let report = check(&SystemHost, root, &projects, &set, &CheckOptions::default());
+    Ok(crate::commands::readiness::with_extras(root, config, &all_projects, report, subrepo))
 }
 
 /// Prints the check table; shared with `anvil doctor --prereqs`.

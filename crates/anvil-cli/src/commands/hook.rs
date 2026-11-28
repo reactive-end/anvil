@@ -211,6 +211,7 @@ fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
     append_session_graph(root, &mut messages);
     append_session_architecture(config, &mut messages);
     append_session_task_context(root, &mut messages);
+    messages.extend(crate::commands::readiness::session_message(root, config));
     match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
         Ok(st) if st.is_open() => {
             let msg = "Circuit Breaker is OPEN; run `anvil circuit reset` after fixing.".to_owned();

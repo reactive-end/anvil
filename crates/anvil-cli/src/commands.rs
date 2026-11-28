@@ -26,6 +26,7 @@ pub mod prereqs;
 pub mod prompt;
 pub mod qa;
 pub mod ratchet;
+pub mod readiness;
 pub mod review;
 pub mod run;
 pub mod search;
