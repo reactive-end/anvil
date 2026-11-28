@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 64,
-  "updated_at": "2026-11-28T04:35:09.058075400Z",
+  "task_count": 65,
+  "updated_at": "2026-11-28T05:12:55.505148100Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1200,6 +1200,24 @@
       "progress_file": ".harness/tasks/T-064/progress.md",
       "created_at": "2026-11-28T04:34:51.864479900Z",
       "updated_at": "2026-11-28T04:35:09.058075400Z"
+    },
+    {
+      "task_id": "T-065",
+      "request": "CI fixes: Linux clippy in prereqs, ambient DB variables",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Linux clippy unused mut in prereqs host.rs fixed with per-platform cfg blocks; connection_env layers ambient env below the project's env file, exact DB_* on top; test injects its environment.",
+      "entry_count": 2,
+      "files_count": 0,
+      "progress_file": ".harness/tasks/T-065/progress.md",
+      "created_at": "2026-11-28T05:12:47.512746700Z",
+      "updated_at": "2026-11-28T05:12:55.505148100Z"
     }
   ]
 }
