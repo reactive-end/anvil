@@ -58,7 +58,27 @@ pub fn run_scenarios(
         Ok(path) => summary.report_path = Some(path),
         Err(err) => summary.report_error = Some(format!("{err:#}")),
     }
+    if summary.passed && !summary.scenarios.is_empty() {
+        let marker = last_pass_path(root);
+        let recorded = marker
+            .parent()
+            .map_or(Ok(()), fs::create_dir_all)
+            .and_then(|()| fs::write(&marker, summary.run_id.as_bytes()));
+        if let Err(err) = recorded {
+            summary.report_error = Some(format!("could not record the passing run: {err}"));
+        }
+    }
     summary
+}
+
+/// File touched by every passing run; its modification time is when the API last passed.
+fn last_pass_path(root: &Path) -> std::path::PathBuf {
+    runs_dir(root).join("api-last-pass")
+}
+
+/// When the scenarios last all passed, if ever. The Stop gate compares it with backend edits.
+pub fn last_pass(root: &Path) -> Option<std::time::SystemTime> {
+    fs::metadata(last_pass_path(root)).and_then(|m| m.modified()).ok()
 }
 
 fn run_scenario(ctx: &StepContext<'_>, id: &str, scenario: &Scenario) -> ScenarioReport {

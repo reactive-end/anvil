@@ -1,5 +1,6 @@
 //! `anvil hook`: unified Antigravity & Claude Code hook dispatcher.
 
+mod backend_db;
 mod docs_watch;
 pub(crate) mod error_log;
 mod executors;
@@ -520,6 +521,9 @@ fn handle_stop(
     if let Some(block) =
         task_auto::check_pending_task_summary(root, &changed, lang, executors_running)
     {
+        return block;
+    }
+    if let Some(block) = backend_db::stop_block(root, config, &changed, lang) {
         return block;
     }
     let mut messages = Vec::new();
