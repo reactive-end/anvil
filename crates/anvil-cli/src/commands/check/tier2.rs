@@ -31,7 +31,8 @@ pub fn run_tier2(
         failed |= crate::commands::sonar::run_tier2_quality_gate(root, config);
     }
     failed |= api_qa::run(root, config, changed, full);
-    if classification.needs_visual_qa || full {
+    let web_code_changed = super::api_tier::web_touched(config, changed);
+    if classification.needs_visual_qa || full || web_code_changed {
         let qa = QaEngine::new(root);
         if let Some(prompt) = qa.onboarding_prompt(config) {
             println!(

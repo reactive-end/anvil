@@ -58,9 +58,8 @@ pub fn execute(root: &Path, opts: CheckOptions, scope: &[String]) -> Result<()> 
     let mut added_lines = git::added_line_ranges(root, opts.staged).unwrap_or_default();
     added_lines.retain(|path, _| keep(path));
     let base_tier = resolve_tier(opts.full, opts.tier_override, classification.minimum_tier);
-    let api_raise =
-        api_tier::raises_to_tier2(&config, opts.tier_override, base_tier, &changed_paths);
-    let effective_tier = if api_raise { Tier::Tier2 } else { base_tier };
+    let raise = api_tier::raises_to_tier2(&config, opts.tier_override, base_tier, &changed_paths);
+    let effective_tier = if raise.is_some() { Tier::Tier2 } else { base_tier };
 
     println!(
         "{} category={} tier={} changed={} skip_logic_tests={}",
@@ -70,8 +69,8 @@ pub fn execute(root: &Path, opts: CheckOptions, scope: &[String]) -> Result<()> 
         ui::cyan(&changed_paths.len().to_string()),
         classification.skip_logic_tests
     );
-    if api_raise {
-        println!("  tier raised to Tier2: qa.api.paths touched (--tier 0|1 opts out)");
+    if let Some(why) = raise {
+        println!("  tier raised to Tier2: {why} (--tier 0|1 opts out)");
     }
 
     let tier0_errors =

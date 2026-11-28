@@ -29,6 +29,10 @@ pub struct WebQaConfig {
     /// Let Tier 2 start the app itself when it is not running.
     #[serde(default)]
     pub autostart: bool,
+    /// Path prefixes whose changes (any file, not only markup and styles) trigger the flows;
+    /// `start_cwd` when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paths: Vec<String>,
 }
 
 impl Eq for WebQaConfig {}
@@ -44,11 +48,18 @@ impl Default for WebQaConfig {
             flows_dir: default_flows_dir(),
             diff_threshold: default_diff_threshold(),
             autostart: false,
+            paths: Vec::new(),
         }
     }
 }
 
 impl WebQaConfig {
+    /// `true` when one of the `changed` files is under `paths` (else `start_cwd`); with neither
+    /// set, any change counts.
+    pub fn touches(&self, changed: &[String]) -> bool {
+        touches_watched(&self.paths, self.start_cwd.as_deref(), changed)
+    }
+
     /// URL probed to learn whether the app answers, when `url` is set.
     pub fn ready_url(&self) -> Option<String> {
         join_ready_url(self.url.as_deref()?, &self.ready_path)
@@ -124,27 +135,35 @@ impl ApiQaConfig {
     /// Prefixes whose changes should trigger the scenarios: `paths`, else `start_cwd`.
     /// Empty means the configuration cannot narrow it down, so any change triggers them.
     pub fn watched_paths(&self) -> Vec<&str> {
-        if self.paths.is_empty() {
-            return self.start_cwd.as_deref().into_iter().collect();
-        }
-        self.paths.iter().map(String::as_str).collect()
+        watched(&self.paths, self.start_cwd.as_deref())
     }
 
     /// `true` when one of the `changed` files (repo-relative) is under a watched prefix.
     pub fn touches(&self, changed: &[String]) -> bool {
-        let watched = self.watched_paths();
-        if watched.is_empty() {
-            return !changed.is_empty();
-        }
-        let prefixes: Vec<String> = watched.iter().map(|p| normalize_prefix(p)).collect();
-        changed.iter().map(|c| normalize_prefix(c)).any(|file| {
-            prefixes.iter().any(|prefix| {
-                prefix.is_empty()
-                    || file == *prefix
-                    || file.strip_prefix(prefix.as_str()).is_some_and(|rest| rest.starts_with('/'))
-            })
-        })
+        touches_watched(&self.paths, self.start_cwd.as_deref(), changed)
     }
+}
+
+fn watched<'a>(paths: &'a [String], start_cwd: Option<&'a str>) -> Vec<&'a str> {
+    if paths.is_empty() {
+        return start_cwd.into_iter().collect();
+    }
+    paths.iter().map(String::as_str).collect()
+}
+
+fn touches_watched(paths: &[String], start_cwd: Option<&str>, changed: &[String]) -> bool {
+    let watched = watched(paths, start_cwd);
+    if watched.is_empty() {
+        return !changed.is_empty();
+    }
+    let prefixes: Vec<String> = watched.iter().map(|p| normalize_prefix(p)).collect();
+    changed.iter().map(|c| normalize_prefix(c)).any(|file| {
+        prefixes.iter().any(|prefix| {
+            prefix.is_empty()
+                || file == *prefix
+                || file.strip_prefix(prefix.as_str()).is_some_and(|rest| rest.starts_with('/'))
+        })
+    })
 }
 
 fn normalize_prefix(path: &str) -> String {
