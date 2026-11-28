@@ -1,0 +1,6 @@
+{
+  "task_id": "T-058",
+  "created_by": "reactive-end",
+  "request": "Prompt assist off by default, set globally in ~/.anvil",
+  "created_at": "2026-11-28T01:42:20.029590700Z"
+}

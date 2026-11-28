@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FX2K40DA2FF73QVMRTDHZK",
+  "task_id": "T-058",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: Prompt assist off by default, set globally in ~/.anvil",
+  "files_touched": [],
+  "timestamp": "2026-11-28T01:42:20.076048900Z"
+}

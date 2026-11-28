@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 57,
-  "updated_at": "2026-11-28T00:53:29.015953700Z",
+  "task_count": 58,
+  "updated_at": "2026-11-28T01:55:42.351569200Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1069,6 +1069,25 @@
       "progress_file": ".harness/tasks/T-057/progress.md",
       "created_at": "2026-11-28T00:33:00.332411Z",
       "updated_at": "2026-11-28T00:53:29.015953700Z"
+    },
+    {
+      "task_id": "T-058",
+      "request": "Prompt assist off by default, set globally in ~/.anvil",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Prompt assist is now off by default and a per-user global setting in ~/.anvil/config.json (next to .cargo, ANVIL_HOME override), set with `anvil prompt assist [off|context|coach] [--max-tokens N] [--min-words N]`; it no longer lives in each repo's .harness/config.json.",
+      "evidence": "fmt/clippy PASS; cargo test --workspace PASS (7 user_config unit tests, 5 new e2e); anvil check PASS; `anvil prompt assist` -> `prompt assist is off (global: C:\\Users\\E.N.D\\.anvil\\config.json)`",
+      "entry_count": 3,
+      "files_count": 14,
+      "progress_file": ".harness/tasks/T-058/progress.md",
+      "created_at": "2026-11-28T01:42:20.029590700Z",
+      "updated_at": "2026-11-28T01:55:42.351569200Z"
     }
   ]
 }
