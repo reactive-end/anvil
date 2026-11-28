@@ -270,9 +270,11 @@ Rough requests get worse results. Anvil helps without calling a model or the net
 [info][prompt-context]: Likely relevant (verify before relying): code: applyDiscount (src/orders/order.ts:7); docs: shop/orders — Orders [stale]; memory: Totals use integer cents (decision).
 ```
 
-Code symbols come from identifiers in the prompt (`camelCase`, `snake_case`, `kebab-case`, `a.b.c`, paths like `src/x.ts`, backticked or quoted names) that resolve in the graph, plus symbols whose own name shares two words with the prompt; docs concepts and memories need two words in common as well. English and Spanish filler words are ignored. Nothing relevant means no line at all. The whole block is capped at `prompt_assist.max_tokens` (default 450, estimated at 4 characters per token); an item shown in the last 3 prompts of the same session is not repeated. Slash commands, injected text starting with `<`, prompts shorter than `min_words` (default 4), and repositories without `.harness/` are skipped. Gathering has a 250 ms budget and never runs a text search; the code graph is read from disk, never built.
+Code symbols come from identifiers in the prompt (`camelCase`, `snake_case`, `kebab-case`, `a.b.c`, paths like `src/x.ts`, backticked or quoted names) that resolve in the graph, plus symbols whose own name shares two words with the prompt; docs concepts and memories need two words in common as well. English and Spanish filler words are ignored. Nothing relevant means no line at all. The whole block is capped at `max_tokens` (default 450, estimated at 4 characters per token); an item shown in the last 3 prompts of the same session is not repeated. Slash commands, injected text starting with `<`, prompts shorter than `min_words` (default 4), and repositories without `.harness/` are skipped. Gathering has a 250 ms budget and never runs a text search; the code graph is read from disk, never built.
 
-**Modes** (`anvil prompt assist [off|context|coach]`, saved under `prompt_assist.mode`; `context` is the default and is not written to the file):
+**Off by default, and global.** Prompt assist does nothing until you turn it on. It is a setting of the person, not of a repository: it lives in `~/.anvil/config.json` (`%USERPROFILE%\.anvil\config.json` on Windows, next to `.cargo`), is shared by every project, and is never written to `.harness/config.json`. `ANVIL_HOME` replaces the whole `.anvil` directory. Turn it on with `anvil prompt assist context` or `anvil prompt assist coach`, off again with `anvil prompt assist off`; `anvil prompt assist` alone shows the current mode and the file path. `--max-tokens N` and `--min-words N` set the other two values. An unreadable or invalid file is logged in `.harness/.state/hook-errors.log` and treated as off. `anvil prompt improve` always works, whatever the mode.
+
+**Modes** (`anvil prompt assist [off|context|coach]`; `off` is the default and is not written to the file):
 
 | Mode | What is added |
 | --- | --- |
@@ -312,7 +314,7 @@ add a discount when quantity is over 10
 - What should be true when this is done (expected result, error cases)?
 ```
 
-The built-in `improve-prompt` skill tells the agent to run it when a request is vague, show the result, and wait for the user's confirmation before editing. In orchestrator mode `anvil prompt improve` is read-only; `anvil prompt assist <mode>` is not.
+The built-in `improve-prompt` skill tells the agent to run it when a request is vague, show the result, and wait for the user's confirmation before editing. In orchestrator mode `anvil prompt improve` is read-only; `anvil prompt assist` with a mode or flag is not (it writes your global config).
 
 ## Web QA
 

@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::io::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use serde_json::{Value, json};
@@ -13,10 +13,20 @@ const ORDER_TS: &str = "export class Order {\n  total(): number {\n    return 0;
 const SCENARIO: &str = r#"{ "name": "health", "steps": [ { "http": { "method": "GET", "path": "/health" }, "expect": { "status": 200 } } ] }"#;
 const FLOW: &str = r#"{ "name": "home", "url": "http://localhost:5180/", "steps": [ { "goto": "http://localhost:5180/" } ] }"#;
 
+/// The global `.anvil` directory of the test, inside its temp repository, never the real home.
+fn anvil_home(cwd: &Path) -> PathBuf {
+    cwd.join("global-anvil")
+}
+
+fn global_config(root: &Path) -> PathBuf {
+    anvil_home(root).join("config.json")
+}
+
 fn anvil(cwd: &Path, args: &[&str], stdin: Option<&str>) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_anvil"))
         .args(args)
         .current_dir(cwd)
+        .env("ANVIL_HOME", anvil_home(cwd))
         .env("NO_COLOR", "1")
         .env("ANVIL_NO_AUTO_DAEMON", "1")
         .env("ANVIL_LANG", "en")
@@ -84,6 +94,7 @@ fn context_of(out: &Value) -> String {
 #[test]
 fn the_hook_adds_a_context_line_naming_the_symbol_and_its_location() {
     let dir = repo();
+    ok(dir.path(), &["prompt", "assist", "context"]);
     let out = prompt_hook(dir.path(), "s1", "make applyDiscount round the total to cents");
     let context = context_of(&out);
     assert!(context.contains("[prompt-context]"), "{out}");
@@ -99,6 +110,7 @@ fn the_hook_adds_a_context_line_naming_the_symbol_and_its_location() {
 #[test]
 fn slash_commands_injected_text_and_short_prompts_get_nothing() {
     let dir = repo();
+    ok(dir.path(), &["prompt", "assist", "context"]);
     for prompt in [
         "/compact",
         "<task-notification>applyDiscount finished running the whole build</task-notification>",
@@ -113,6 +125,7 @@ fn slash_commands_injected_text_and_short_prompts_get_nothing() {
 fn an_item_is_not_repeated_in_the_next_prompts_of_the_same_session() {
     let dir = repo();
     let root = dir.path();
+    ok(root, &["prompt", "assist", "context"]);
     let first = context_of(&prompt_hook(root, "s3", "make applyDiscount round the total to cents"));
     assert!(first.contains("applyDiscount"), "{first}");
     let second =
@@ -126,6 +139,7 @@ fn an_item_is_not_repeated_in_the_next_prompts_of_the_same_session() {
 #[test]
 fn nothing_relevant_means_no_block_at_all() {
     let dir = repo();
+    ok(dir.path(), &["prompt", "assist", "context"]);
     let out = prompt_hook(dir.path(), "s5", "please translate the welcome banner into klingon");
     assert_eq!(out, json!({}), "{out}");
 }
@@ -134,7 +148,7 @@ fn nothing_relevant_means_no_block_at_all() {
 fn the_block_never_exceeds_the_configured_token_cap() {
     let dir = repo();
     let root = dir.path();
-    write(root, ".harness/config.json", r#"{ "prompt_assist": { "max_tokens": 40 } }"#);
+    ok(root, &["prompt", "assist", "context", "--max-tokens", "40"]);
     let context =
         context_of(&prompt_hook(root, "s6", "make applyDiscount and Order agree on the total"));
     assert!(context.contains("applyDiscount") || context.contains("Order"), "{context}");
@@ -145,7 +159,7 @@ fn the_block_never_exceeds_the_configured_token_cap() {
 fn coach_mode_adds_a_note_for_the_agent_and_a_tip_for_the_user_once_per_gap() {
     let dir = repo();
     let root = dir.path();
-    assert!(ok(root, &["prompt", "assist", "coach"]).contains("set to coach"));
+    assert!(ok(root, &["prompt", "assist", "coach"]).contains("set to coach (global:"));
     let out = prompt_hook(root, "s7", "arregla todo lo del login");
     let context = context_of(&out);
     assert!(context.contains("[prompt-coach]"), "{out}");
@@ -191,20 +205,69 @@ fn coach_stays_quiet_for_a_precise_request() {
 }
 
 #[test]
-fn assist_off_silences_the_hook_and_the_mode_is_saved_without_defaults() {
+fn prompt_assist_is_off_until_the_user_turns_it_on() {
     let dir = repo();
     let root = dir.path();
-    assert_eq!(
-        ok(root, &["prompt", "assist"]).trim(),
-        "prompt assist is context (block cap 450 tokens, skips prompts under 4 words)"
-    );
-    ok(root, &["prompt", "assist", "off"]);
-    let saved = fs::read_to_string(root.join(".harness/config.json")).expect("config");
-    assert!(saved.contains("\"prompt_assist\"") && saved.contains("\"off\""), "{saved}");
-    assert_eq!(prompt_hook(root, "s9", "make applyDiscount round the total to cents"), json!({}));
+    let prompt = "make applyDiscount round the total to cents";
+    assert_eq!(prompt_hook(root, "s9", prompt), json!({}), "off by default");
+    assert!(!global_config(root).exists(), "the hook never creates the global file");
     ok(root, &["prompt", "assist", "context"]);
-    let saved = fs::read_to_string(root.join(".harness/config.json")).expect("config");
+    assert!(context_of(&prompt_hook(root, "s10", prompt)).contains("[prompt-context]"));
+    ok(root, &["prompt", "assist", "off"]);
+    assert_eq!(prompt_hook(root, "s11", prompt), json!({}));
+}
+
+#[test]
+fn a_prompt_assist_section_left_in_the_repository_config_is_ignored() {
+    let dir = repo();
+    let root = dir.path();
+    write(root, ".harness/config.json", r#"{ "prompt_assist": { "mode": "coach" } }"#);
+    assert_eq!(prompt_hook(root, "s13", "make applyDiscount round the total to cents"), json!({}));
+}
+
+#[test]
+fn the_setting_is_global_and_never_written_to_the_repository_config() {
+    let dir = repo();
+    let root = dir.path();
+    ok(root, &["prompt", "assist", "coach"]);
+    ok(root, &["prompt", "assist", "off"]);
+    let saved = fs::read_to_string(global_config(root)).expect("global config");
     assert!(!saved.contains("prompt_assist"), "defaults are not written: {saved}");
+    ok(root, &["prompt", "assist", "coach", "--min-words", "6"]);
+    let saved = fs::read_to_string(global_config(root)).expect("global config");
+    assert!(saved.contains("\"coach\"") && saved.contains("\"min_words\": 6"), "{saved}");
+    let repo_config = root.join(".harness/config.json");
+    if repo_config.exists() {
+        let text = fs::read_to_string(repo_config).expect("repo config");
+        assert!(!text.contains("prompt_assist"), "{text}");
+    }
+}
+
+#[test]
+fn assist_without_arguments_shows_off_and_the_global_path() {
+    let dir = repo();
+    let root = dir.path();
+    let out = ok(root, &["prompt", "assist"]);
+    let path = global_config(root);
+    assert!(
+        out.starts_with(&format!("prompt assist is off (global: {})", path.display())),
+        "{out}"
+    );
+    assert!(out.contains("block cap 450 tokens, skips prompts under 4 words"), "{out}");
+    assert!(!path.exists(), "showing never creates the file");
+}
+
+#[test]
+fn an_invalid_global_file_is_reported_by_the_command_and_silences_the_hook() {
+    let dir = repo();
+    let root = dir.path();
+    write(&anvil_home(root), "config.json", "{ not json");
+    let out = anvil(root, &["prompt", "assist"], None);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid JSON"));
+    assert_eq!(prompt_hook(root, "s12", "make applyDiscount round the total to cents"), json!({}));
+    let log = fs::read_to_string(root.join(".harness/.state/hook-errors.log")).expect("log");
+    assert!(log.contains("[prompt-assist]") && log.contains("invalid JSON"), "{log}");
 }
 
 #[test]

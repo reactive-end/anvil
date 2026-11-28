@@ -1,6 +1,6 @@
 //! Language of the text Anvil shows the user: Spanish or English.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::config::AnvilConfig;
 
@@ -69,8 +69,7 @@ fn claude_settings_path() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR") {
         return Some(PathBuf::from(dir).join("settings.json"));
     }
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
-    Some(Path::new(&home).join(".claude").join("settings.json"))
+    Some(crate::user_config::home_dir()?.join(".claude").join("settings.json"))
 }
 
 #[cfg(test)]

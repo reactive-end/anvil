@@ -1,5 +1,6 @@
-//! `prompt_assist` section of `.harness/config.json`: the small context block (and optional coaching)
-//! the `UserPromptSubmit` hook adds to every prompt. Deterministic: no model call, no network.
+//! Prompt assist settings: the small context block (and optional coaching) the `UserPromptSubmit`
+//! hook adds to every prompt. Deterministic: no model call, no network. They are global to the
+//! user and live in `~/.anvil/config.json` (see [`crate::user_config`]), off by default.
 
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
@@ -13,10 +14,10 @@ pub const DEFAULT_MIN_WORDS: usize = 4;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PromptAssistMode {
-    /// Nothing.
+    /// Nothing; the default until the user turns it on.
+    #[default]
     Off,
     /// Code symbols, docs concepts, and memories that look relevant to the prompt.
-    #[default]
     Context,
     /// The context block, plus a nudge to clarify before editing when the request lacks a target,
     /// success criteria, or a verification hint.
@@ -87,9 +88,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_to_context_with_a_450_token_cap() {
+    fn defaults_to_off_with_a_450_token_cap() {
         let cfg: PromptAssistConfig = serde_json::from_str("{}").unwrap();
-        assert_eq!(cfg.mode, PromptAssistMode::Context);
+        assert_eq!(cfg.mode, PromptAssistMode::Off);
         assert_eq!((cfg.max_tokens, cfg.min_words), (450, 4));
         assert!(cfg.is_default());
     }

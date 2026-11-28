@@ -12,4 +12,6 @@ Use this when the request has no clear target or success criteria, says "everyth
 3. Ask the user to confirm or edit it. Fill the `<describe ...>` placeholders with them and answer each open question together. Do not guess the answers.
 4. Only after the user confirms, work from the confirmed version. Run the commands under Verification before you say it is done.
 
+`anvil prompt improve` works whatever the prompt assist mode is. The automatic context line is off by default; the user turns it on for every project with `anvil prompt assist context` (or `coach`) and off with `anvil prompt assist off`. Do not change that setting yourself.
+
 Never edit files before step 3 is answered. If the user says to just proceed, state your assumptions in one sentence and go ahead.

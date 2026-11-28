@@ -286,11 +286,20 @@ fn executors_may_set_the_architecture() {
 }
 
 #[test]
-fn orchestrator_reads_prompt_improve_but_cannot_change_prompt_assist() {
-    for ok in ["anvil prompt improve \"fix the login\"", "anvil prompt improve --json \"x\""] {
+fn orchestrator_reads_prompt_improve_and_assist_but_cannot_change_prompt_assist() {
+    for ok in [
+        "anvil prompt improve \"fix the login\"",
+        "anvil prompt improve --json \"x\"",
+        "anvil prompt assist",
+    ] {
         assert_eq!(why_not_read_only(ok), None, "{ok}");
     }
-    for bad in ["anvil prompt assist coach", "anvil prompt assist off", "anvil prompt"] {
+    for bad in [
+        "anvil prompt assist coach",
+        "anvil prompt assist off",
+        "anvil prompt assist --max-tokens 100",
+        "anvil prompt",
+    ] {
         assert!(why_not_read_only(bad).is_some(), "{bad}");
     }
 }

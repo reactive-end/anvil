@@ -763,11 +763,18 @@ pub enum PromptSubcmd {
         #[arg(long)]
         json: bool,
     },
-    /// Show or set what the prompt hook adds to each prompt: `off`, `context` (default), or `coach`.
+    /// Show or set, for every project of this user, what the prompt hook adds to each prompt:
+    /// `off` (default), `context`, or `coach`. Stored in `~/.anvil/config.json`.
     Assist {
         /// New mode; shows the current one when omitted.
         #[arg(value_parser = ["off", "context", "coach"])]
         mode: Option<String>,
+        /// Cap for the whole injected block, in tokens (about four characters each).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        max_tokens: Option<u32>,
+        /// Prompts with fewer words are left alone.
+        #[arg(long)]
+        min_words: Option<u32>,
     },
 }
 

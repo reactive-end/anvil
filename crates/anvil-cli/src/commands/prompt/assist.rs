@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use anvil_adapters::contract::{InboxMessage, MessageLevel, NormalizedHookInput};
 use anvil_core::config::AnvilConfig;
-use anvil_core::config::prompt_assist::PromptAssistMode;
+use anvil_core::config::prompt_assist::{PromptAssistConfig, PromptAssistMode};
+use anvil_core::user_config::UserConfig;
 
 use super::gaps::{self, Gap};
 use super::gather::{self, Limits};
@@ -32,8 +33,28 @@ pub struct Assist {
 }
 
 /// Builds the assistance for `input`, or nothing when the mode is off or the prompt is skipped.
+/// The mode is the user's global setting; a missing file means off, an unreadable one is logged
+/// and also means off.
 pub fn on_prompt(root: &Path, config: &AnvilConfig, input: &NormalizedHookInput) -> Assist {
-    let settings = config.prompt_assist;
+    if input.user_prompt.is_none() {
+        return Assist::default();
+    }
+    let settings = match UserConfig::load() {
+        Ok(user) => user.prompt_assist,
+        Err(err) => {
+            error_log::log_hook_error(root, "prompt-assist", &format!("{err:#}"));
+            return Assist::default();
+        }
+    };
+    assist_with(root, config, input, settings)
+}
+
+fn assist_with(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+    settings: PromptAssistConfig,
+) -> Assist {
     let Some(prompt) = input.user_prompt.as_deref() else {
         return Assist::default();
     };
@@ -50,7 +71,7 @@ pub fn on_prompt(root: &Path, config: &AnvilConfig, input: &NormalizedHookInput)
     let mut problems = Vec::new();
     let mut gathered = gather::gather(root, config, &found, LIMITS);
     problems.append(&mut gathered.problems);
-    let assist = assemble(root, config, input, prompt, gathered, &mut problems);
+    let assist = assemble(root, config, input, prompt, gathered, settings, &mut problems);
     for problem in problems {
         error_log::log_hook_error(root, "prompt-assist", &problem);
     }
@@ -63,9 +84,9 @@ fn assemble(
     input: &NormalizedHookInput,
     prompt: &str,
     gathered: Gathered,
+    settings: PromptAssistConfig,
     problems: &mut Vec<String>,
 ) -> Assist {
-    let settings = config.prompt_assist;
     let coaching = settings.mode == PromptAssistMode::Coach;
     let all_gaps = if coaching { gaps::detect(prompt, &gathered) } else { Vec::new() };
     let gaps = if gaps::worth_coaching(&all_gaps) { all_gaps } else { Vec::new() };

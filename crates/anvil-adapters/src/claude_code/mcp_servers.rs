@@ -45,8 +45,7 @@ impl ClaudeHome {
             let state = dir.join(".claude.json");
             return Some(Self { dir, state });
         }
-        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
-        let home = PathBuf::from(home);
+        let home = anvil_core::user_config::home_dir()?;
         Some(Self { dir: home.join(".claude"), state: home.join(".claude.json") })
     }
 }

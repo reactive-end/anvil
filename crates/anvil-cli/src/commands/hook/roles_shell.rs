@@ -299,9 +299,19 @@ fn is_read_only_anvil(args: &[String]) -> bool {
         "guard" => rest.first().is_some_and(|a| a == "list" || a == "test"),
         "docs" => rest.first().is_some_and(|a| DOCS_READERS.contains(&a.as_str())),
         "prereqs" => is_prereqs_reader(rest),
-        "prompt" => rest.first().is_some_and(|a| a == "improve"),
+        "prompt" => is_prompt_reader(rest),
         "architecture" => is_architecture_reader(rest),
         sub => ANVIL_READERS.contains(&sub),
+    }
+}
+
+/// `anvil prompt improve` and a bare `anvil prompt assist` only read; a mode or flag writes the
+/// user's global config.
+fn is_prompt_reader(rest: &[String]) -> bool {
+    match rest.first().map(String::as_str) {
+        Some("improve") => true,
+        Some("assist") => rest.len() == 1,
+        _ => false,
     }
 }
 
