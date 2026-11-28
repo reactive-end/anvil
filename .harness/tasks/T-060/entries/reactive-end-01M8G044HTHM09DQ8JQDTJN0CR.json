@@ -1,0 +1,17 @@
+{
+  "entry_id": "01M8G044HTHM09DQ8JQDTJN0CR",
+  "task_id": "T-060",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "When orchestrator mode is switched off, the next prompt gets one `[orchestrator-mode]: OFF` notice that cancels earlier orchestrator instructions, and the main thread cannot start anvil-executor while the mode is off.",
+  "evidence": "e2e switching_the_mode_off_is_announced_once_and_stops_executor_spawns PASS; unit switching_the_mode_off_is_announced_once PASS; fmt/clippy PASS; anvil check --scope PASS",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/tests/orchestrator_usability_e2e.rs",
+    "crates/anvil-core/src/orchestrator_mode.rs"
+  ],
+  "timestamp": "2026-11-28T02:35:36.431605800Z"
+}

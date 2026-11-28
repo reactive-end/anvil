@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 58,
-  "updated_at": "2026-11-28T01:55:42.351569200Z",
+  "task_count": 60,
+  "updated_at": "2026-11-28T02:37:12.175305800Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1088,6 +1088,44 @@
       "progress_file": ".harness/tasks/T-058/progress.md",
       "created_at": "2026-11-28T01:42:20.029590700Z",
       "updated_at": "2026-11-28T01:55:42.351569200Z"
+    },
+    {
+      "task_id": "T-059",
+      "request": "init always offers an architecture choice in interactive mode",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Interactive anvil init always offers the architecture presets (detected style preselected, else none), including empty folders; non-interactive runs only suggest as before.",
+      "evidence": "5 unit + 2 e2e tests (3 fail with the old early return); fmt/clippy/test workspace PASS; anvil check --scope PASS",
+      "entry_count": 4,
+      "files_count": 4,
+      "progress_file": ".harness/tasks/T-059/progress.md",
+      "created_at": "2026-11-28T02:29:49.754350700Z",
+      "updated_at": "2026-11-28T02:37:12.175305800Z"
+    },
+    {
+      "task_id": "T-060",
+      "request": "Hooks keep the agent in line when orchestrator mode is off",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "When orchestrator mode is switched off, the next prompt gets one `[orchestrator-mode]: OFF` notice that cancels earlier orchestrator instructions, and the main thread cannot start anvil-executor while the mode is off.",
+      "evidence": "e2e switching_the_mode_off_is_announced_once_and_stops_executor_spawns PASS; unit switching_the_mode_off_is_announced_once PASS; fmt/clippy PASS; anvil check --scope PASS",
+      "entry_count": 3,
+      "files_count": 7,
+      "progress_file": ".harness/tasks/T-060/progress.md",
+      "created_at": "2026-11-28T02:32:25.253544900Z",
+      "updated_at": "2026-11-28T02:35:36.431605800Z"
     }
   ]
 }

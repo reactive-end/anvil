@@ -1,0 +1,16 @@
+{
+  "entry_id": "01M8G07229J2P1Q2QACB3SBAPC",
+  "task_id": "T-059",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Interactive anvil init always offers the architecture presets (detected style preselected, else none), including empty folders; non-interactive runs only suggest as before.",
+  "evidence": "5 unit + 2 e2e tests (3 fail with the old early return); fmt/clippy/test workspace PASS; anvil check --scope PASS",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/commands/init.rs",
+    "crates/anvil-cli/src/commands/init/architecture.rs",
+    "crates/anvil-cli/tests/architecture_e2e.rs"
+  ],
+  "timestamp": "2026-11-28T02:37:12.175305800Z"
+}

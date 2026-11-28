@@ -1,0 +1,22 @@
+{
+  "entry_id": "01M8FZWMC2Y0BBSQ0PZ52WNYAE",
+  "task_id": "T-059",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Interactive init always offers the architecture select (default detected else none); PromptIo gets a writer; unit tests added in architecture.rs",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/init.rs",
+    "crates/anvil-cli/src/commands/init/architecture.rs"
+  ],
+  "done_steps": [
+    "decide_auto rewrite",
+    "PromptIo writer",
+    "unit tests"
+  ],
+  "next_steps": [
+    "README line",
+    "fmt/clippy/test/check"
+  ],
+  "timestamp": "2026-11-28T02:31:30.475548400Z"
+}

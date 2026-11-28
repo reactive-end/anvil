@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FZSJ1XNFKG42WYNDSR594K",
+  "task_id": "T-059",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: init always offers an architecture choice in interactive mode",
+  "files_touched": [],
+  "timestamp": "2026-11-28T02:29:49.796210700Z"
+}
