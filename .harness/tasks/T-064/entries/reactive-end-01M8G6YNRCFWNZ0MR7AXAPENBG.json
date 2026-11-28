@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8G6YNRCFWNZ0MR7AXAPENBG",
+  "task_id": "T-064",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "database_use counts SQLite drivers only with a server framework; driver_kind keeps raw detection for db init; tests and README.",
+  "files_touched": [],
+  "timestamp": "2026-11-28T04:34:57.454442600Z"
+}

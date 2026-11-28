@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 63,
-  "updated_at": "2026-11-28T03:55:05.675889500Z",
+  "task_count": 64,
+  "updated_at": "2026-11-28T04:35:09.058075400Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1182,6 +1182,24 @@
       "progress_file": ".harness/tasks/T-063/progress.md",
       "created_at": "2026-11-28T03:25:06.671216600Z",
       "updated_at": "2026-11-28T03:55:05.675889500Z"
+    },
+    {
+      "task_id": "T-064",
+      "request": "Embedded SQLite in a library is not an application database",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Embedded SQLite drivers count as an application database only when the project also depends on a server framework; anvil-memory (rusqlite library) no longer asks for Toolbox. db init keeps raw driver detection.",
+      "entry_count": 3,
+      "files_count": 0,
+      "progress_file": ".harness/tasks/T-064/progress.md",
+      "created_at": "2026-11-28T04:34:51.864479900Z",
+      "updated_at": "2026-11-28T04:35:09.058075400Z"
     }
   ]
 }
