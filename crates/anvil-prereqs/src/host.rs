@@ -77,12 +77,14 @@ impl Host for SystemHost {
     }
 
     fn run_shell(&self, command: &str, timeout: Duration) -> RunOutcome {
-        let mut cmd = if cfg!(windows) {
+        #[cfg(windows)]
+        let mut cmd = {
             let mut c = Command::new("cmd");
-            #[cfg(windows)]
             std::os::windows::process::CommandExt::raw_arg(&mut c, format!("/C {command}"));
             c
-        } else {
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
             let mut c = Command::new("sh");
             c.args(["-c", command]);
             c
