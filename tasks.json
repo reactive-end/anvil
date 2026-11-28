@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 54,
-  "updated_at": "2026-11-27T23:50:24.292600600Z",
+  "task_count": 55,
+  "updated_at": "2026-11-28T00:24:36.535546Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1012,6 +1012,25 @@
       "progress_file": ".harness/tasks/T-054/progress.md",
       "created_at": "2026-11-27T23:45:00.802556900Z",
       "updated_at": "2026-11-27T23:50:24.292600600Z"
+    },
+    {
+      "task_id": "T-055",
+      "request": "Prompt assist: relevant context on each prompt and `anvil prompt improve`",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Added prompt assist: the prompt hook injects a capped line of relevant graph symbols, docs concepts and memories (default `context` mode), `coach` mode adds a clarify-first note for the agent and one short user tip per gap, `anvil prompt improve` builds a structured prompt (goal, context, constraints, acceptance criteria, verification, open questions) from the repo config, `anvil prompt assist` sets the mode, and the improve-prompt skill uses it.",
+      "evidence": "fmt/clippy PASS; cargo test --workspace all green (11 new e2e); anvil check --scope PASS; hook gather 62-80 ms on this repo (debug, graph load included); sandbox improve lists Order, OrderMapper, CreateOrderCommand, hexagonal rules, anvil qa api with 3 scenarios and 2 flows",
+      "entry_count": 4,
+      "files_count": 27,
+      "progress_file": ".harness/tasks/T-055/progress.md",
+      "created_at": "2026-11-27T23:51:19.843542Z",
+      "updated_at": "2026-11-28T00:24:36.535546Z"
     }
   ]
 }

@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FPQB177QZFBEPBWTPK9KCB",
+  "task_id": "T-055",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: Prompt assist: relevant context on each prompt and `anvil prompt improve`",
+  "files_touched": [],
+  "timestamp": "2026-11-27T23:51:19.913281600Z"
+}

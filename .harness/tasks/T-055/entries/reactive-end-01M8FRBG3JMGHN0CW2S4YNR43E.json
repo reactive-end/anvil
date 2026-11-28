@@ -1,0 +1,49 @@
+{
+  "entry_id": "01M8FRBG3JMGHN0CW2S4YNR43E",
+  "task_id": "T-055",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Tests, README and verification done; fmt and clippy pass; cargo test has one failure outside SCOPE (skill count assertion 5 -> 6 in crates/anvil-adapters/tests/sync_non_destructive.rs).",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/templates.rs",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell/tests.rs",
+    "crates/anvil-cli/src/commands/prompt.rs",
+    "crates/anvil-cli/src/commands/prompt/",
+    "crates/anvil-cli/src/commands/prompt/assist.rs",
+    "crates/anvil-cli/src/commands/prompt/constraints.rs",
+    "crates/anvil-cli/src/commands/prompt/gaps.rs",
+    "crates/anvil-cli/src/commands/prompt/gather.rs",
+    "crates/anvil-cli/src/commands/prompt/grep_stage.rs",
+    "crates/anvil-cli/src/commands/prompt/improve.rs",
+    "crates/anvil-cli/src/commands/prompt/refs.rs",
+    "crates/anvil-cli/src/commands/prompt/render.rs",
+    "crates/anvil-cli/src/commands/prompt/session.rs",
+    "crates/anvil-cli/src/commands/prompt/stopwords.rs",
+    "crates/anvil-cli/src/commands/prompt/terms.rs",
+    "crates/anvil-cli/src/commands/prompt/verify.rs",
+    "crates/anvil-cli/tests/prompt_assist_e2e.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/config/prompt_assist.rs",
+    "templates/skills/improve-prompt/SKILL.md"
+  ],
+  "done_steps": [
+    "unit tests (terms, stopwords, gaps, session, render, gather, improve, config)",
+    "e2e crates/anvil-cli/tests/prompt_assist_e2e.rs (11 tests)",
+    "README Prompt assist section",
+    "sandbox architecture hexagonal + graph built",
+    "clippy + fmt green"
+  ],
+  "next_steps": [
+    "orchestrator: change EMBEDDED_SKILLS.len() assertion 5 -> 6 in sync_non_destructive.rs",
+    "orchestrator: run the real hook probes (blocked for executors)"
+  ],
+  "blocker": "crates/anvil-adapters/tests/sync_non_destructive.rs:71 asserts EMBEDDED_SKILLS.len() == 5 and is outside SCOPE; anvil hook cannot be run by the executor",
+  "timestamp": "2026-11-28T00:19:49.013866500Z"
+}
