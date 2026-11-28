@@ -46,6 +46,42 @@ pub fn parse_cargo_toml(manifest_path: &str, content: &str) -> Result<Vec<Depend
     Ok(specs)
 }
 
+/// Names of registry crates a member manifest inherits through `x.workspace = true` (no version of its own).
+///
+/// These have no requirement in the member manifest, so they can only be audited via the lockfile.
+pub fn inherited_workspace_deps(content: &str) -> Vec<String> {
+    let Ok(root) = toml::from_str::<TomlValue>(content) else {
+        return Vec::new();
+    };
+    let mut tables: Vec<&toml::map::Map<String, TomlValue>> = Vec::new();
+    for key in DEP_TABLES {
+        tables.extend(root.get(*key).and_then(TomlValue::as_table));
+    }
+    if let Some(targets) = root.get("target").and_then(TomlValue::as_table) {
+        for target_cfg in targets.values().filter_map(TomlValue::as_table) {
+            for key in DEP_TABLES {
+                tables.extend(target_cfg.get(*key).and_then(TomlValue::as_table));
+            }
+        }
+    }
+
+    let mut names = Vec::new();
+    for (alias, val) in tables.into_iter().flatten() {
+        let Some(table) = val.as_table() else {
+            continue;
+        };
+        let inherited = table.get("workspace").and_then(TomlValue::as_bool) == Some(true);
+        if !inherited || table.contains_key("version") {
+            continue;
+        }
+        let name = table.get("package").and_then(TomlValue::as_str).unwrap_or(alias).trim();
+        if !name.is_empty() && !names.iter().any(|n| n == name) {
+            names.push(name.to_owned());
+        }
+    }
+    names
+}
+
 /// Fetches crate health metadata from `https://crates.io/api/v1/crates/<package>`.
 pub fn fetch_cargo(package: &str) -> Result<PackageHealthInfo> {
     let encoded = percent_encode_component(package);
@@ -109,6 +145,7 @@ pub fn parse_crates_io_json(package: &str, body: &str) -> Result<PackageHealthIn
         archived: false,
         repository_url,
         vulnerabilities: Vec::new(),
+        informational: Vec::new(),
     })
 }
 
@@ -128,6 +165,8 @@ fn collect_cargo_table(
                 name: crate_name,
                 version_req,
                 manifest_path: manifest_path.to_owned(),
+                resolved_version: None,
+                lockfile: None,
             });
         }
     }

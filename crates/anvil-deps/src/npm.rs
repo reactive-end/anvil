@@ -53,6 +53,8 @@ pub fn parse_package_json(manifest_path: &str, content: &str) -> Result<Vec<Depe
                     name: name.clone(),
                     version_req: version.as_str().map(str::to_owned),
                     manifest_path: manifest_path.to_owned(),
+                    resolved_version: None,
+                    lockfile: None,
                 });
             }
         }
@@ -126,6 +128,7 @@ pub fn parse_npm_registry_json(package: &str, body: &str) -> Result<PackageHealt
         archived: false,
         repository_url,
         vulnerabilities: Vec::new(),
+        informational: Vec::new(),
     })
 }
 

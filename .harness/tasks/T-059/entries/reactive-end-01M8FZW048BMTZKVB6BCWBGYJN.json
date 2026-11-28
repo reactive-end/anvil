@@ -1,0 +1,13 @@
+{
+  "entry_id": "01M8FZW048BMTZKVB6BCWBGYJN",
+  "task_id": "T-059",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "feat/harness-improvements",
+  "summary": "Executor is implementing the always-on interactive architecture select in init; waiting for its report before review.",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/init.rs",
+    "crates/anvil-cli/src/commands/init/architecture.rs"
+  ],
+  "timestamp": "2026-11-28T02:31:09.752541900Z"
+}

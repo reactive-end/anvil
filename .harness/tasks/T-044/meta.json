@@ -1,0 +1,6 @@
+{
+  "task_id": "T-044",
+  "created_by": "reactive-end",
+  "request": "Orchestrator mode: unblock commits, help and built binaries; fix executor write-path false positives",
+  "created_at": "2026-11-27T17:38:16.639594300Z"
+}

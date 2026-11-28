@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8EZF2JJW1NQQH7X92E9NFX4",
+  "task_id": "T-043",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Detect destructive aws/gcloud/az/kubectl/terraform/helm/docker commands (shell and MCP tool inputs), close SQL and force-with-lease gaps, add a security_guard config section with ask/deny/allow per category plus custom patterns, an `anvil guard` CLI, and mirror the rules into .claude/settings.json permissions.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T17:04:51.830864900Z"
+}

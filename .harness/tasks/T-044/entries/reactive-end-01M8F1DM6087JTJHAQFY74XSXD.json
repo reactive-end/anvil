@@ -1,0 +1,16 @@
+{
+  "entry_id": "01M8F1DM6087JTJHAQFY74XSXD",
+  "task_id": "T-044",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "Executor is fixing the orchestrator-mode bugs (this very Stop nag is bug 6); waiting for its report.",
+  "files_touched": [],
+  "next_steps": [
+    "Review report and diff",
+    "anvil check --scope",
+    "review_approve then task_done"
+  ],
+  "blocker": "Waiting for the anvil-executor run.",
+  "timestamp": "2026-11-27T17:39:01.481804100Z"
+}

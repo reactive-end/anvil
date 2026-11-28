@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8G93YMT0VD3KSQH5Z91ZJ0W",
+  "task_id": "T-065",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: CI fixes: Linux clippy in prereqs, ambient DB variables",
+  "files_touched": [],
+  "timestamp": "2026-11-28T05:12:47.551988800Z"
+}

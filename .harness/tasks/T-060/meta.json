@@ -1,0 +1,6 @@
+{
+  "task_id": "T-060",
+  "created_by": "reactive-end",
+  "request": "Hooks keep the agent in line when orchestrator mode is off",
+  "created_at": "2026-11-28T02:32:25.253544900Z"
+}

@@ -20,3 +20,4 @@ pub mod stats;
 pub mod test_tampering;
 pub mod tier0_cache;
 pub mod traits;
+pub mod user_config;

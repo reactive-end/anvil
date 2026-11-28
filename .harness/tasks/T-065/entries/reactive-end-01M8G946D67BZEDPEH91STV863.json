@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8G946D67BZEDPEH91STV863",
+  "task_id": "T-065",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Linux clippy unused mut in prereqs host.rs fixed with per-platform cfg blocks; connection_env layers ambient env below the project's env file, exact DB_* on top; test injects its environment.",
+  "files_touched": [],
+  "timestamp": "2026-11-28T05:12:55.505148100Z"
+}

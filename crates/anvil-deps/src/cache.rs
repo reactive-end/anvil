@@ -122,6 +122,7 @@ mod tests {
             archived: false,
             repository_url: None,
             vulnerabilities: Vec::new(),
+            informational: Vec::new(),
         };
         cache.insert(mk("stale-pkg"), now - Duration::hours(30));
         cache.insert(mk("fresh-pkg"), now - Duration::hours(1));

@@ -1,0 +1,37 @@
+{
+  "entry_id": "01M8FX787J4S0HSYJ4NJ9P6E3N",
+  "task_id": "T-058",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Prompt assist is now a global, off-by-default user setting in ~/.anvil/config.json (ANVIL_HOME override); CLI, hook, allowlist, docs and tests updated.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/claude_code/mcp_servers.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell/tests.rs",
+    "crates/anvil-cli/src/commands/prompt.rs",
+    "crates/anvil-cli/src/commands/prompt/assist.rs",
+    "crates/anvil-cli/tests/prompt_assist_e2e.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/config/prompt_assist.rs",
+    "crates/anvil-core/src/lib.rs",
+    "crates/anvil-core/src/locale.rs",
+    "crates/anvil-core/src/user_config.rs",
+    "templates/skills/improve-prompt/SKILL.md"
+  ],
+  "done_steps": [
+    "user_config module in anvil-core",
+    "default Off, removed from AnvilConfig",
+    "hook reads user config",
+    "anvil prompt assist global + flags",
+    "roles_shell allowlist",
+    "README and skill",
+    "e2e tests"
+  ],
+  "next_steps": [
+    "fmt, clippy, tests, anvil check, real-home check"
+  ],
+  "timestamp": "2026-11-28T01:44:52.759271300Z"
+}

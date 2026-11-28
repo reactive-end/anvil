@@ -1,6 +1,9 @@
 //! Hybrid visual QA driver for Web DOM assertions and mobile view trees.
 
+pub mod api;
+pub mod flows;
 pub mod godot;
+pub mod listing;
 pub mod mobile;
 pub mod model;
 pub mod onboarding;

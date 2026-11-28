@@ -307,6 +307,36 @@ pub enum CircuitSubcmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum GuardSubcmd {
+    /// Show the decision per category and the custom patterns (invalid regexes are marked).
+    List,
+    /// Set the decision of a category (`git`, `filesystem`, `disk`, `database`, `cloud`, `infra`,
+    /// `containers`, `secrets`, `opaque`) to `ask`, `deny`, or `allow`.
+    Set { category: String, decision: String },
+    /// Add a regex that resolves matching commands to `ask`, `deny`, or `allow`.
+    Add {
+        decision: String,
+        #[arg(allow_hyphen_values = true)]
+        pattern: String,
+    },
+    /// Remove a regex from every pattern list.
+    Remove {
+        #[arg(allow_hyphen_values = true)]
+        pattern: String,
+    },
+    /// Restore the default decisions and drop every custom pattern.
+    Reset,
+    /// Print the decision, category, and reason for a command without running it.
+    Test {
+        #[arg(allow_hyphen_values = true)]
+        command: String,
+        /// Tool name the command would arrive from (`Bash`, `mcp__aws__call_aws`, `Read`, ...).
+        #[arg(long)]
+        tool: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum QaSubcmd {
     /// Detect UI platform and display onboarding driver options.
     Onboard,
@@ -329,14 +359,55 @@ pub enum QaSubcmd {
         #[arg(long, value_delimiter = ',')]
         page_errors: Vec<String>,
     },
-    /// Run headless Playwright DOM + screenshot capture on a URL.
+    /// Run headless Playwright on a URL (DOM audit), or scripted flows with `--flow`/`--all-flows`.
     Run {
-        url: String,
-        /// Screenshot capture phase (`before` or `after`).
+        /// Page to audit; defaults to `qa.web.url`.
+        url: Option<String>,
+        /// Run one flow (file name or `name` of a file in `qa.web.flows_dir`).
+        #[arg(long, conflicts_with = "all_flows")]
+        flow: Option<String>,
+        /// Run every flow in `qa.web.flows_dir`.
+        #[arg(long)]
+        all_flows: bool,
+        /// Start the app (`qa.web.start_command`) first and stop it afterwards.
+        #[arg(long)]
+        start: bool,
+        /// Print the full structured report as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Screenshot capture phase of the DOM audit (`before` or `after`).
         #[arg(long, default_value = "after", value_parser = ["before", "after"])]
         phase: String,
         #[arg(long, default_value = ".harness/.state/qa")]
         out_dir: PathBuf,
+    },
+    /// Run flows and store their screenshots as visual baselines (`.harness/qa/baseline/`).
+    Baseline {
+        /// Only this flow (default: every flow).
+        #[arg(long)]
+        flow: Option<String>,
+        /// Start the app (`qa.web.start_command`) first and stop it afterwards.
+        #[arg(long)]
+        start: bool,
+        /// Print the full structured report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// List the flows in `qa.web.flows_dir` and validate them.
+    Flows,
+    /// Run API scenarios (HTTP calls to the backend, then database checks through Toolbox).
+    Api {
+        /// Scenarios to run (file name or `name`); every scenario in `qa.api.scenarios_dir` when omitted.
+        names: Vec<String>,
+        /// Start the API (`qa.api.start_command`) when it does not answer and stop it afterwards.
+        #[arg(long)]
+        start: bool,
+        /// List and validate the scenarios without running them.
+        #[arg(long)]
+        list: bool,
+        /// Print the full structured report as JSON.
+        #[arg(long)]
+        json: bool,
     },
     /// Scan Android `uiautomator` XML, `logcat`, and Roborazzi diffs.
     ScanMobile {
@@ -556,5 +627,189 @@ pub enum CodeSubcmd {
         script: String,
         #[arg(long, default_value_t = 32)]
         max_calls: usize,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DocsSubcmd {
+    /// Create the OKF bundle (`index.md`, `log.md`) of each project under `.harness/docs/`; idempotent.
+    Init {
+        /// Project (bundle) name; defaults to `docs.project`, the repository folder, or every subrepo.
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Create a module concept `<module>/overview.md` with the standard sections.
+    New {
+        /// Module path inside the bundle, e.g. `orders` or `core/config`.
+        module: String,
+        /// Repo-relative globs of the code the concept documents (`x-anvil-paths`).
+        #[arg(long, num_args = 1.., required = true)]
+        paths: Vec<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Create a concept for every code module that has none yet, using the code graph.
+    Scaffold {
+        #[arg(long)]
+        project: Option<String>,
+        /// Levels below the project root that count as a module (containers such as `crates/` and
+        /// source roots such as `src/` are not levels). Default: the folders under each source root.
+        #[arg(long)]
+        depth: Option<usize>,
+    },
+    /// List concepts with status, trust tier, and drift.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate every bundle; stale concepts are warnings (errors with `--strict`).
+    Check {
+        /// Treat stale concepts as failures.
+        #[arg(long)]
+        strict: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// After updating a doc: regenerate the outline block, restamp `generated` and the synced commit, log it.
+    Refresh {
+        /// Concept ids (`<project>/<module>`).
+        ids: Vec<String>,
+        /// Refresh every stale concept.
+        #[arg(long, conflicts_with = "ids")]
+        stale: bool,
+    },
+    /// Record a human review of a concept (only a person runs this).
+    Verify {
+        id: String,
+        /// Reviewer name (default: `git config user.name`).
+        #[arg(long)]
+        by: Option<String>,
+    },
+    /// Search the concepts (BM25 over title, description, tags, headings, and body).
+    Search {
+        query: String,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PrereqsSubcmd {
+    /// Print what the project files say a machine needs; `--write` stores it in `.harness/config.json`.
+    Detect {
+        /// Store the detected set under `prerequisites.detected` (your overrides are kept).
+        #[arg(long)]
+        write: bool,
+    },
+    /// Check this machine; exits 1 when a required tool is missing or at the wrong version.
+    Check {
+        /// Print the full report as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Check only this subrepo (plus the workspace-level tools).
+        #[arg(long)]
+        subrepo: Option<String>,
+    },
+    /// Write `init.sh` and `init.ps1`, thin wrappers around `anvil prereqs check`.
+    Script {
+        /// Directory to write them to (default: the repository root).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ArchitectureSubcmd {
+    /// Print the configured style per repo/subrepo, the rules generated from it, and the agent guidance.
+    Show {
+        /// Print the full report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Record the architecture style (`none`, `hexagonal`, `clean`, `layered`, `feature-sliced`, `modular-monolith`, `event-driven`).
+    Set {
+        /// Style to record.
+        style: String,
+        /// Record it for this subrepo instead of the repository root.
+        #[arg(long)]
+        subrepo: Option<String>,
+        /// Directory the rules are anchored to, relative to the repo or subrepo (default `src`).
+        #[arg(long)]
+        source_root: Option<String>,
+    },
+    /// Suggest a style from the folder names under each source root (changes nothing).
+    Detect,
+    /// Check the whole repository against the generated rules; exits 1 on any violation.
+    Check {
+        /// Print the full report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PromptSubcmd {
+    /// Print a rough request as a structured prompt: goal, context, constraints, acceptance criteria, verification, open questions.
+    Improve {
+        /// The request; reads stdin when missing or `-`.
+        text: Option<String>,
+        /// Print the same content as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show or set, for every project of this user, what the prompt hook adds to each prompt:
+    /// `off` (default), `context`, or `coach`. Stored in `~/.anvil/config.json`.
+    Assist {
+        /// New mode; shows the current one when omitted.
+        #[arg(value_parser = ["off", "context", "coach"])]
+        mode: Option<String>,
+        /// Cap for the whole injected block, in tokens (about four characters each).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        max_tokens: Option<u32>,
+        /// Prompts with fewer words are left alone.
+        #[arg(long)]
+        min_words: Option<u32>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DbSubcmd {
+    /// Write `.harness/db/tools.yaml` (source plus the read-only `anvil_select` tool) for Toolbox.
+    Init {
+        /// Database engine; detected from the project's .env files and dependencies when omitted.
+        #[arg(long, value_parser = ["sqlite", "postgres", "mysql"])]
+        kind: Option<String>,
+        /// SQLite file (relative to the repository root) or server database name.
+        #[arg(long)]
+        database: Option<String>,
+        /// Name of the Toolbox source.
+        #[arg(long, default_value = "app-db")]
+        name: String,
+        /// Toolbox binary: a name on `PATH` or a path relative to the repository root.
+        #[arg(long)]
+        toolbox: Option<String>,
+        /// Overwrite an existing tools file.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Check the Toolbox binary, the tools file, literal passwords, and `SELECT 1`; exits 1 on a failure.
+    Check,
+    /// Run Toolbox as an MCP server on stdio with the project's connection (what `anvil-db` starts).
+    Serve,
+    /// Run one read-only SELECT through Toolbox and print the rows as JSON.
+    Query {
+        /// A single `SELECT` (or `WITH ... SELECT`) statement.
+        sql: String,
+    },
+    /// Register (`on`) or remove (`off`) the `anvil-db` MCP server in every adapter.
+    Mcp {
+        #[arg(value_parser = ["on", "off"])]
+        state: String,
     },
 }

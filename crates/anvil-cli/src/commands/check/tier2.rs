@@ -1,5 +1,8 @@
 //! Tier 2 dependency health and visual QA verification helpers for `anvil check`.
 
+mod api_qa;
+mod web_qa;
+
 use std::path::{Path, PathBuf};
 
 use anvil_core::config::AnvilConfig;
@@ -7,7 +10,7 @@ use anvil_core::diff_classifier::DiffClassification;
 use anvil_deps::{AuditOptions, LiveRegistryFetcher, audit_manifests, is_supported_manifest};
 use anvil_qa::QaEngine;
 
-use crate::commands::deps::discover_manifests;
+use crate::commands::deps::{advisory_suffix, discover_manifests};
 use crate::ui;
 
 /// Runs Tier 2 dependency auditing, visual QA readiness, and opt-in SonarQube Quality Gate checks.
@@ -27,7 +30,9 @@ pub fn run_tier2(
     if run_sonar {
         failed |= crate::commands::sonar::run_tier2_quality_gate(root, config);
     }
-    if classification.needs_visual_qa || full {
+    failed |= api_qa::run(root, config, changed, full);
+    let web_code_changed = super::api_tier::web_touched(config, changed);
+    if classification.needs_visual_qa || full || web_code_changed {
         let qa = QaEngine::new(root);
         if let Some(prompt) = qa.onboarding_prompt(config) {
             println!(
@@ -42,6 +47,7 @@ pub fn run_tier2(
                 qa.detect_platform(config)
             );
         }
+        failed |= web_qa::run(root, config);
     }
     failed
 }
@@ -68,34 +74,40 @@ fn run_deps_audit(root: &Path, changed: &[String], full: bool) -> bool {
             for err in &report.errors {
                 eprintln!("  [Tier 2] deps audit error: {err}");
             }
-            if report.findings.is_empty() {
+            let blocking = report.blocking_count();
+            let informational = report.findings.len() - blocking;
+            if blocking == 0 {
                 println!(
                     "  {} {}",
                     ui::cyan("[Tier 2]"),
                     ui::green(&format!(
-                        "deps audit: PASS (checked={}, 0 findings)",
+                        "deps audit: PASS (checked={}, 0 findings, {informational} informational)",
                         report.checked_packages
                     ))
                 );
-                return false;
+            } else {
+                println!(
+                    "  {} {}",
+                    ui::cyan("[Tier 2]"),
+                    ui::red(&format!("deps audit: FAIL ({blocking} finding(s))"))
+                );
             }
-            println!(
-                "  {} {}",
-                ui::cyan("[Tier 2]"),
-                ui::red(&format!("deps audit: FAIL ({} finding(s))", report.findings.len()))
-            );
             for f in &report.findings {
                 let detail = f
                     .deprecation_message
                     .as_deref()
                     .map(|m| format!(" detail={m}"))
                     .unwrap_or_default();
+                let marker = if f.is_blocking() { "-" } else { "~" };
                 println!(
-                    "    - {}:{} ({}) issues={:?} age={:?}mo{detail}",
-                    f.ecosystem, f.package, f.manifest_path, f.issues, f.age_months
+                    "    {marker} {} issues={:?} age={:?}mo{}{detail}",
+                    f.label(),
+                    f.issues,
+                    f.age_months,
+                    advisory_suffix(f)
                 );
             }
-            true
+            blocking > 0
         }
         Err(err) => {
             eprintln!("  [Tier 2] deps audit failed: {err:#}");

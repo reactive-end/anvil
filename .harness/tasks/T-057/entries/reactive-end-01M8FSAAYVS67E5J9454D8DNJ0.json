@@ -1,0 +1,21 @@
+{
+  "entry_id": "01M8FSAAYVS67E5J9454D8DNJ0",
+  "task_id": "T-057",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Part B: added prompt/stem.rs (EN/ES stemmer) and applied it in gather.rs overlap/query/named and grep_stage; tests next.",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/prompt.rs",
+    "crates/anvil-cli/src/commands/prompt/gather.rs",
+    "crates/anvil-cli/src/commands/prompt/grep_stage.rs",
+    "crates/anvil-cli/src/commands/prompt/stem.rs"
+  ],
+  "next_steps": [
+    "build",
+    "gather test",
+    "real checks",
+    "fmt/clippy/test/check"
+  ],
+  "timestamp": "2026-11-28T00:36:39.658409900Z"
+}

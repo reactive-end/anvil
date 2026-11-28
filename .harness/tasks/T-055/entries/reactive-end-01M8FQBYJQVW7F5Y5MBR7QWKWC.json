@@ -1,0 +1,28 @@
+{
+  "entry_id": "01M8FQBYJQVW7F5Y5MBR7QWKWC",
+  "task_id": "T-055",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Implemented prompt assist: config section, anvil prompt (improve/assist), hook wiring with context/coach/tip, improve-prompt skill, shell allowlist.",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/prompt.rs",
+    "crates/anvil-cli/src/commands/prompt/",
+    "crates/anvil-core/src/config/prompt_assist.rs"
+  ],
+  "done_steps": [
+    "config prompt_assist",
+    "prompt module tree (terms, gather, gaps, session, render, verify, improve, assist)",
+    "hook.rs wiring + systemMessage tip",
+    "skill + templates",
+    "roles_shell reader"
+  ],
+  "next_steps": [
+    "unit/e2e tests",
+    "README section",
+    "real verification on repo and sandbox with timings",
+    "fmt/clippy/test/check"
+  ],
+  "timestamp": "2026-11-28T00:02:35.277125100Z"
+}

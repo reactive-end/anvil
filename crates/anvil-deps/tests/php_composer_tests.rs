@@ -29,6 +29,7 @@ impl RegistryFetcher for MockPackagist {
                 archived: false,
                 repository_url: Some("https://github.com/laravel/framework".to_owned()),
                 vulnerabilities: Vec::new(),
+                informational: Vec::new(),
             }),
             "swiftmailer/swiftmailer" => Ok(PackageHealthInfo {
                 ecosystem,
@@ -42,6 +43,7 @@ impl RegistryFetcher for MockPackagist {
                 archived: false,
                 repository_url: None,
                 vulnerabilities: Vec::new(),
+                informational: Vec::new(),
             }),
             other => anyhow::bail!("unexpected package {other}"),
         }

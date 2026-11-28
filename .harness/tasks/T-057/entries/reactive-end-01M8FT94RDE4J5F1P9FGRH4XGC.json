@@ -1,0 +1,26 @@
+{
+  "entry_id": "01M8FT94RDE4J5F1P9FGRH4XGC",
+  "task_id": "T-057",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Fixed what the sandbox run found: init applies an explicit architecture preset only to monorepo subrepos it fits (client apps skipped with a hint, existing choices kept, no duplicated root style) and guidance renders one line per style; anvil deps marks blocking findings with a FAIL badge; prompt assist stems English and Spanish words so inflected forms meet symbol names (cancelled finds CancelOrderUseCase).",
+  "evidence": "fmt/clippy PASS; cargo test --workspace PASS; anvil check PASS; sandbox: CLAUDE.md has one hexagonal line for orders-api, boundary:arch:hexagonal:domain-no-framework@orders-api fires, docs drift `stale: 1 file(s) changed since 0e56cfc7f8c9` then clean after restore; prompt improve lists CancelOrderUseCase",
+  "files_touched": [
+    "crates/anvil-adapters/tests/architecture_sync.rs",
+    "crates/anvil-cli/src/commands/deps.rs",
+    "crates/anvil-cli/src/commands/init.rs",
+    "crates/anvil-cli/src/commands/init/architecture.rs",
+    "crates/anvil-cli/src/commands/prompt.rs",
+    "crates/anvil-cli/src/commands/prompt/gather.rs",
+    "crates/anvil-cli/src/commands/prompt/gather_tests.rs",
+    "crates/anvil-cli/src/commands/prompt/grep_stage.rs",
+    "crates/anvil-cli/src/commands/prompt/stem.rs",
+    "crates/anvil-cli/tests/architecture_monorepo_e2e.rs",
+    "crates/anvil-core/src/config/architecture.rs",
+    "crates/anvil-core/src/config/architecture/detect.rs",
+    "crates/anvil-core/src/config/architecture/detect/tests.rs",
+    "crates/anvil-core/src/config/architecture/guidance.rs"
+  ],
+  "timestamp": "2026-11-28T00:53:29.015953700Z"
+}

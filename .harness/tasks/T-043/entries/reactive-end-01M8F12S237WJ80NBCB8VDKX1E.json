@@ -1,0 +1,28 @@
+{
+  "entry_id": "01M8F12S237WJ80NBCB8VDKX1E",
+  "task_id": "T-043",
+  "author": "reactive-end",
+  "status": "blocked",
+  "branch": "main",
+  "summary": "Guard implementation in review: executor wiring commands.rs and splitting security_guard.rs/cloud.rs; waiting for its verified run.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/claude_code/config.rs",
+    "crates/anvil-adapters/tests/sync_non_destructive.rs",
+    "crates/anvil-cli/src/cli.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/guard.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/hook/security_guard.rs",
+    "crates/anvil-cli/src/commands/hook/shell.rs",
+    "crates/anvil-cli/src/commands/hook/shell/cloud.rs",
+    "crates/anvil-cli/src/commands/hook/shell/destructive.rs",
+    "crates/anvil-cli/src/commands/hook/shell/destructive/sql.rs",
+    "crates/anvil-cli/tests/security_guard_config_e2e.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/config/security_guard.rs"
+  ],
+  "blocker": "Waiting for the anvil-executor correction run (wiring + file split + real-repo cargo checks).",
+  "timestamp": "2026-11-27T17:33:06.028323400Z"
+}

@@ -1,13 +1,16 @@
 //! `anvil hook`: unified Antigravity & Claude Code hook dispatcher.
 
-mod error_log;
+mod backend_db;
+mod docs_watch;
+pub(crate) mod error_log;
 mod executors;
 mod gates;
 pub mod git_install;
 mod payload;
 mod roles;
 mod roles_shell;
-mod security_guard;
+mod search_guard;
+pub mod security_guard;
 mod session_scope;
 mod shell;
 mod task_auto;
@@ -33,6 +36,7 @@ use anvil_core::diff_classifier::{ChangedFile, classify_files};
 use anvil_core::fs_util::with_file_lock;
 use anvil_core::git::{self, DiffScope};
 use anvil_core::locale::Lang;
+use anvil_core::orchestrator_mode;
 use anvil_core::stats::{StatsEvent, record_event};
 use anvil_graph::CodeGraphEngine;
 use anvil_graph::builder::update_file;
@@ -41,6 +45,7 @@ use anvil_memory::MemoryEngine;
 use anvil_tasks::resolve_author_fast;
 use serde_json::Value;
 
+use crate::commands::prompt::assist;
 use crate::daemon::protocol::{DaemonRequest, DaemonResponse};
 use crate::daemon::try_request;
 use gates::{collect_changed_gate_errors, collect_post_tool_messages, update_circuit_from_output};
@@ -83,14 +88,18 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
     let config = AnvilConfig::load_or_default(&effective_root)?;
 
     capture_session_baselines(&effective_root, &config, &input);
+    if event == HookEvent::UserPromptSubmit {
+        docs_watch::clear_turn(&effective_root);
+        search_guard::clear_turn(&effective_root);
+    }
+    let mut user_tip = None;
     let outcome = match event {
         HookEvent::SessionStart => handle_session_start(&effective_root, &config),
         HookEvent::UserPromptSubmit | HookEvent::PreInvocation => {
             if effective_root.join(".harness").is_dir() {
-                let mut outcome = task_auto::handle_prompt_hook(&effective_root, &input);
-                if event == HookEvent::UserPromptSubmit && adapter == AdapterKind::ClaudeCode {
-                    outcome.messages.extend(roles::mode_reminder(&effective_root));
-                }
+                let (outcome, tip) =
+                    handle_prompt(&effective_root, &config, &input, event, adapter);
+                user_tip = tip;
                 outcome
             } else if event == HookEvent::PreInvocation {
                 collect_umbrella_inbox_outcome(&effective_root)
@@ -109,6 +118,7 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         AdapterKind::Antigravity => antigravity::render_output(&effective_root, event, &outcome)?,
         AdapterKind::ClaudeCode => claude_code::render_output(&effective_root, event, &outcome)?,
     };
+    let rendered = with_user_tip(rendered, event, adapter, user_tip.as_deref());
     println!("{}", serde_json::to_string(&rendered)?);
 
     if effective_root.join(".harness").is_dir() {
@@ -122,6 +132,40 @@ pub fn execute(root: &Path, event_raw: &str, adapter_raw: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Prompt bookkeeping plus the standing reminders and the prompt-assist context; the second value
+/// is the one-line tip for the user, when there is one.
+fn handle_prompt(
+    root: &Path,
+    config: &AnvilConfig,
+    input: &NormalizedHookInput,
+    event: HookEvent,
+    adapter: AdapterKind,
+) -> (HookOutcome, Option<String>) {
+    let mut outcome = task_auto::handle_prompt_hook(root, input);
+    if event == HookEvent::UserPromptSubmit && adapter == AdapterKind::ClaudeCode {
+        outcome.messages.extend(roles::mode_reminder(root));
+    }
+    let assist = assist::on_prompt(root, config, input);
+    outcome.messages.extend(assist.messages);
+    (outcome, assist.user_tip)
+}
+
+/// Adds the prompt-assist tip as Claude Code's `systemMessage`, the only field shown to the user
+/// rather than the model. Antigravity has no such channel, so it never gets a tip.
+fn with_user_tip(
+    mut rendered: Value,
+    event: HookEvent,
+    adapter: AdapterKind,
+    tip: Option<&str>,
+) -> Value {
+    if let (HookEvent::UserPromptSubmit, AdapterKind::ClaudeCode, Some(tip)) = (event, adapter, tip)
+        && let Some(obj) = rendered.as_object_mut()
+    {
+        obj.insert("systemMessage".to_owned(), Value::String(format!("Anvil · {tip}")));
+    }
+    rendered
 }
 
 /// Records which files were already dirty so `Stop` only judges work done in this session.
@@ -166,7 +210,9 @@ fn handle_session_start(root: &Path, config: &AnvilConfig) -> HookOutcome {
     let author = resolve_author_fast(root).unwrap_or_else(|_| "hook".to_owned());
     append_session_memory(root, &author, &mut messages);
     append_session_graph(root, &mut messages);
+    append_session_architecture(config, &mut messages);
     append_session_task_context(root, &mut messages);
+    messages.extend(crate::commands::readiness::session_message(root, config));
     match CircuitBreaker::new(root, config.circuit_breaker_limit).status() {
         Ok(st) if st.is_open() => {
             let msg = "Circuit Breaker is OPEN; run `anvil circuit reset` after fixing.".to_owned();
@@ -210,6 +256,13 @@ fn append_session_graph(root: &Path, messages: &mut Vec<InboxMessage>) {
             messages.push(InboxMessage::new("anvil-graph", MessageLevel::Info, msg, None));
         }
         Err(err) => error_log::log_hook_error(root, "session-start:graph-header", &err),
+    }
+}
+
+/// States the configured architecture to the agent, one line per style.
+fn append_session_architecture(config: &AnvilConfig, messages: &mut Vec<InboxMessage>) {
+    for line in anvil_core::config::architecture::guidance::architecture_lines(config) {
+        messages.push(InboxMessage::new("anvil-architecture", MessageLevel::Info, line, None));
     }
 }
 
@@ -284,7 +337,8 @@ fn run_pre_tool_guards(
     config: &AnvilConfig,
     input: &NormalizedHookInput,
 ) -> Option<HookOutcome> {
-    security_guard::check_security_guard(root, input)
+    security_guard::check_security_guard(root, &config.security_guard, input)
+        .or_else(|| search_guard::check_search_guard(root, config, input))
         .or_else(|| token_guard::check_read_token_guard(root, config, input))
         .or_else(|| token_guard_shell::check_shell_token_guard(root, config, input))
 }
@@ -323,7 +377,8 @@ fn handle_pre_tool_use(
     }
     // Roles rely on Claude Code's agent_id; other adapters never send one and would all read as orchestrator.
     if adapter == AdapterKind::ClaudeCode
-        && let Some(role_outcome) = roles::check_roles(root, input)
+        && let Some(role_outcome) =
+            roles::check_roles(root, input).or_else(|| roles::check_mode_off(root, input))
     {
         return role_outcome;
     }
@@ -364,7 +419,11 @@ fn handle_post_tool_use(
         && in_repo
         && let Some(rel) = extract_rel_file(root, input.tool_input.as_ref())
     {
-        task_auto::mark_turn_edit(root);
+        // Gitignored files (sandboxes, build output) are scratch work, not a change to decide on.
+        if !anvil_tasks::is_git_ignored(root, &rel) {
+            task_auto::mark_turn_edit(root);
+            messages.extend(docs_watch::on_edit(root, config, &rel));
+        }
         collect_post_tool_messages(root, &rel, config, &mut messages);
         update_graph_after_edit(root, &rel, config);
         match MemoryEngine::open_without_sync(root, "hook") {
@@ -457,10 +516,20 @@ fn handle_stop(
     if !errs.is_empty() {
         return HookOutcome::block_stop(texts::gate_failed(lang, None, &errs));
     }
-    if let Some(block) = task_auto::check_pending_task_summary(root, &changed, lang) {
+    let executors_running = orchestrator_mode::is_enabled(root)
+        && executors::any_running(input.transcript_path.as_deref(), input.session_id.as_deref());
+    if let Some(block) =
+        task_auto::check_pending_task_summary(root, &changed, lang, executors_running)
+    {
+        return block;
+    }
+    if let Some(block) = backend_db::stop_block(root, config, &changed, lang) {
         return block;
     }
     let mut messages = Vec::new();
+    if executors_running {
+        messages.extend(task_auto::executor_running_advisory(root));
+    }
     append_stop_advisories(root, config, &changed, lang, &mut messages);
     task_auto::mark_stop_completed(root);
     HookOutcome::with_messages(messages)
@@ -479,6 +548,7 @@ fn append_stop_advisories(
         let msg = texts::impact(lang, blast.impacted_files.len(), blast.related_tests.len());
         messages.push(InboxMessage::new("tier1:impact", MessageLevel::Info, msg, None));
     }
+    messages.extend(docs_watch::stop_advisory(root, config));
     let classified =
         classify_files(&changed.iter().map(ChangedFile::from_path).collect::<Vec<_>>());
     if classified.needs_visual_qa && !is_visual_qa_skipped(root, config) {
@@ -569,7 +639,9 @@ fn check_subrepo_stop_gates(
         if !errs.is_empty() {
             return Some(HookOutcome::block_stop(texts::gate_failed(lang, Some(&rel_sub), &errs)));
         }
-        if let Some(block) = task_auto::check_pending_task_summary(&sub_dir, &sub_changed, lang) {
+        if let Some(block) =
+            task_auto::check_pending_task_summary(&sub_dir, &sub_changed, lang, false)
+        {
             return Some(block);
         }
         task_auto::mark_stop_completed(&sub_dir);

@@ -1,6 +1,14 @@
 //! Schema and persistence for `.harness/config.json`.
 
+pub mod architecture;
+pub mod db;
+pub mod docs;
 pub mod orchestrator;
+pub mod prereqs;
+pub mod prompt_assist;
+pub mod qa;
+pub mod search;
+pub mod security_guard;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,7 +17,14 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use architecture::ArchitectureConfig;
+use db::DbConfig;
+use docs::DocsConfig;
 use orchestrator::OrchestratorConfig;
+use prereqs::PrerequisitesConfig;
+use qa::QaConfig;
+use search::SearchConfig;
+use security_guard::SecurityGuardConfig;
 
 /// Target AI coding assistants whose adapter files are synchronized by `anvil init` / `anvil sync`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -292,6 +307,12 @@ pub struct AnvilConfig {
     pub deps_max_age_months: u32,
     #[serde(default)]
     pub qa_driver: QaDriverConfig,
+    /// Web app under test: URL, start command, flows directory, visual diff threshold.
+    #[serde(default, skip_serializing_if = "QaConfig::is_default")]
+    pub qa: QaConfig,
+    /// Google MCP Toolbox for Databases: database checks for API scenarios and an optional MCP server.
+    #[serde(default, skip_serializing_if = "DbConfig::is_default")]
+    pub db: DbConfig,
     #[serde(default)]
     pub adapters: AdapterTarget,
     #[serde(default = "default_allowed_escapes")]
@@ -300,6 +321,9 @@ pub struct AnvilConfig {
     pub boundaries: Vec<BoundaryRule>,
     #[serde(default)]
     pub forbid_import_cycles: bool,
+    /// Architecture style presets, expanded into import rules at check time (`anvil architecture`).
+    #[serde(default, skip_serializing_if = "ArchitectureConfig::is_default")]
+    pub architecture: ArchitectureConfig,
     #[serde(default)]
     pub sonar: SonarConfig,
     /// Normalized-line window of the duplication check; falls back to `sonar.duplication_min_lines`.
@@ -307,6 +331,18 @@ pub struct AnvilConfig {
     pub duplication_min_lines: Option<usize>,
     #[serde(default)]
     pub token_guard: TokenGuardConfig,
+    /// Destructive-command policy of the `PreToolUse` security guard.
+    #[serde(default)]
+    pub security_guard: SecurityGuardConfig,
+    /// Engine behind `anvil grep` and the MCP `grep` tool.
+    #[serde(default)]
+    pub search: SearchConfig,
+    /// Living documentation (OKF bundles under `.harness/docs/`).
+    #[serde(default)]
+    pub docs: DocsConfig,
+    /// What a machine needs to work on the project (`anvil prereqs`).
+    #[serde(default, skip_serializing_if = "PrerequisitesConfig::is_empty")]
+    pub prerequisites: PrerequisitesConfig,
     /// Orchestrator/executor model pair; absent until `anvil orchestrator setup` runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orchestrator: Option<OrchestratorConfig>,
@@ -327,13 +363,20 @@ impl Default for AnvilConfig {
             circuit_breaker_limit: default_circuit_breaker_limit(),
             deps_max_age_months: default_deps_max_age_months(),
             qa_driver: QaDriverConfig::default(),
+            qa: QaConfig::default(),
+            db: DbConfig::default(),
             adapters: AdapterTarget::default(),
             allowed_escapes: default_allowed_escapes(),
             boundaries: Vec::new(),
             forbid_import_cycles: false,
+            architecture: ArchitectureConfig::default(),
             sonar: SonarConfig::default(),
             duplication_min_lines: None,
             token_guard: TokenGuardConfig::default(),
+            security_guard: SecurityGuardConfig::default(),
+            search: SearchConfig::default(),
+            docs: DocsConfig::default(),
+            prerequisites: PrerequisitesConfig::default(),
             orchestrator: None,
             language: None,
         }
@@ -462,6 +505,9 @@ fn default_root_allowlist() -> Vec<String> {
         "CLAUDE.md",
         "LICENSE",
         "README.md",
+        "init.cmd",
+        "init.ps1",
+        "init.sh",
         "tasks.json",
     ]
     .into_iter()

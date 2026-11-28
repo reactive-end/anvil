@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use crate::McpServer;
 use crate::tools_graph::call_graph_tool;
 use crate::tools_memory::call_memory_tool;
+use crate::tools_search::call_search_tool;
 use crate::tools_tasks::call_task_tool;
 
 pub const CODE_MODE_ALLOWLIST: &[&str] = &[
@@ -19,6 +20,8 @@ pub const CODE_MODE_ALLOWLIST: &[&str] = &[
     "graph_origin",
     "graph_path",
     "context_pack",
+    "search",
+    "grep",
     "mem_search",
     "mem_timeline",
     "mem_get",
@@ -37,6 +40,8 @@ impl ToolDispatcher for McpDispatcher<'_> {
         }
         if name == "context_pack" || name.starts_with("graph_") {
             call_graph_tool(self.0, name, &args)
+        } else if name == "grep" || name == "search" {
+            call_search_tool(self.0, name, &args)
         } else if name.starts_with("mem_") {
             call_memory_tool(self.0, name, &args)
         } else if name.starts_with("task_") {

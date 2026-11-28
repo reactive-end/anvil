@@ -66,7 +66,8 @@ pub fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<
 }
 
 /// Kills the child and every descendant so builds and test runners do not outlive the timeout.
-fn kill_process_tree(child: &mut Child) {
+/// Reaps the child; also used to stop long-lived servers together with whatever they spawned.
+pub fn kill_process_tree(child: &mut Child) {
     if cfg!(windows) {
         run_quiet("taskkill", &["/T", "/F", "/PID", &child.id().to_string()]);
     } else {

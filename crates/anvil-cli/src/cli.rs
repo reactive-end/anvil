@@ -5,13 +5,14 @@ pub mod subcmds;
 use std::path::PathBuf;
 
 use clap::builder::styling::{AnsiColor, Effects, Styles};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use crate::ui::PLAIN_ANVIL_BANNER;
 use subcmds::{
-    CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd, GraphSubcmd,
-    MemSubcmd, OrchestratorSubcmd, PluginSubcmd, QaSubcmd, RatchetSubcmd, ReviewSubcmd,
-    SonarSubcmd, SpecSubcmd, TasksSubcmd, WorktreeSubcmd,
+    ArchitectureSubcmd, CheckpointSubcmd, CircuitSubcmd, CodeSubcmd, ContextSubcmd, DaemonSubcmd,
+    DbSubcmd, DocsSubcmd, GraphSubcmd, GuardSubcmd, MemSubcmd, OrchestratorSubcmd, PluginSubcmd,
+    PrereqsSubcmd, PromptSubcmd, QaSubcmd, RatchetSubcmd, ReviewSubcmd, SonarSubcmd, SpecSubcmd,
+    TasksSubcmd, WorktreeSubcmd,
 };
 
 fn clap_styles() -> Styles {
@@ -47,6 +48,76 @@ pub struct Cli {
     pub command: Command,
 }
 
+/// Arguments of `anvil search` (graph -> docs -> code lookup).
+#[derive(Debug, Args)]
+pub struct SearchArgs {
+    /// Symbol, file, concept, or text to find (quote it to search the code for that exact text).
+    pub query: String,
+    /// Also search the code (grep) even when the graph and docs answered.
+    #[arg(long)]
+    pub code: bool,
+    /// Most graph hits listed (docs list at most 5).
+    #[arg(long, default_value_t = 8)]
+    pub limit: usize,
+    /// Token budget shared by the graph, docs, and code sections.
+    #[arg(long, default_value_t = 1200)]
+    pub max_tokens: usize,
+    /// Print the full report as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Arguments of `anvil grep` (ripgrep-style flags, token-bounded output).
+#[derive(Debug, Args)]
+pub struct GrepArgs {
+    /// Regex to search for (literal with `-F`).
+    pub pattern: String,
+    /// Repo-relative files or directories to search (default: the whole repository).
+    pub paths: Vec<String>,
+    /// Always ignore case.
+    #[arg(short = 'i', long)]
+    pub ignore_case: bool,
+    /// Ignore case unless the pattern has an uppercase letter (already the default).
+    #[arg(short = 'S', long)]
+    pub smart_case: bool,
+    /// Match case exactly (disables smart case).
+    #[arg(short = 's', long)]
+    pub case_sensitive: bool,
+    /// Treat the pattern as a literal string.
+    #[arg(short = 'F', long)]
+    pub fixed_strings: bool,
+    /// Match whole words only.
+    #[arg(short = 'w', long = "word-regexp")]
+    pub word: bool,
+    /// Only search files matching this glob (repeatable; prefix `!` to exclude).
+    #[arg(short = 'g', long = "glob")]
+    pub globs: Vec<String>,
+    /// Lines of context around every shown match.
+    #[arg(short = 'C', long, default_value_t = 0)]
+    pub context: usize,
+    /// List matching files with match counts instead of lines.
+    #[arg(short = 'l', long = "files-with-matches")]
+    pub files_only: bool,
+    /// Also search dot-files and dot-directories.
+    #[arg(long)]
+    pub hidden: bool,
+    /// Maximum matches shown across all files.
+    #[arg(long, default_value_t = 50)]
+    pub max_matches: usize,
+    /// Maximum matches shown per file.
+    #[arg(long, default_value_t = 10)]
+    pub max_per_file: usize,
+    /// Approximate token budget of the output.
+    #[arg(long, default_value_t = 1500)]
+    pub max_tokens: usize,
+    /// Print the full report as JSON.
+    #[arg(long)]
+    pub json: bool,
+    /// Search engine: `auto`, `builtin`, or `tgrep` (default: `search.backend` from the config).
+    #[arg(long)]
+    pub backend: Option<String>,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Initialize `.harness/` and thin adapters in a repository (and independent subprojects).
@@ -66,6 +137,9 @@ pub enum Command {
         /// Workspace layout when multiple projects exist (`auto` prompts interactively, or `monorepo` / `multi-repo`).
         #[arg(long, default_value = "auto", value_parser = ["auto", "monorepo", "multi-repo"])]
         layout: String,
+        /// Architecture style to enforce (`auto` detects one and prompts interactively, or `none`, `hexagonal`, `clean`, `layered`, `feature-sliced`, `modular-monolith`, `event-driven`).
+        #[arg(long, default_value = "auto", value_parser = ["auto", "none", "hexagonal", "clean", "layered", "feature-sliced", "modular-monolith", "event-driven"])]
+        architecture: String,
     },
     /// Non-destructively sync skills, config tools, and adapter files.
     Sync {
@@ -74,10 +148,14 @@ pub enum Command {
         adapter: String,
     },
     /// Audit harness health, strict configs, graph, memory, identity, and stack tools.
-    Doctor,
+    Doctor {
+        /// Run the full `anvil prereqs check` inside doctor (required failures fail doctor).
+        #[arg(long)]
+        prereqs: bool,
+    },
     /// Execute an Antigravity or Claude Code lifecycle hook (`install-git` installs pre-commit hook).
     Hook {
-        /// Hook event name (`session-start`, `pre-tool-use`, `post-tool-use`, `pre-invocation`, `stop`, `install-git`).
+        /// Hook event name (`session-start`, `user-prompt-submit`, `pre-tool-use`, `post-tool-use`, `pre-invocation`, `stop`, `install-git`).
         event: String,
         /// Target adapter (`antigravity` or `claude`).
         #[arg(long, default_value = "antigravity")]
@@ -161,6 +239,11 @@ pub enum Command {
         #[command(subcommand)]
         sub: CircuitSubcmd,
     },
+    /// Inspect and configure the security guard for destructive commands (cloud, infra, SQL, git).
+    Guard {
+        #[command(subcommand)]
+        sub: GuardSubcmd,
+    },
     /// Audit dependencies for deprecation or staleness across npm/PyPI/pub.dev/Maven/Cargo/Composer.
     Deps {
         /// Scan all supported manifests in the repository instead of git diff.
@@ -174,6 +257,11 @@ pub enum Command {
         #[command(subcommand)]
         sub: QaSubcmd,
     },
+    /// Database checks through Google MCP Toolbox: set it up, query it, share it with agents.
+    Db {
+        #[command(subcommand)]
+        sub: DbSubcmd,
+    },
     /// Build compact minimal context packets for subagent delegation.
     Context {
         #[command(subcommand)]
@@ -186,14 +274,10 @@ pub enum Command {
         #[arg(long, default_value_t = 2000)]
         max_tokens: usize,
     },
-    /// Noise-filtered, binary-safe, token-bounded repository grep.
-    Grep {
-        pattern: String,
-        #[arg(long, default_value_t = 50)]
-        max_matches: usize,
-        #[arg(long, default_value_t = 1500)]
-        max_tokens: usize,
-    },
+    /// Start here: look a query up in the code graph, then the docs, then the code (grep) only if needed.
+    Search(SearchArgs),
+    /// Fast gitignore-aware code search grouped by file, annotated with the enclosing symbol.
+    Grep(GrepArgs),
     /// Manage the resident local `anvil-graph` TCP daemon.
     Daemon {
         #[command(subcommand)]
@@ -242,6 +326,26 @@ pub enum Command {
     Spec {
         #[command(subcommand)]
         sub: SpecSubcmd,
+    },
+    /// Living project documentation (Open Knowledge Format) kept in sync with the code.
+    Docs {
+        #[command(subcommand)]
+        sub: DocsSubcmd,
+    },
+    /// Detect and check what a machine needs for this project: runtimes, tools, env files, MCP servers.
+    Prereqs {
+        #[command(subcommand)]
+        sub: PrereqsSubcmd,
+    },
+    /// Architecture style presets (hexagonal, clean, ...): record one, see its rules, check the repo.
+    Architecture {
+        #[command(subcommand)]
+        sub: ArchitectureSubcmd,
+    },
+    /// Turn a rough request into a structured prompt, or choose how much the prompt hook adds.
+    Prompt {
+        #[command(subcommand)]
+        sub: PromptSubcmd,
     },
     /// Execute sandboxed JS Code Mode queries against `anvil-graph` and `anvil-memory`.
     Code {

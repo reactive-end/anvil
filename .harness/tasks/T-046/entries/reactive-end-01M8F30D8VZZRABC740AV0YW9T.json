@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F30D8VZZRABC740AV0YW9T",
+  "task_id": "T-046",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: anvil grep on ripgrep crates with symbol annotation, MCP tool and optional tgrep backend",
+  "files_touched": [],
+  "timestamp": "2026-11-27T18:06:45.569248200Z"
+}

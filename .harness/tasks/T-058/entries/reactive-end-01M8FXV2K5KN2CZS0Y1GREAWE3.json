@@ -1,0 +1,26 @@
+{
+  "entry_id": "01M8FXV2K5KN2CZS0Y1GREAWE3",
+  "task_id": "T-058",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Prompt assist is now off by default and a per-user global setting in ~/.anvil/config.json (next to .cargo, ANVIL_HOME override), set with `anvil prompt assist [off|context|coach] [--max-tokens N] [--min-words N]`; it no longer lives in each repo's .harness/config.json.",
+  "evidence": "fmt/clippy PASS; cargo test --workspace PASS (7 user_config unit tests, 5 new e2e); anvil check PASS; `anvil prompt assist` -> `prompt assist is off (global: C:\\Users\\E.N.D\\.anvil\\config.json)`",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/claude_code/mcp_servers.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell.rs",
+    "crates/anvil-cli/src/commands/hook/roles_shell/tests.rs",
+    "crates/anvil-cli/src/commands/prompt.rs",
+    "crates/anvil-cli/src/commands/prompt/assist.rs",
+    "crates/anvil-cli/tests/prompt_assist_e2e.rs",
+    "crates/anvil-core/src/config.rs",
+    "crates/anvil-core/src/config/prompt_assist.rs",
+    "crates/anvil-core/src/lib.rs",
+    "crates/anvil-core/src/locale.rs",
+    "crates/anvil-core/src/user_config.rs",
+    "templates/skills/improve-prompt/SKILL.md"
+  ],
+  "timestamp": "2026-11-28T01:55:42.351569200Z"
+}

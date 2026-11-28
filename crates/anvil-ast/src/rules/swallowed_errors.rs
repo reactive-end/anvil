@@ -2,8 +2,10 @@
 //!
 //! Flags an empty (or comment-only) `catch` body in TypeScript/JavaScript, PHP, Kotlin, and Dart,
 //! a `.catch(() => {})` promise handler, a Python `except` whose body is only `pass` or `...`, and
-//! a Rust `Err(..) => {}` / `Err(..) => ()` match arm. A handler that logs, rethrows, returns a
-//! fallback, or does anything else is left alone.
+//! a Rust `Err(..) => {}` / `Err(..) => ()` match arm. In TypeScript/JavaScript a `catch` whose
+//! only statement returns a constant (`return 0`, `return []`, `return null`) without looking at
+//! the error is flagged too: the failure becomes a normal-looking value. A handler that logs,
+//! rethrows, builds its fallback from the error, or does anything else is left alone.
 
 use anvil_core::traits::{Diagnostic, Language, Severity};
 use tree_sitter::Node;
@@ -17,7 +19,8 @@ pub const RULE: &str = "no-swallowed-errors";
 pub fn check_node(node: Node<'_>, state: &mut RuleState<'_>) {
     let swallowed = match state.language {
         Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => {
-            (node.kind() == "catch_clause" && field_is_empty(node, "body"))
+            (node.kind() == "catch_clause"
+                && (field_is_empty(node, "body") || is_silent_fallback(node, state.source)))
                 || is_empty_promise_catch(node, state.source)
         }
         Language::Php => node.kind() == "catch_clause" && field_is_empty(node, "body"),
@@ -56,6 +59,36 @@ fn is_empty_block(block: Node<'_>) -> bool {
 
 fn field_is_empty(node: Node<'_>, field: &str) -> bool {
     node.child_by_field_name(field).is_some_and(is_empty_block)
+}
+
+/// Constant results a handler can hand back without saying anything went wrong.
+const CONSTANT_KINDS: &[&str] =
+    &["number", "string", "true", "false", "null", "undefined", "array", "object"];
+
+/// `catch (e) { return 0; }`: the only statement returns a constant (or nothing) and the caught
+/// error is never looked at, so the failure turns into a normal-looking value with no trace.
+fn is_silent_fallback(node: Node<'_>, source: &str) -> bool {
+    let Some(body) = node.child_by_field_name("body") else {
+        return false;
+    };
+    let mut cursor = body.walk();
+    let statements: Vec<Node<'_>> =
+        body.named_children(&mut cursor).filter(|c| !is_comment_kind(c.kind())).collect();
+    let [only] = statements.as_slice() else {
+        return false;
+    };
+    let returns_constant = only.kind() == "return_statement"
+        && only.named_child(0).is_none_or(|value| {
+            CONSTANT_KINDS.contains(&value.kind()) && value.named_child_count() == 0
+        });
+    let error_used = node
+        .child_by_field_name("parameter")
+        .and_then(|p| p.utf8_text(source.as_bytes()).ok())
+        .is_some_and(|name| {
+            let text = body.utf8_text(source.as_bytes()).unwrap_or_default();
+            text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$')).any(|w| w == name)
+        });
+    returns_constant && !error_used
 }
 
 fn last_block_is_empty(node: Node<'_>) -> bool {
@@ -151,6 +184,12 @@ mod tests {
         let src = "try {\n  run();\n} catch (e) {}\ntry {\n  run();\n} catch {\n  // ignore\n}\nload().catch(() => {});\nload().catch((e) => { log(e); });\ntry {\n  run();\n} catch (e) {\n  throw new Wrapped(e);\n}\n";
         assert_eq!(rule_lines("src/a.ts", src), vec![3, 6, 9]);
         assert_eq!(rule_lines("src/a.js", "try { a(); } catch (e) {}\n"), vec![1]);
+    }
+
+    #[test]
+    fn typescript_catch_that_only_returns_a_constant_is_flagged() {
+        let src = "function a() {\n  try {\n    return run();\n  } catch (e) {\n    return 0;\n  }\n}\nfunction b() {\n  try {\n    return run();\n  } catch {\n    return [];\n  }\n}\nfunction c() {\n  try {\n    return run();\n  } catch (e) {\n    return fallbackFor(e);\n  }\n}\nfunction d() {\n  try {\n    return run();\n  } catch (e) {\n    log(e);\n    return 0;\n  }\n}\nfunction f() {\n  try {\n    return run();\n  } catch (err) {\n    return [err.message];\n  }\n}\n";
+        assert_eq!(rule_lines("src/a.ts", src), vec![4, 11]);
     }
 
     #[test]

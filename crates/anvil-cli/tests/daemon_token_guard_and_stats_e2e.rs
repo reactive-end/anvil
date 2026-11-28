@@ -174,9 +174,9 @@ fn anvil_diff_strips_lockfile_noise_and_grep_returns_bounded_matches() {
         &run_anvil(root, &["grep", "return a [+-]", "--max-matches", "1", "--max-tokens", "200"]),
         "anvil grep",
     );
-    assert!(grep_out.contains("src/math.ts:"));
-    assert!(grep_out.contains("1/2 match(es)"));
-    assert!(grep_out.contains("truncated=true"));
+    assert!(grep_out.contains("src/math.ts\n  3: return a + b + 1;"), "got: {grep_out}");
+    assert!(grep_out.contains("1 of 2 match(es)"), "got: {grep_out}");
+    assert!(grep_out.contains("truncated"), "got: {grep_out}");
 }
 
 #[test]

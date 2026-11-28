@@ -58,7 +58,8 @@ jobs:
   release:
     name: Release (${{ matrix.target }})
     needs: [check]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Tag pushes publish a GitHub release; manual runs are dry runs that only upload workflow artifacts.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
     strategy:
@@ -69,14 +70,39 @@ jobs:
             os: windows-latest
             bin: anvil.exe
             archive: zip
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            bin: anvil
-            archive: tar.gz
+            native: true
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            bin: anvil.exe
+            archive: zip
+            native: false
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             bin: anvil
             archive: tar.gz
+            native: true
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            bin: anvil
+            archive: tar.gz
+            native: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            bin: anvil
+            archive: tar.gz
+            native: false
+          # macOS minutes cost 10x on the Free plan: the only macOS test run lives on this entry.
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            bin: anvil
+            archive: tar.gz
+            native: true
+            test: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            bin: anvil
+            archive: tar.gz
+            native: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -89,34 +115,83 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
+      - name: Resolve version label
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "Release label: ${version}"
+
+      - name: Install musl toolchain
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> "${GITHUB_ENV}"
+
+      - name: Install aarch64 Linux cross toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          {
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc"
+            echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc"
+            echo "AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar"
+          } >> "${GITHUB_ENV}"
+
+      - name: Test workspace on macOS
+        if: matrix.test == true
+        run: cargo test --workspace
+
       - name: Build release binary
         run: cargo build --release -p anvil-cli --target ${{ matrix.target }}
+
+      - name: Smoke test binary
+        if: matrix.native == true
+        shell: bash
+        run: ./target/${{ matrix.target }}/release/${{ matrix.bin }} --version
 
       - name: Package Windows archive
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
+          $version = $env:VERSION
           $dir = "dist"
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           $bin = "target/${{ matrix.target }}/release/${{ matrix.bin }}"
-          $zip = "$dir/anvil-$tag-${{ matrix.target }}.zip"
+          $name = "anvil-$version-${{ matrix.target }}.zip"
+          $zip = "$dir/$name"
           Compress-Archive -Path $bin -DestinationPath $zip -Force
           $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  anvil-$tag-${{ matrix.target }}.zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
+          "$hash  $name" | Out-File -FilePath "$zip.sha256" -Encoding ascii
 
       - name: Package Unix archive
         if: matrix.archive == 'tar.gz'
         shell: bash
         run: |
-          tag="${GITHUB_REF_NAME}"
           mkdir -p dist
           bin_dir="target/${{ matrix.target }}/release"
-          archive="dist/anvil-${tag}-${{ matrix.target }}.tar.gz"
-          tar -C "$bin_dir" -czf "$archive" "${{ matrix.bin }}"
-          (cd dist && sha256sum "anvil-${tag}-${{ matrix.target }}.tar.gz" > "anvil-${tag}-${{ matrix.target }}.tar.gz.sha256")
+          name="anvil-${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -C "${bin_dir}" -czf "dist/${name}" "${{ matrix.bin }}"
+          (cd dist && shasum -a 256 "${name}" > "${name}.sha256")
 
-      - name: Upload release artifacts
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+
+      - name: Upload dry-run artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: anvil-${{ env.VERSION }}-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error

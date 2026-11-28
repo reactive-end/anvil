@@ -68,7 +68,8 @@ fn embedded_templates_meet_size_and_content_constraints() {
             assert!(doc.contains(token), "missing token: {token}");
         }
     }
-    assert_eq!(templates::EMBEDDED_SKILLS.len(), 4);
+    assert_eq!(templates::EMBEDDED_SKILLS.len(), 6);
+    assert!(templates::EMBEDDED_SKILLS.iter().any(|s| s.name == "improve-prompt"));
 
     for skill in templates::EMBEDDED_SKILLS {
         assert!(skill.skill_md.contains(&format!("name: {}", skill.name)));
@@ -463,4 +464,62 @@ fn ide_specific_templates_multiline_codex_and_claude_hook_merge_preserve_neighbo
     assert_eq!(hooks.len(), 2);
     assert_eq!(hooks[0]["command"], "my-user-hook");
     assert_eq!(hooks[1]["command"], "anvil hook PreToolUse --adapter claude");
+}
+
+#[test]
+fn sync_mirrors_guard_decisions_into_permissions_without_touching_user_rules() {
+    use anvil_core::config::security_guard::{GuardCategory, GuardDecision};
+
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    seed_existing_repo_fixtures(root);
+    fs::write(
+        root.join(".claude/settings.json"),
+        r#"{"model":"sonnet","permissions":{"allow":["Bash(npm test)"],"deny":["Bash(curl:*)"],"ask":["Bash(git push:*)"]}}"#,
+    )
+    .expect("seed settings");
+    sync::init_repo(root).expect("init_repo");
+
+    let read_settings = || -> Value {
+        serde_json::from_str(&fs::read_to_string(root.join(".claude/settings.json")).unwrap())
+            .unwrap()
+    };
+    let list = |settings: &Value, key: &str| -> Vec<String> {
+        settings["permissions"][key]
+            .as_array()
+            .map(|rules| rules.iter().filter_map(|r| r.as_str().map(str::to_owned)).collect())
+            .unwrap_or_default()
+    };
+
+    let settings = read_settings();
+    assert_eq!(settings["model"], "sonnet");
+    assert_eq!(list(&settings, "allow"), ["Bash(npm test)"]);
+    let deny = list(&settings, "deny");
+    assert_eq!(deny[0], "Bash(curl:*)");
+    for rule in [
+        "Bash(aws ec2 terminate-instances:*)",
+        "Bash(aws s3 rb:*)",
+        "Bash(terraform destroy:*)",
+        "Bash(kubectl delete:*)",
+    ] {
+        assert!(deny.iter().any(|r| r == rule), "default deny list lacks {rule}");
+    }
+    let ask = list(&settings, "ask");
+    assert_eq!(ask[0], "Bash(git push:*)");
+    assert!(ask.iter().any(|r| r == "Bash(docker system prune:*)"));
+    assert!(sync::sync_repo(root).expect("second sync").written_files.is_empty());
+
+    let mut config = AnvilConfig::load(root).expect("load config");
+    config.security_guard.categories.set(GuardCategory::Cloud, GuardDecision::Ask);
+    config.security_guard.categories.set(GuardCategory::Infra, GuardDecision::Allow);
+    config.save(root).expect("save config");
+    sync::sync_repo(root).expect("sync after config change");
+
+    let settings = read_settings();
+    let deny = list(&settings, "deny");
+    assert_eq!(deny, ["Bash(curl:*)"]);
+    let ask = list(&settings, "ask");
+    assert!(ask.iter().any(|r| r == "Bash(aws s3 rb:*)"));
+    assert!(!ask.iter().any(|r| r.contains("terraform")));
+    assert_eq!(list(&settings, "allow"), ["Bash(npm test)"]);
 }

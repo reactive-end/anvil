@@ -2,18 +2,15 @@
 
 use std::path::Path;
 
-use super::command_name;
+use anvil_core::config::security_guard::GuardCategory;
+
 use super::expand::{Invocation, is_inert_text_command, string_literals};
 use super::targets::is_dangerous;
+use super::worktree::holds_work;
+use super::{Risk, cloud, command_name};
 
-const SQL_PATTERNS: &[(&str, &str)] = &[
-    ("drop database", "destructive SQL (`DROP DATABASE`)"),
-    ("drop schema", "destructive SQL (`DROP SCHEMA`)"),
-    ("drop table", "destructive SQL (`DROP TABLE`)"),
-    ("truncate table", "destructive SQL (`TRUNCATE TABLE`)"),
-];
-const SQL_CLIENTS: &[&str] =
-    &["psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "sqlplus", "duckdb"];
+mod sql;
+
 const FIND_FILTERS: &[&str] = &[
     "-name",
     "-iname",
@@ -41,24 +38,37 @@ struct Deletion<'a> {
 }
 
 /// Describes why `inv` is destructive, or `None` when it is routine.
-pub fn describe(root: &Path, inv: &Invocation) -> Option<&'static str> {
-    if inv.name.is_empty() || is_inert_text_command(&inv.name, &inv.args) {
+pub fn describe(root: &Path, inv: &Invocation) -> Option<Risk> {
+    if inv.name.is_empty() {
         return None;
     }
-    match inv.name.as_str() {
-        "git" => describe_git(&inv.args),
-        "find" => describe_find(root, &inv.args),
-        _ => describe_deletion(root, inv),
+    // Before the inert-text check: `sls` is both Serverless and the PowerShell `Select-String` alias.
+    if let Some(risk) = cloud::describe(inv) {
+        return Some(risk);
     }
-    .or_else(|| describe_disk(inv))
-    .or_else(|| describe_database(inv))
+    if is_inert_text_command(&inv.name, &inv.args) {
+        return None;
+    }
+    let local = match inv.name.as_str() {
+        "git" => describe_git(&inv.args).map(|d| Risk::new(GuardCategory::Git, d)),
+        "find" => describe_find(root, &inv.args).map(|d| Risk::new(GuardCategory::Filesystem, d)),
+        _ => describe_deletion(root, inv).map(|d| Risk::new(GuardCategory::Filesystem, d)),
+    };
+    local
+        .or_else(|| describe_disk(inv).map(|d| Risk::new(GuardCategory::Disk, d)))
+        .or_else(|| describe_database(inv).map(|d| Risk::new(GuardCategory::Database, d)))
 }
 
 /// Describes destructive filesystem calls inside inline interpreter source.
-pub fn describe_code(root: &Path, code: &str) -> Option<&'static str> {
+pub fn describe_code(root: &Path, code: &str) -> Option<Risk> {
     let deletes = CODE_DELETE_MARKERS.iter().any(|marker| code.contains(marker));
     (deletes && string_literals(code).iter().any(|lit| is_dangerous(root, lit)))
-        .then_some("recursive deletion from inline code")
+        .then_some(Risk::new(GuardCategory::Filesystem, "recursive deletion from inline code"))
+}
+
+/// Describes destructive SQL, MongoDB, or Redis text sent to a database tool (MCP SQL fields).
+pub fn describe_query(text: &str) -> Option<Risk> {
+    sql::describe_text(text, true).map(|d| Risk::new(GuardCategory::Database, d))
 }
 
 /// Returns `true` when a git invocation disables hooks (`--no-verify`, `commit -n`, `core.hooksPath`).
@@ -147,7 +157,7 @@ fn describe_git(args: &[String]) -> Option<&'static str> {
 
 fn describe_git_push(rest: &[String]) -> Option<&'static str> {
     let forced = has_flag(rest, 'f', "--force")
-        || rest.iter().any(|a| a == "--mirror" || a.starts_with('+'));
+        || rest.iter().any(|a| a == "--mirror" || a.starts_with('+') || a.starts_with("--force-"));
     if forced {
         return Some("force pushing (`git push --force`)");
     }
@@ -179,8 +189,13 @@ fn describe_deletion(root: &Path, inv: &Invocation) -> Option<&'static str> {
     if del.targets.is_empty() && inv.fed_by_pipe {
         return Some("bulk recursive deletion of piped paths");
     }
-    del.targets.iter().any(|t| is_dangerous(root, t)).then_some(
-        "recursive deletion of the root, home, working tree, `.git`, or a path outside the repository",
+    if del.targets.iter().any(|t| is_dangerous(root, t)) {
+        return Some(
+            "recursive deletion of the root, home, working tree, `.git`, or a path outside the repository",
+        );
+    }
+    del.targets.iter().any(|t| holds_work(root, t)).then_some(
+        "recursive deletion of files git tracks or has not saved yet (only ignored build output is routine)",
     )
 }
 
@@ -250,14 +265,79 @@ fn describe_database(inv: &Invocation) -> Option<&'static str> {
     if (inv.name == "prisma" || has("prisma")) && has("migrate") && has("reset") {
         return Some("destructive database reset (`prisma migrate reset`)");
     }
-    let mut sql = inv.args.join(" ");
-    if SQL_CLIENTS.contains(&inv.name.as_str()) {
-        for text in &inv.stdin_text {
-            sql.push(' ');
-            sql.push_str(text);
+    sql::describe_invocation(inv)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::hook::shell::expand::expand;
+
+    fn category(cmd: &str) -> Option<GuardCategory> {
+        let root = Path::new("/home/ada/repo");
+        expand(cmd).invocations.iter().find_map(|inv| describe(root, inv)).map(|r| r.category)
+    }
+
+    #[test]
+    fn force_push_variants_are_git_risks() {
+        for cmd in [
+            "git push --force",
+            "git push -f origin main",
+            "git push --force-with-lease",
+            "git push --force-with-lease=main:abc origin main",
+            "git push --force-if-includes origin main",
+            "git push origin main --force-with-lease",
+        ] {
+            assert_eq!(category(cmd), Some(GuardCategory::Git), "{cmd}");
+        }
+        for cmd in ["git push", "git push -u origin main", "git push --follow-tags"] {
+            assert_eq!(category(cmd), None, "{cmd}");
         }
     }
-    let lower = sql.to_ascii_lowercase();
-    let sql = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    SQL_PATTERNS.iter().find(|(pattern, _)| sql.contains(pattern)).map(|(_, desc)| *desc)
+
+    #[test]
+    fn database_clients_flag_loose_statements_and_nosql_calls() {
+        for cmd in [
+            "psql -c \"TRUNCATE users\"",
+            "psql -c \"DELETE FROM users\"",
+            "psql -c \"DROP INDEX idx_users\"",
+            "mysql -e \"ALTER TABLE users DROP COLUMN email\"",
+            "mongosh --eval \"db.dropDatabase()\"",
+            "mongo app --eval \"db.users.drop()\"",
+            "redis-cli FLUSHALL",
+            "redis-cli -h cache flushdb",
+            "echo 'TRUNCATE users' | psql",
+            "psql <<EOF\nDELETE FROM users;\nEOF",
+            "docker exec db psql -c \"TRUNCATE users\"",
+            "sudo redis-cli flushall",
+        ] {
+            assert_eq!(category(cmd), Some(GuardCategory::Database), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn database_clients_pass_filtered_or_read_only_statements() {
+        for cmd in [
+            "psql -c \"DELETE FROM users WHERE id = 1\"",
+            "psql -c \"SELECT * FROM users\"",
+            "redis-cli GET key",
+            "mongosh --eval \"db.users.find()\"",
+            "truncate -s 0 app.log",
+            "cargo test truncate users",
+        ] {
+            assert_eq!(category(cmd), None, "{cmd}");
+        }
+    }
+
+    #[test]
+    fn categories_follow_the_kind_of_risk() {
+        assert_eq!(category("rm -rf /"), Some(GuardCategory::Filesystem));
+        assert_eq!(category("find . -delete"), Some(GuardCategory::Filesystem));
+        assert_eq!(category("mkfs.ext4 /dev/sda1"), Some(GuardCategory::Disk));
+        assert_eq!(category("git reset --hard"), Some(GuardCategory::Git));
+        assert_eq!(category("psql -c \"DROP TABLE users\""), Some(GuardCategory::Database));
+        assert_eq!(category("sudo aws ec2 terminate-instances"), Some(GuardCategory::Cloud));
+        assert_eq!(category("terraform destroy"), Some(GuardCategory::Infra));
+        assert_eq!(category("docker system prune"), Some(GuardCategory::Containers));
+    }
 }

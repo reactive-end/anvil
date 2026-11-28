@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F4MJ4WH88DCZVD3N22BNTE",
+  "task_id": "T-047",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "New anvil-docs crate: OKF v0.3 bundles per project (monorepo subrepos), module concepts with x-anvil-paths and x-anvil-synced-commit, validation, git-based drift detection, scaffold from the graph with a regenerated outline block, search; `anvil docs init|new|scaffold|list|check|refresh|verify|search`; hooks remind to update docs when their files change; anvil check reports invalid and stale docs.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T18:35:14.503806600Z"
+}

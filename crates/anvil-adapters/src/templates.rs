@@ -51,4 +51,12 @@ pub const EMBEDDED_SKILLS: &[EmbeddedSkill] = &[
         name: "memory-hygiene",
         skill_md: include_str!("../../../templates/skills/memory-hygiene/SKILL.md"),
     },
+    EmbeddedSkill {
+        name: "living-docs",
+        skill_md: include_str!("../../../templates/skills/living-docs/SKILL.md"),
+    },
+    EmbeddedSkill {
+        name: "improve-prompt",
+        skill_md: include_str!("../../../templates/skills/improve-prompt/SKILL.md"),
+    },
 ];

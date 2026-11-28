@@ -7,12 +7,16 @@ use crate::tools_codemode::call_code_exec;
 use crate::tools_graph::call_graph_tool;
 use crate::tools_memory::call_memory_tool;
 use crate::tools_review::{call_review_approve, call_review_log, call_review_packet};
+use crate::tools_search::call_search_tool;
 use crate::tools_tasks::call_task_tool;
 use crate::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, JsonRpcRequest, JsonRpcResponse, METHOD_NOT_FOUND,
 };
 
 const DEFAULT_PROTOCOL_VERSION: &str = "2024-11-05";
+
+/// Sent to every client on `initialize`: the order in which to look things up.
+pub const SERVER_INSTRUCTIONS: &str = "Look things up in this order: 1) the code graph: start with `search` (it also checks the docs), or `graph_query` / `graph_outline` / `graph_read_symbol`; 2) the living docs: `.harness/docs/<project>/` concepts (read the concept, not the code it describes); 3) the code itself: `grep` with a narrow pattern, only when the first two do not answer. Read symbols (`graph_read_symbol`), not whole files.";
 
 /// Dispatches an incoming MCP JSON-RPC 2.0 request or notification.
 pub fn dispatch(server: &mut McpServer, req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
@@ -50,6 +54,7 @@ fn initialize_result(requested_version: Option<&str>) -> Value {
         "capabilities": {
             "tools": { "listChanged": false }
         },
+        "instructions": SERVER_INSTRUCTIONS,
         "serverInfo": {
             "name": "anvil-mcp",
             "version": env!("CARGO_PKG_VERSION")
@@ -75,6 +80,8 @@ fn dispatch_tool_call(
         call_code_exec(server, args)
     } else if name == "context_pack" || name.starts_with("graph_") {
         call_graph_tool(server, name, args)
+    } else if name == "grep" || name == "search" {
+        call_search_tool(server, name, args)
     } else if name == "review_log" {
         call_review_log(server, args)
     } else if name == "review_packet" {

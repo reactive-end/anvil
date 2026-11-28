@@ -1,5 +1,9 @@
 //! Architecture layer boundary checks and import cycle detection.
 
+mod arch;
+#[cfg(test)]
+mod tests;
+
 use anvil_core::config::AnvilConfig;
 use anvil_core::traits::{Diagnostic, Severity};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -9,13 +13,15 @@ use crate::model::{CodeGraph, GraphEdgeKind, NodeKind};
 const MAX_CYCLE_DEPTH: usize = 64;
 const MAX_REPORTED_CYCLES: usize = 50;
 
-/// Checks configured boundary rules and optional import cycles on the resolved graph.
+/// Checks configured boundary rules, generated architecture-preset rules (`arch:*`, including
+/// forbidden packages and module isolation), and optional import cycles on the graph.
 pub fn check_boundaries(
     graph: &CodeGraph,
     config: &AnvilConfig,
     scope_files: &[String],
 ) -> Vec<Diagnostic> {
-    if config.boundaries.is_empty() && !config.forbid_import_cycles {
+    let arch_rules = config.architecture_rules();
+    if config.boundaries.is_empty() && !config.forbid_import_cycles && arch_rules.is_empty() {
         return Vec::new();
     }
 
@@ -25,6 +31,9 @@ pub fn check_boundaries(
 
     if !config.boundaries.is_empty() {
         collect_boundary_violations(&adj, config, &scoped, &mut diagnostics);
+    }
+    if !arch_rules.is_empty() {
+        arch::collect_violations(graph, &arch_rules, scope_files, &mut diagnostics);
     }
     if config.forbid_import_cycles {
         collect_import_cycles(&adj, &scoped, &mut diagnostics);

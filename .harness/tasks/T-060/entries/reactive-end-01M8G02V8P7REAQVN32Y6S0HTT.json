@@ -1,0 +1,18 @@
+{
+  "entry_id": "01M8G02V8P7REAQVN32Y6S0HTT",
+  "task_id": "T-060",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "next_announcement in orchestrator_mode (one OFF notice after switching off), mode_reminder emits ON/OFF, check_mode_off denies anvil-executor spawns while off, e2e + unit tests, README.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/roles.rs",
+    "crates/anvil-cli/src/commands/init/architecture.rs",
+    "crates/anvil-cli/tests/architecture_e2e.rs",
+    "crates/anvil-cli/tests/orchestrator_usability_e2e.rs",
+    "crates/anvil-core/src/orchestrator_mode.rs"
+  ],
+  "timestamp": "2026-11-28T02:34:54.259032Z"
+}

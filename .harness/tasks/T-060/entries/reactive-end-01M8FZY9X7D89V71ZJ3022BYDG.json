@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FZY9X7D89V71ZJ3022BYDG",
+  "task_id": "T-060",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: Hooks keep the agent in line when orchestrator mode is off",
+  "files_touched": [],
+  "timestamp": "2026-11-28T02:32:25.312057600Z"
+}

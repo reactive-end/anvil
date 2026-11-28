@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8F1C8GF8XCB625S9Y45MN57",
+  "task_id": "T-044",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "main",
+  "summary": "Let the orchestrator run git add/commit/push/branch and gh read/PR commands and `anvil --help`; recognise target/*/anvil(.exe) as anvil; stop written_paths from flagging option values, npx package installs, unresolved variables and cd-relative paths; skip gitignored files in task tracking; do not nag at Stop while an executor runs; list user-prompt-submit in hook help.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T17:38:16.761984400Z"
+}

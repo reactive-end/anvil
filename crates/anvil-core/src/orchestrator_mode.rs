@@ -40,13 +40,40 @@ struct SpawnGrant {
 #[serde(default)]
 struct ModeState {
     enabled: bool,
+    /// The agent was last told the mode is on, so turning it off needs one explicit notice:
+    /// otherwise earlier "delegate everything" instructions stay in its context.
+    announced_on: bool,
     scopes: Vec<ScopeGrant>,
     spawns: Vec<SpawnGrant>,
+}
+
+/// What the next prompt should tell the agent about the mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Announcement {
+    /// The mode is on: repeat the standing instructions.
+    On,
+    /// The mode was switched off since the agent was last told it was on: say so once.
+    TurnedOff,
 }
 
 /// Returns `true` when orchestrator mode is on for this working copy.
 pub fn is_enabled(root: &Path) -> bool {
     read_state(root).enabled
+}
+
+/// Decides the mode announcement for a new prompt and records it, so `TurnedOff` is given once.
+/// `None` when the mode is off and the agent already knows.
+pub fn next_announcement(root: &Path) -> Result<Option<Announcement>> {
+    let state = read_state(root);
+    let announcement = match (state.enabled, state.announced_on) {
+        (true, _) => Some(Announcement::On),
+        (false, true) => Some(Announcement::TurnedOff),
+        (false, false) => None,
+    };
+    if state.announced_on != state.enabled {
+        update_state(root, |state| state.announced_on = state.enabled)?;
+    }
+    Ok(announcement)
 }
 
 /// Turns orchestrator mode on or off, dropping every delegated scope.
@@ -245,6 +272,20 @@ mod tests {
         assert!(granted_scope(root, "s2").is_empty());
         set_enabled(root, false).unwrap();
         assert!(granted_scope(root, "s1").is_empty());
+    }
+
+    #[test]
+    fn switching_the_mode_off_is_announced_once() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join(".harness/.state")).unwrap();
+        assert_eq!(next_announcement(root).unwrap(), None);
+        set_enabled(root, true).unwrap();
+        assert_eq!(next_announcement(root).unwrap(), Some(Announcement::On));
+        assert_eq!(next_announcement(root).unwrap(), Some(Announcement::On));
+        set_enabled(root, false).unwrap();
+        assert_eq!(next_announcement(root).unwrap(), Some(Announcement::TurnedOff));
+        assert_eq!(next_announcement(root).unwrap(), None);
     }
 
     #[test]

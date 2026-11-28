@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FAQXSMMMDEQDBAST6J9MRE",
+  "task_id": "T-051",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "`architecture` in config (repo and subrepo) expands into boundary rules (layer direction, forbidden framework packages, module isolation) checked in Tier 1 and by `anvil architecture check`; `anvil init --architecture` with detection and a prompt; `anvil architecture show|set|check|detect`; the chosen style is written into the agent instructions and SessionStart context.",
+  "files_touched": [],
+  "timestamp": "2026-11-27T20:21:56.182724600Z"
+}

@@ -10,13 +10,16 @@ pub mod pubdev;
 pub mod pypi;
 
 mod cache;
+mod discover;
 mod http;
+mod lockfile;
 mod osv;
 
 pub use audit::{
     AuditOptions, LiveRegistryFetcher, audit_changed_files, audit_manifests, is_supported_manifest,
     parse_manifest,
 };
+pub use discover::discover_manifests;
 pub use model::{
     DepFinding, DepIssueKind, DependencySpec, DepsAuditReport, Ecosystem, PackageHealthInfo,
     RegistryFetcher,

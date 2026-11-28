@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8G6Z130RPBTAJGJMHWAQPS3",
+  "task_id": "T-064",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Embedded SQLite drivers count as an application database only when the project also depends on a server framework; anvil-memory (rusqlite library) no longer asks for Toolbox. db init keeps raw driver detection.",
+  "files_touched": [],
+  "timestamp": "2026-11-28T04:35:09.058075400Z"
+}

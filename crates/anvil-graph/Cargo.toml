@@ -10,7 +10,7 @@ anvil-core.workspace = true
 anvil-ast.workspace = true
 anyhow.workspace = true
 blake3.workspace = true
-ignore = "0.4"
+ignore.workspace = true
 postcard = { version = "1", features = ["use-std"] }
 rayon = "1.10"
 rustc-hash.workspace = true

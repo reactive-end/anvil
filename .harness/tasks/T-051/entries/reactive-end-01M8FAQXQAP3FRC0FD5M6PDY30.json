@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FAQXQAP3FRC0FD5M6PDY30",
+  "task_id": "T-051",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Started task: Architecture presets: hexagonal, clean, layered, FSD, modular monolith, event-driven",
+  "files_touched": [],
+  "timestamp": "2026-11-27T20:21:56.110019500Z"
+}

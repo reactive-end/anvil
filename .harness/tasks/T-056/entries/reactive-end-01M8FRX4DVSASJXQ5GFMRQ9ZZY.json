@@ -1,0 +1,10 @@
+{
+  "entry_id": "01M8FRX4DVSASJXQ5GFMRQ9ZZY",
+  "task_id": "T-056",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Checks 6-7 done: arch violations detected (domain-no-framework, application-no-infrastructure), API QA autostart passes, sabotage fails at DB step; all restored. Next: web QA, deps, prompt.",
+  "files_touched": [],
+  "timestamp": "2026-11-28T00:29:26.878391100Z"
+}
