@@ -375,7 +375,8 @@ fn handle_pre_tool_use(
     }
     // Roles rely on Claude Code's agent_id; other adapters never send one and would all read as orchestrator.
     if adapter == AdapterKind::ClaudeCode
-        && let Some(role_outcome) = roles::check_roles(root, input)
+        && let Some(role_outcome) =
+            roles::check_roles(root, input).or_else(|| roles::check_mode_off(root, input))
     {
         return role_outcome;
     }

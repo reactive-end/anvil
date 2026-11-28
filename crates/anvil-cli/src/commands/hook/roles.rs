@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use anvil_adapters::claude_code::agents::EXECUTOR_AGENT;
 use anvil_adapters::contract::{HookOutcome, InboxMessage, MessageLevel, NormalizedHookInput};
 use anvil_core::orchestrator_mode::{
-    self, grant_scope, granted_scope, overlapping_entry, parse_scope, recent_spawns, record_spawn,
-    scope_allows,
+    self, Announcement, grant_scope, granted_scope, overlapping_entry, parse_scope, recent_spawns,
+    record_spawn, scope_allows,
 };
 use serde_json::Value;
 
@@ -56,17 +56,38 @@ pub fn check_roles(root: &Path, input: &NormalizedHookInput) -> Option<HookOutco
     }
 }
 
-/// Returns the standing instructions injected while the mode is on.
+/// The mode notice for a new prompt: the standing instructions while the mode is on, and one
+/// explicit "off" notice after it is switched off, so earlier delegation instructions stop applying.
 pub fn mode_reminder(root: &Path) -> Option<InboxMessage> {
-    orchestrator_mode::is_enabled(root).then(|| {
-        InboxMessage::new(
-            "orchestrator-mode",
-            MessageLevel::Info,
-            format!(
-                "ON. You are the orchestrator: understand, plan, decide, and review, but never write code. Delegate every edit to the `{EXECUTOR_AGENT}` agent with a self-contained brief that contains a `SCOPE: path, path` line (exact files or directories), the constraints, and the done command. Review each task with `review_packet` and `anvil check`, send corrections back to the executor, and approve with `review_approve` before `task_done`. Only the user can turn this mode off."
-            ),
-            None,
-        )
+    let announcement = orchestrator_mode::next_announcement(root).unwrap_or_else(|err| {
+        super::error_log::log_hook_error(root, "orchestrator-mode", &format!("{err:#}"));
+        orchestrator_mode::is_enabled(root).then_some(Announcement::On)
+    })?;
+    let text = match announcement {
+        Announcement::On => format!(
+            "ON. You are the orchestrator: understand, plan, decide, and review, but never write code. Delegate every edit to the `{EXECUTOR_AGENT}` agent with a self-contained brief that contains a `SCOPE: path, path` line (exact files or directories), the constraints, and the done command. Review each task with `review_packet` and `anvil check`, send corrections back to the executor, and approve with `review_approve` before `task_done`. Only the user can turn this mode off."
+        ),
+        Announcement::TurnedOff => format!(
+            "OFF. The user switched orchestrator mode off: earlier orchestrator instructions (including `/orchestrate`) no longer apply. Do the work yourself in this thread and do not start `{EXECUTOR_AGENT}` agents; executors already running may finish."
+        ),
+    };
+    Some(InboxMessage::new("orchestrator-mode", MessageLevel::Info, text, None))
+}
+
+/// While the mode is off, the main thread may not start `anvil-executor`: delegation is what the
+/// mode turns on, and doing it anyway ignores the user's choice.
+pub fn check_mode_off(root: &Path, input: &NormalizedHookInput) -> Option<HookOutcome> {
+    if enabled_root(root, input).is_some() || role_of(input) != Role::Orchestrator {
+        return None;
+    }
+    let tool = strip_tool_namespace(input.tool_name.as_deref())?;
+    let kind = input.tool_input.as_ref()?.get("subagent_type")?.as_str()?;
+    let starts_executor =
+        matches!(tool, "Agent" | "Task") && kind.rsplit(':').next() == Some(EXECUTOR_AGENT);
+    starts_executor.then(|| {
+        HookOutcome::deny(format!(
+            "Orchestrator mode is off, so `{EXECUTOR_AGENT}` is not used: do this work yourself in this thread. The user can turn delegation on with `anvil orchestrator on`."
+        ))
     })
 }
 

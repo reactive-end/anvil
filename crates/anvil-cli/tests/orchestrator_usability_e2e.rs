@@ -207,3 +207,38 @@ fn stop_does_not_demand_task_done_while_an_executor_runs() {
     assert!(!running.contains("still in progress"), "{running}");
     assert!(running.contains("stays in progress while an executor is running"), "{running}");
 }
+
+impl Session {
+    /// The permission decision for the main thread starting a subagent of `kind`.
+    fn spawn(&self, kind: &str) -> String {
+        let mut payload = self.payload("PreToolUse", None);
+        payload["tool_name"] = json!("Agent");
+        payload["tool_use_id"] = json!("toolu_spawn");
+        payload["tool_input"] =
+            json!({ "subagent_type": kind, "description": "x", "prompt": "Work\nSCOPE: src" });
+        let parsed = self.hook("PreToolUse", &payload);
+        parsed["hookSpecificOutput"]["permissionDecision"].as_str().unwrap_or("none").to_owned()
+    }
+
+    fn prompt_context(&self) -> String {
+        let mut payload = self.payload("UserPromptSubmit", None);
+        payload["prompt"] = json!("next step please");
+        let parsed = self.hook("UserPromptSubmit", &payload);
+        parsed["hookSpecificOutput"]["additionalContext"].as_str().unwrap_or_default().to_owned()
+    }
+}
+
+#[test]
+fn switching_the_mode_off_is_announced_once_and_stops_executor_spawns() {
+    let s = Session::new();
+    assert!(s.prompt_context().contains("[orchestrator-mode]: ON"));
+    assert_eq!(s.spawn("anvil-executor"), "none");
+
+    anvil(s.repo.path(), &["orchestrator", "off"], None);
+    let first = s.prompt_context();
+    assert!(first.contains("[orchestrator-mode]: OFF"), "{first}");
+    assert!(!s.prompt_context().contains("orchestrator-mode"), "announced only once");
+
+    assert_eq!(s.spawn("anvil-executor"), "deny");
+    assert_eq!(s.spawn("Explore"), "none", "other subagents stay available");
+}
