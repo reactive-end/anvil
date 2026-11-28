@@ -1,0 +1,23 @@
+{
+  "entry_id": "01M8G2ERAZ1SVJ9PHV5NHXY7TB",
+  "task_id": "T-061",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Guard asks before recursive deletes of folders with tracked or unsaved files (ignored output stays routine); TS/JS catch blocks that only return a constant without touching the error are flagged; changes under qa.web paths raise anvil check to Tier 2 and run the web flows.",
+  "evidence": "clippy PASS; cargo test --workspace all green (slop bench recalibrated: silent-constant catch now expected, logged fallback stays clean); new unit tests for worktree deletion, silent fallback and web tier raise",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-ast/src/rules/swallowed_errors.rs",
+    "crates/anvil-cli/slop_bench/clean_ts_catch_fallback.case",
+    "crates/anvil-cli/slop_bench/ts_catch_silent_constant.case",
+    "crates/anvil-cli/src/commands/check.rs",
+    "crates/anvil-cli/src/commands/check/api_tier.rs",
+    "crates/anvil-cli/src/commands/check/tier2.rs",
+    "crates/anvil-cli/src/commands/hook/shell.rs",
+    "crates/anvil-cli/src/commands/hook/shell/destructive.rs",
+    "crates/anvil-cli/src/commands/hook/shell/worktree.rs",
+    "crates/anvil-core/src/config/qa.rs"
+  ],
+  "timestamp": "2026-11-28T03:16:21.515682100Z"
+}

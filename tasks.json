@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 60,
-  "updated_at": "2026-11-28T02:37:12.175305800Z",
+  "task_count": 61,
+  "updated_at": "2026-11-28T03:16:21.515682100Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1126,6 +1126,25 @@
       "progress_file": ".harness/tasks/T-060/progress.md",
       "created_at": "2026-11-28T02:32:25.253544900Z",
       "updated_at": "2026-11-28T02:35:36.431605800Z"
+    },
+    {
+      "task_id": "T-061",
+      "request": "Close the gaps found in tests-anvil",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Guard asks before recursive deletes of folders with tracked or unsaved files (ignored output stays routine); TS/JS catch blocks that only return a constant without touching the error are flagged; changes under qa.web paths raise anvil check to Tier 2 and run the web flows.",
+      "evidence": "clippy PASS; cargo test --workspace all green (slop bench recalibrated: silent-constant catch now expected, logged fallback stays clean); new unit tests for worktree deletion, silent fallback and web tier raise",
+      "entry_count": 2,
+      "files_count": 11,
+      "progress_file": ".harness/tasks/T-061/progress.md",
+      "created_at": "2026-11-28T03:07:52.769822600Z",
+      "updated_at": "2026-11-28T03:16:21.515682100Z"
     }
   ]
 }
