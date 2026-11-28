@@ -7,6 +7,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use super::ArchitectureStyle;
+use crate::config::StackKind;
 
 const INFRA: &[&str] = &["infrastructure", "infraestructure", "infra", "adapters", "persistence"];
 const USE_CASES: &[&str] = &["use-cases", "usecases", "use_cases"];
@@ -49,6 +50,30 @@ impl Suggestion {
     pub fn describe(&self) -> String {
         format!("{} ({} confidence): {}", self.style, self.confidence.as_str(), self.note)
     }
+}
+
+/// Browser UI stacks: a project built only on these is a client app, not a service.
+const CLIENT_STACKS: &[StackKind] =
+    &[StackKind::Vite, StackKind::React, StackKind::Vue, StackKind::Angular, StackKind::Svelte];
+/// Stacks that run server code, which make a project more than a client app.
+const SERVER_STACKS: &[StackKind] = &[
+    StackKind::NestJs,
+    StackKind::NextJs,
+    StackKind::Astro,
+    StackKind::Laravel,
+    StackKind::Php,
+    StackKind::Python,
+    StackKind::Rust,
+    StackKind::KotlinAndroid,
+];
+
+/// The client-app stack that identifies a project (Vite, React, Vue, Angular or Svelte) when no server
+/// framework is detected next to it; `None` for services and for projects of an unknown kind.
+pub fn client_app_stack(stacks: &[StackKind]) -> Option<StackKind> {
+    if stacks.iter().any(|s| SERVER_STACKS.contains(s)) {
+        return None;
+    }
+    CLIENT_STACKS.iter().copied().find(|s| stacks.contains(s))
 }
 
 /// Lower-cased names of the directories directly under a unit (the source root or one module).

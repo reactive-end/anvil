@@ -85,3 +85,22 @@ fn modules_folder_is_unwrapped_before_counting() {
     assert_eq!(found.style, ArchitectureStyle::Hexagonal);
     assert!(found.note.contains("2 of 2 modules"), "{}", found.note);
 }
+
+#[test]
+fn a_ui_stack_without_a_server_framework_is_a_client_app() {
+    assert_eq!(client_app_stack(&[StackKind::Vite, StackKind::TypeScript]), Some(StackKind::Vite));
+    assert_eq!(client_app_stack(&[StackKind::React]), Some(StackKind::React));
+    assert_eq!(
+        client_app_stack(&[StackKind::Angular, StackKind::TypeScript]),
+        Some(StackKind::Angular)
+    );
+}
+
+#[test]
+fn a_server_framework_or_no_ui_stack_is_not_a_client_app() {
+    assert_eq!(client_app_stack(&[StackKind::NestJs, StackKind::TypeScript]), None);
+    assert_eq!(client_app_stack(&[StackKind::Vite, StackKind::NestJs]), None);
+    assert_eq!(client_app_stack(&[StackKind::NextJs, StackKind::React]), None);
+    assert_eq!(client_app_stack(&[StackKind::TypeScript]), None);
+    assert_eq!(client_app_stack(&[]), None);
+}

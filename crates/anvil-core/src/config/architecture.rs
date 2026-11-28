@@ -26,6 +26,9 @@ pub use rules::{ArchRule, ArchRuleKind, ModuleIsolation};
 /// Default source directory the presets are anchored to, relative to the repository or subrepo.
 pub const DEFAULT_SOURCE_ROOT: &str = "src";
 
+/// Name used in messages for the repository root.
+pub(crate) const REPO_LABEL: &str = "this repository";
+
 /// An architecture style whose rules Anvil can generate and enforce.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
@@ -160,7 +163,7 @@ pub struct ArchTarget<'a> {
 impl ArchTarget<'_> {
     /// Name used in messages: the subrepo name or `this repository`.
     pub fn label(&self) -> &str {
-        self.subrepo.unwrap_or("this repository")
+        self.subrepo.unwrap_or(REPO_LABEL)
     }
 
     /// Repo-relative source directory (`src`, or `backend/src` for a subrepo at `backend`).

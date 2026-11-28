@@ -82,3 +82,29 @@ fn every_adapter_file_gets_the_line_generated_from_config() {
         );
     }
 }
+
+#[test]
+fn a_legacy_root_plus_subrepo_config_gets_one_line_per_style() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    for name in ["orders-api", "orders-web"] {
+        fs::create_dir_all(root.join(name)).expect("subrepo dir");
+        fs::write(root.join(name).join("package.json"), r#"{"name":"x"}"#).expect("package.json");
+    }
+    sync::init_repo_with_adapter(root, Some(AdapterTarget::Claude)).expect("init");
+    let mut config = AnvilConfig::load(root).expect("load config");
+    assert_eq!(config.subrepos.len(), 2, "both subrepos are detected");
+    config
+        .set_architecture(ArchitectureStyle::Hexagonal, None, Some("orders-api/src"))
+        .expect("root");
+    for name in ["orders-api", "orders-web"] {
+        config.set_architecture(ArchitectureStyle::Hexagonal, Some(name), None).expect("sub");
+    }
+    config.save(root).expect("save config");
+
+    sync::sync_repo(root).expect("sync");
+
+    let doc = read(root, "CLAUDE.md");
+    assert_eq!(doc.matches("Architecture: hexagonal").count(), 1, "{doc}");
+    assert!(doc.contains("in this repository, orders-api, orders-web:"), "{doc}");
+}

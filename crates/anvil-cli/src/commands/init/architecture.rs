@@ -3,14 +3,18 @@
 //! `--architecture <style>` is applied as given. With `auto`, the style is detected from the folder
 //! names and, when one is found, the user picks it interactively (default: the detected one); without a
 //! prompt it is only suggested, because enforcing a guessed style could fail builds unexpectedly.
+//!
+//! In a monorepo an explicit style only goes to the subrepos it fits: a client app (Vite, React, Vue,
+//! Angular or Svelte with no server framework) is skipped with a hint, a style already chosen for a
+//! subrepo is kept, and the repository root gets none when subrepos carry their own.
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use anvil_adapters::sync;
-use anvil_core::config::AnvilConfig;
-use anvil_core::config::architecture::detect::{Suggestion, detect_style};
+use anvil_core::config::architecture::detect::{Suggestion, client_app_stack, detect_style};
 use anvil_core::config::architecture::{ArchitectureStyle, DEFAULT_SOURCE_ROOT};
+use anvil_core::config::{AnvilConfig, StackKind};
 use anyhow::Result;
 
 use crate::commands::ExitCodeError;
@@ -21,7 +25,7 @@ use crate::ui::prompt::{self, PromptOutcome, SelectOption};
 pub(super) enum ArchMode {
     /// Detect, then prompt (interactive) or only suggest.
     Auto,
-    /// Apply this style to every project.
+    /// Apply this style to every project it fits (see the module docs).
     Explicit(ArchitectureStyle),
 }
 
@@ -40,6 +44,8 @@ pub(super) struct Candidate {
     subrepo: Option<String>,
     source_dir: PathBuf,
     existing: ArchitectureStyle,
+    /// The UI stack when the project is a client app with no server framework.
+    client_app: Option<StackKind>,
 }
 
 impl Candidate {
@@ -51,17 +57,25 @@ impl Candidate {
             subrepo: None,
             source_dir: dir.join(DEFAULT_SOURCE_ROOT),
             existing,
+            client_app: None,
         })
     }
 
     /// A subrepo `name` at `dir`, recorded in the workspace root config `root_config`.
-    pub(super) fn subrepo(label: &str, name: &str, dir: &Path, root_config: &AnvilConfig) -> Self {
+    pub(super) fn subrepo(
+        label: &str,
+        name: &str,
+        dir: &Path,
+        stacks: &[StackKind],
+        root_config: &AnvilConfig,
+    ) -> Self {
         let existing = root_config.architecture.subrepos.get(name).map(|s| s.style);
         Self {
             label: label.to_owned(),
             subrepo: Some(name.to_owned()),
             source_dir: dir.join(DEFAULT_SOURCE_ROOT),
             existing: existing.unwrap_or_default(),
+            client_app: client_app_stack(stacks),
         }
     }
 }
@@ -81,16 +95,22 @@ pub(super) struct PromptIo<'a> {
     pub reader: &'a mut dyn BufRead,
 }
 
-/// Decides the style of every candidate.
+/// Decides the style of every candidate. Subrepos come first: the root only gets a style when no
+/// subrepo has one, so a monorepo never states the same rules for the root and for its subrepos.
 pub(super) fn plan(
     mode: ArchMode,
     candidates: &[Candidate],
     io: &mut PromptIo<'_>,
 ) -> Result<ArchPlan> {
     let mut plan = ArchPlan::default();
-    for candidate in candidates {
+    let subrepos = candidates.iter().filter(|c| c.subrepo.is_some());
+    let roots = candidates.iter().filter(|c| c.subrepo.is_none());
+    for candidate in subrepos.chain(roots) {
+        if candidate.subrepo.is_none() && subrepos_own_the_style(candidates, &plan) {
+            continue;
+        }
         let style = match mode {
-            ArchMode::Explicit(style) => Some(style),
+            ArchMode::Explicit(style) => decide_explicit(candidate, style, &mut plan.hints),
             ArchMode::Auto => decide_auto(candidate, io, &mut plan.hints)?,
         };
         let Some(style) = style else {
@@ -102,6 +122,41 @@ pub(super) fn plan(
         }
     }
     Ok(plan)
+}
+
+/// `true` when a subrepo already has a style in the config or was just given one.
+fn subrepos_own_the_style(candidates: &[Candidate], plan: &ArchPlan) -> bool {
+    !plan.subrepos.is_empty()
+        || candidates.iter().any(|c| c.subrepo.is_some() && c.existing != ArchitectureStyle::None)
+}
+
+/// Applies the `--architecture` style to `candidate` when it fits; a subrepo keeps its own choice and
+/// a client app is skipped (feature-sliced design is the one style built for them).
+fn decide_explicit(
+    candidate: &Candidate,
+    style: ArchitectureStyle,
+    hints: &mut Vec<String>,
+) -> Option<ArchitectureStyle> {
+    let Some(name) = &candidate.subrepo else {
+        return Some(style);
+    };
+    if style == ArchitectureStyle::None {
+        return Some(style);
+    }
+    if candidate.existing != ArchitectureStyle::None {
+        return None;
+    }
+    if let Some(stack) = candidate.client_app
+        && style != ArchitectureStyle::FeatureSliced
+    {
+        hints.push(format!(
+            "{}: {} client app (no server framework), no {style} rules applied; set one explicitly with `anvil architecture set <style> --subrepo {name}`",
+            candidate.label,
+            format!("{stack:?}").to_ascii_lowercase()
+        ));
+        return None;
+    }
+    Some(style)
 }
 
 fn decide_auto(

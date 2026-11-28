@@ -319,6 +319,7 @@ fn plan_monorepo_architecture(
             &repo.rel_path,
             &repo.name,
             &dir,
+            &repo.stacks,
             &root_config,
         ));
     }
