@@ -1,4 +1,4 @@
-# A catch that returns an explicit fallback.
+# A catch that reports the error before returning its fallback.
 @@ before src/math.ts
 export function total(items: number[]): number {
   let sum = 0;
@@ -19,7 +19,8 @@ import { total } from "./math";
 export function run(): number {
   try {
     return total([1, 2, 3]);
-  } catch {
+  } catch (error) {
+    console.warn("total failed", error);
     return 0;
   }
 }
