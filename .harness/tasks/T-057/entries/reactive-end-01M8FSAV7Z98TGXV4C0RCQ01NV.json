@@ -1,0 +1,27 @@
+{
+  "entry_id": "01M8FSAV7Z98TGXV4C0RCQ01NV",
+  "task_id": "T-057",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Part A code edits: monorepo init applies preset only to fitting subrepos, guidance merges per style, deps FAIL badge, tests added.",
+  "files_touched": [
+    "crates/anvil-cli/src/commands/deps.rs",
+    "crates/anvil-cli/src/commands/init/architecture.rs",
+    "crates/anvil-cli/tests/architecture_monorepo_e2e.rs",
+    "crates/anvil-core/src/config/architecture/detect.rs",
+    "crates/anvil-core/src/config/architecture/guidance.rs"
+  ],
+  "done_steps": [
+    "guidance merges targets per style",
+    "client_app_stack detection",
+    "init plan skips client apps/keeps explicit/no root with subrepos",
+    "deps finding_line FAIL badge",
+    "tests"
+  ],
+  "next_steps": [
+    "run fmt/clippy/tests",
+    "sandbox verification"
+  ],
+  "timestamp": "2026-11-28T00:36:56.230170Z"
+}

@@ -1,0 +1,11 @@
+{
+  "entry_id": "01M8FS3MP9APKZ6NF7WQ26CWFZ",
+  "task_id": "T-056",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "Ran the new harness end to end on the hexagonal sandbox with the HEAD binary: init over the existing config, doctor/prereqs, guard, search/grep, docs scaffold, architecture violations, API QA from a plain anvil check (a payment that is never persisted fails at the DB step), web flows in Tier 2, deps and prompt improve.",
+  "evidence": "10 checks: 9 PASS, docs drift PARTIAL (no commit yet). API sabotage: `step 6 db anvil_select: first row: status expected \"paid\" but got \"created\"` exit 1, restored PASS. Web flows PASS after removing QA rows that changed the select width.",
+  "files_touched": [],
+  "timestamp": "2026-11-28T00:33:00.140993900Z"
+}

@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 55,
-  "updated_at": "2026-11-28T00:24:36.535546Z",
+  "task_count": 57,
+  "updated_at": "2026-11-28T00:53:29.015953700Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1031,6 +1031,44 @@
       "progress_file": ".harness/tasks/T-055/progress.md",
       "created_at": "2026-11-27T23:51:19.843542Z",
       "updated_at": "2026-11-28T00:24:36.535546Z"
+    },
+    {
+      "task_id": "T-056",
+      "request": "End-to-end verification of the new harness features on the hexagonal sandbox",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Ran the new harness end to end on the hexagonal sandbox with the HEAD binary: init over the existing config, doctor/prereqs, guard, search/grep, docs scaffold, architecture violations, API QA from a plain anvil check (a payment that is never persisted fails at the DB step), web flows in Tier 2, deps and prompt improve.",
+      "evidence": "10 checks: 9 PASS, docs drift PARTIAL (no commit yet). API sabotage: `step 6 db anvil_select: first row: status expected \"paid\" but got \"created\"` exit 1, restored PASS. Web flows PASS after removing QA rows that changed the select width.",
+      "entry_count": 5,
+      "files_count": 0,
+      "progress_file": ".harness/tasks/T-056/progress.md",
+      "created_at": "2026-11-28T00:25:08.157900600Z",
+      "updated_at": "2026-11-28T00:33:00.140993900Z"
+    },
+    {
+      "task_id": "T-057",
+      "request": "Fix the issues the sandbox run found",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "Fixed what the sandbox run found: init applies an explicit architecture preset only to monorepo subrepos it fits (client apps skipped with a hint, existing choices kept, no duplicated root style) and guidance renders one line per style; anvil deps marks blocking findings with a FAIL badge; prompt assist stems English and Spanish words so inflected forms meet symbol names (cancelled finds CancelOrderUseCase).",
+      "evidence": "fmt/clippy PASS; cargo test --workspace PASS; anvil check PASS; sandbox: CLAUDE.md has one hexagonal line for orders-api, boundary:arch:hexagonal:domain-no-framework@orders-api fires, docs drift `stale: 1 file(s) changed since 0e56cfc7f8c9` then clean after restore; prompt improve lists CancelOrderUseCase",
+      "entry_count": 4,
+      "files_count": 14,
+      "progress_file": ".harness/tasks/T-057/progress.md",
+      "created_at": "2026-11-28T00:33:00.332411Z",
+      "updated_at": "2026-11-28T00:53:29.015953700Z"
     }
   ]
 }
