@@ -45,14 +45,7 @@ pub fn execute(root: &Path, all: bool, manifests: &[PathBuf]) -> Result<()> {
         report.errors.len()
     );
     for finding in &report.findings {
-        println!(
-            "  {} {} issues={:?} age={:?}mo{}",
-            ui::warn_badge(),
-            ui::bold(&finding.label()),
-            finding.issues,
-            finding.age_months,
-            advisory_suffix(finding)
-        );
+        println!("{}", finding_line(finding));
     }
     for err in &report.errors {
         eprintln!("  {} {err}", ui::red("[ERR] "));
@@ -61,6 +54,19 @@ pub fn execute(root: &Path, all: bool, manifests: &[PathBuf]) -> Result<()> {
         return Err(ExitCodeError::silent(1).into());
     }
     Ok(())
+}
+
+/// One report row: a red `[FAIL]` badge for a blocking finding, the yellow `[WARN]` one for an
+/// informational finding that does not fail the audit.
+pub(crate) fn finding_line(finding: &DepFinding) -> String {
+    let badge = if finding.is_blocking() { ui::fail_badge() } else { ui::warn_badge() };
+    format!(
+        "  {badge} {} issues={:?} age={:?}mo{}",
+        ui::bold(&finding.label()),
+        finding.issues,
+        finding.age_months,
+        advisory_suffix(finding)
+    )
 }
 
 /// ` vulns=[..]` for real vulnerabilities and ` advisories=[..] (informational, non-blocking)` for the rest.
@@ -109,6 +115,19 @@ mod tests {
         let both = advisory_suffix(&finding(&["GHSA-1"], &["RUSTSEC-2026-0543"]));
         assert!(both.contains("vulns=[\"GHSA-1\"]"));
         assert!(both.contains("advisories=[\"RUSTSEC-2026-0543\"] (informational, non-blocking)"));
+    }
+
+    #[test]
+    fn blocking_findings_get_the_fail_badge_and_informational_ones_the_warn_badge() {
+        let informational = finding(&[], &["RUSTSEC-2026-0543"]);
+        let mut blocking = finding(&["GHSA-1"], &[]);
+        blocking.issues = vec![DepIssueKind::Vulnerable];
+
+        let warn_row = finding_line(&informational);
+        let fail_row = finding_line(&blocking);
+
+        assert!(warn_row.contains("[WARN]") && !warn_row.contains("[FAIL]"), "{warn_row}");
+        assert!(fail_row.contains("[FAIL]") && !fail_row.contains("[WARN]"), "{fail_row}");
     }
 
     #[test]
