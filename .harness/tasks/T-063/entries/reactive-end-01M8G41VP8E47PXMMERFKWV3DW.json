@@ -1,0 +1,27 @@
+{
+  "entry_id": "01M8G41VP8E47PXMMERFKWV3DW",
+  "task_id": "T-063",
+  "author": "reactive-end",
+  "status": "in_progress",
+  "branch": "feat/harness-improvements",
+  "summary": "Backend Stop gate, db init auto-detection with env-file/local connection, anvil db serve MCP entry, README; workspace tests, fmt, clippy pass.",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/db_mcp.rs",
+    "crates/anvil-adapters/tests/db_mcp.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/db.rs",
+    "crates/anvil-cli/src/commands/db/detect.rs",
+    "crates/anvil-cli/src/commands/db/env_path.rs",
+    "crates/anvil-cli/src/commands/db/init.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/backend_db.rs",
+    "crates/anvil-cli/src/commands/readiness.rs",
+    "crates/anvil-cli/tests/api_qa_e2e.rs",
+    "crates/anvil-cli/tests/backend_db_gate_e2e.rs",
+    "crates/anvil-core/src/config/db.rs",
+    "crates/anvil-qa/src/api/db.rs",
+    "crates/anvil-qa/src/api/run.rs"
+  ],
+  "timestamp": "2026-11-28T03:44:16.145729900Z"
+}

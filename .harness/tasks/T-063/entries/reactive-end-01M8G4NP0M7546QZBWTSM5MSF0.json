@@ -1,0 +1,27 @@
+{
+  "entry_id": "01M8G4NP0M7546QZBWTSM5MSF0",
+  "task_id": "T-063",
+  "author": "reactive-end",
+  "status": "done",
+  "branch": "feat/harness-improvements",
+  "summary": "db init detects the engine (env vars, DATABASE_URL scheme, dependencies) and the connection (project env file, else local defaults filling gaps); anvil db serve starts Toolbox with that connection and is the anvil-db MCP entry; Stop blocks backend edits of DB projects until tools file, a scenario and a passing run after the edit exist; Toolbox errors keep their detail lines. Verified in tests-anvil (sqlite detection, MCP round trip, gate block/unblock) and against local Postgres (connects, auth refused with SQLSTATE 28P01).",
+  "files_touched": [
+    "README.md",
+    "crates/anvil-adapters/src/db_mcp.rs",
+    "crates/anvil-adapters/tests/db_mcp.rs",
+    "crates/anvil-cli/src/cli/subcmds.rs",
+    "crates/anvil-cli/src/commands/db.rs",
+    "crates/anvil-cli/src/commands/db/detect.rs",
+    "crates/anvil-cli/src/commands/db/env_path.rs",
+    "crates/anvil-cli/src/commands/db/init.rs",
+    "crates/anvil-cli/src/commands/hook.rs",
+    "crates/anvil-cli/src/commands/hook/backend_db.rs",
+    "crates/anvil-cli/src/commands/readiness.rs",
+    "crates/anvil-cli/tests/api_qa_e2e.rs",
+    "crates/anvil-cli/tests/backend_db_gate_e2e.rs",
+    "crates/anvil-core/src/config/db.rs",
+    "crates/anvil-qa/src/api/db.rs",
+    "crates/anvil-qa/src/api/run.rs"
+  ],
+  "timestamp": "2026-11-28T03:55:05.675889500Z"
+}

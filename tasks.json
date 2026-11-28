@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "task_count": 62,
-  "updated_at": "2026-11-28T03:23:37.326729800Z",
+  "task_count": 63,
+  "updated_at": "2026-11-28T03:55:05.675889500Z",
   "tasks": [
     {
       "task_id": "T-001",
@@ -1164,6 +1164,24 @@
       "progress_file": ".harness/tasks/T-062/progress.md",
       "created_at": "2026-11-28T03:16:51.363057400Z",
       "updated_at": "2026-11-28T03:23:37.326729800Z"
+    },
+    {
+      "task_id": "T-063",
+      "request": "Backend changes are verified against a database",
+      "status": "done",
+      "created_by": "reactive-end",
+      "contributors": [
+        "reactive-end"
+      ],
+      "branches": [
+        "feat/harness-improvements"
+      ],
+      "summary": "db init detects the engine (env vars, DATABASE_URL scheme, dependencies) and the connection (project env file, else local defaults filling gaps); anvil db serve starts Toolbox with that connection and is the anvil-db MCP entry; Stop blocks backend edits of DB projects until tools file, a scenario and a passing run after the edit exist; Toolbox errors keep their detail lines. Verified in tests-anvil (sqlite detection, MCP round trip, gate block/unblock) and against local Postg...",
+      "entry_count": 3,
+      "files_count": 16,
+      "progress_file": ".harness/tasks/T-063/progress.md",
+      "created_at": "2026-11-28T03:25:06.671216600Z",
+      "updated_at": "2026-11-28T03:55:05.675889500Z"
     }
   ]
 }
