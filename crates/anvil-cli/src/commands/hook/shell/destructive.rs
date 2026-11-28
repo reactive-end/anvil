@@ -6,6 +6,7 @@ use anvil_core::config::security_guard::GuardCategory;
 
 use super::expand::{Invocation, is_inert_text_command, string_literals};
 use super::targets::is_dangerous;
+use super::worktree::holds_work;
 use super::{Risk, cloud, command_name};
 
 mod sql;
@@ -188,8 +189,13 @@ fn describe_deletion(root: &Path, inv: &Invocation) -> Option<&'static str> {
     if del.targets.is_empty() && inv.fed_by_pipe {
         return Some("bulk recursive deletion of piped paths");
     }
-    del.targets.iter().any(|t| is_dangerous(root, t)).then_some(
-        "recursive deletion of the root, home, working tree, `.git`, or a path outside the repository",
+    if del.targets.iter().any(|t| is_dangerous(root, t)) {
+        return Some(
+            "recursive deletion of the root, home, working tree, `.git`, or a path outside the repository",
+        );
+    }
+    del.targets.iter().any(|t| holds_work(root, t)).then_some(
+        "recursive deletion of files git tracks or has not saved yet (only ignored build output is routine)",
     )
 }
 

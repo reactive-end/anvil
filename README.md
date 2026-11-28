@@ -433,7 +433,7 @@ The guard checks every shell command (and, for MCP tools other than `mcp__anvil_
 | `containers` | `docker`/`podman` `system prune`, `volume rm`, `compose down -v`, forced bulk removal | `ask` |
 | `database` | `DROP`, `TRUNCATE`, `DELETE` without `WHERE`, `ALTER TABLE ... DROP`, Mongo `dropDatabase()`, Redis `FLUSHALL` | `ask` |
 | `git` | `reset --hard`, force pushes (including `--force-with-lease`), `clean -f`, `branch -D` | `ask` |
-| `filesystem` | recursive deletion of the root, home, `.git`, or paths outside the repository | `ask` |
+| `filesystem` | recursive deletion of the root, home, `.git`, paths outside the repository, or folders holding files git tracks or has not saved yet (ignored build output such as `node_modules` stays routine) | `ask` |
 | `secrets` | reading or copying `.env`, keys, and credential files | `ask` |
 | `opaque` | piped downloads, encoded or deeply nested shell code that cannot be inspected | `ask` |
 

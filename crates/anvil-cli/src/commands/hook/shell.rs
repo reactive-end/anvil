@@ -6,6 +6,7 @@ pub mod expand;
 pub mod lex;
 pub mod secrets;
 pub mod targets;
+pub mod worktree;
 
 use anvil_core::config::security_guard::GuardCategory;
 
